@@ -29,11 +29,19 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div id="app">
+<div class="app-layout">
   <Sidebar />
   <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
   <DetailsPanel open={detailsOpen} onClose={() => detailsOpen = false} />
 </div>
+
+<style>
+  .app-layout {
+    display: flex;
+    width: 100%;
+    height: 100%;
+  }
+</style>
 
 <SearchOverlay open={searchOpen} onClose={() => searchOpen = false} />
 <SlashMenu />

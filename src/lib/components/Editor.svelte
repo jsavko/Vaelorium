@@ -3,7 +3,8 @@
   import { Editor } from '@tiptap/core'
   import { createEditorExtensions } from '../editor/EditorConfig'
   import { LocalYjsProvider } from '../editor/YjsProvider'
-  import { currentPage, updateCurrentPage } from '../stores/pageStore'
+  import { currentPage, updateCurrentPage, loadPage, pageTree } from '../stores/pageStore'
+  import { get } from 'svelte/store'
   import type { Page } from '../api/pages'
 
   let editorElement: HTMLDivElement
@@ -65,6 +66,39 @@
     }
   }
 
+  function handleEditorClick(e: MouseEvent) {
+    const target = e.target as HTMLElement
+    const link = target.closest('a[href^="#page:"]')
+    if (link) {
+      e.preventDefault()
+      const href = link.getAttribute('href')
+      if (href) {
+        const pageId = href.replace('#page:', '')
+        loadPage(pageId)
+      }
+    }
+  }
+
+  function handleEditorDrop(e: DragEvent) {
+    const pageId = e.dataTransfer?.getData('text/plain')
+    if (!pageId || !editor) return
+
+    if (pageId.match(/^[0-9a-f-]{36}$/)) {
+      e.preventDefault()
+      const tree = get(pageTree)
+      const page = tree.find((p) => p.id === pageId)
+      const title = page?.title || 'Linked Page'
+      editor.chain().focus().insertContent({
+        type: 'text',
+        marks: [{
+          type: 'link',
+          attrs: { href: `#page:${pageId}`, class: 'wiki-link-inline' },
+        }],
+        text: title,
+      }).run()
+    }
+  }
+
   onDestroy(async () => {
     if (editor) editor.destroy()
     if (provider) await provider.destroy()
@@ -95,29 +129,36 @@
     </div>
 
     <div class="editor-toolbar">
-      <button class="toolbar-btn" onclick={() => editor?.chain().focus().toggleBold().run()}>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleBold().run()}>
         <strong>B</strong>
       </button>
-      <button class="toolbar-btn" onclick={() => editor?.chain().focus().toggleItalic().run()}>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleItalic().run()}>
         <em>I</em>
       </button>
       <span class="toolbar-sep"></span>
-      <button class="toolbar-btn" onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}>
         H1
       </button>
-      <button class="toolbar-btn" onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}>
         H2
       </button>
-      <button class="toolbar-btn" onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()}>
         H3
       </button>
       <span class="toolbar-sep"></span>
-      <button class="toolbar-btn" onclick={() => editor?.chain().focus().toggleBulletList().run()}>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleBulletList().run()}>
         List
       </button>
     </div>
 
-    <div class="editor-container" bind:this={editorElement}></div>
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div
+      class="editor-container"
+      bind:this={editorElement}
+      onclick={handleEditorClick}
+      ondrop={handleEditorDrop}
+      ondragover={(e) => e.preventDefault()}
+    ></div>
   </div>
 {:else}
   <div class="welcome">
@@ -132,8 +173,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    max-width: 800px;
-    margin: 0 auto;
     width: 100%;
     padding: 40px 60px;
   }
