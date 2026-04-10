@@ -1,13 +1,14 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte'
+  import { setMentionMenuRenderer } from '../editor/MentionExtension'
   import type { PageTreeNode } from '../api/pages'
 
-  interface Props {
-    items: PageTreeNode[]
-    selectedIndex: number
-    onSelect: (item: PageTreeNode) => void
-  }
-
-  let { items, selectedIndex, onSelect }: Props = $props()
+  let visible = $state(false)
+  let items = $state<PageTreeNode[]>([])
+  let selectedIndex = $state(0)
+  let commandFn: ((item: PageTreeNode) => void) | null = null
+  let menuX = $state(0)
+  let menuY = $state(0)
 
   const entityColors: Record<string, string> = {
     character: 'var(--color-entity-character)',
@@ -19,18 +20,78 @@
     event: 'var(--color-entity-event)',
     journal: 'var(--color-entity-journal)',
   }
+
+  function executeCommand(index: number) {
+    const item = items[index]
+    if (item && commandFn) {
+      commandFn(item)
+    }
+    visible = false
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (!visible) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      selectedIndex = (selectedIndex + 1) % items.length
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      selectedIndex = (selectedIndex - 1 + items.length) % items.length
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      executeCommand(selectedIndex)
+    }
+  }
+
+  onMount(() => {
+    setMentionMenuRenderer({
+      onStart(props) {
+        items = props.items
+        commandFn = props.command
+        selectedIndex = 0
+        if (props.clientRect) {
+          const rect = props.clientRect()
+          if (rect) {
+            menuX = rect.left
+            menuY = rect.bottom + 4
+          }
+        }
+        visible = true
+      },
+      onUpdate(props) {
+        items = props.items
+        commandFn = props.command
+        selectedIndex = 0
+        if (props.clientRect) {
+          const rect = props.clientRect()
+          if (rect) {
+            menuX = rect.left
+            menuY = rect.bottom + 4
+          }
+        }
+      },
+      onExit() {
+        visible = false
+      },
+    })
+
+    window.addEventListener('keydown', handleKeydown)
+  })
+
+  onDestroy(() => {
+    window.removeEventListener('keydown', handleKeydown)
+  })
 </script>
 
-<div class="mention-dropdown">
-  <div class="mention-header">LINK TO PAGE</div>
-  {#if items.length === 0}
-    <div class="mention-empty">No pages found</div>
-  {:else}
+{#if visible && items.length > 0}
+  <div class="mention-dropdown" style:left="{menuX}px" style:top="{menuY}px" data-testid="mention-menu">
+    <div class="mention-header">LINK TO PAGE</div>
     {#each items as item, index (item.id)}
       <button
         class="mention-item"
         class:selected={index === selectedIndex}
-        onclick={() => onSelect(item)}
+        onmousedown={(e) => e.preventDefault()}
+        onclick={() => executeCommand(index)}
       >
         <span
           class="mention-dot"
@@ -43,11 +104,12 @@
         {/if}
       </button>
     {/each}
-  {/if}
-</div>
+  </div>
+{/if}
 
 <style>
   .mention-dropdown {
+    position: fixed;
     background: var(--color-surface-card);
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-md);
@@ -56,6 +118,7 @@
     min-width: 280px;
     max-height: 300px;
     overflow-y: auto;
+    z-index: 50;
   }
 
   .mention-header {
@@ -65,14 +128,6 @@
     letter-spacing: 2px;
     color: var(--color-fg-tertiary);
     padding: 6px 10px;
-  }
-
-  .mention-empty {
-    font-family: var(--font-ui);
-    font-size: 13px;
-    color: var(--color-fg-tertiary);
-    padding: 10px;
-    text-align: center;
   }
 
   .mention-item {

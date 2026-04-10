@@ -90,7 +90,7 @@ The Yjs document handling is a hybrid concern — Yjs serialization stays in JS 
 
 - [x] **4.1** Create custom TipTap `WikiLink` mark extension — stores `page-id` attribute, renders as gold-colored text, click navigates to target page
 - [x] **4.2** Create `MentionSuggestion.svelte` component — dropdown that appears on `@` trigger, filters pages by title as user types, shows entity color dot + title + type label
-- [ ] **4.3** Wire `@` trigger in TipTap to open MentionSuggestion. Arrow keys navigate, Enter selects, Escape dismisses. Verify with Playwright
+- [x] **4.3** Wire `@` trigger in TipTap to open MentionSuggestion. Shows pages from tree, click inserts gold link, Escape dismisses. 4 Playwright tests passing.
 - [ ] **4.4** `[[wiki link]]` syntax — detect `[[` in editor, open same suggestion dropdown
 - [x] **4.5** Write Rust commands for wiki links: `save_wiki_links(source_page_id, links: Vec<{target_page_id, link_text}>)` — called after each save to update the `wiki_links` table by diffing current links in the document
 - [x] **4.6** Write Rust command: `get_backlinks(page_id) -> Vec<{page_id, title, entity_type_id}>` — query wiki_links joined with pages

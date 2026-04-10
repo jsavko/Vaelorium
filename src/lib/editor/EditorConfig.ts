@@ -10,6 +10,7 @@ import Typography from '@tiptap/extension-typography'
 import CharacterCount from '@tiptap/extension-character-count'
 import Collaboration from '@tiptap/extension-collaboration'
 import { SlashCommands } from './SlashCommands'
+import { MentionExtension } from './MentionExtension'
 import type { Doc as YDoc } from 'yjs'
 
 export function createEditorExtensions(ydoc: YDoc) {
@@ -36,5 +37,6 @@ export function createEditorExtensions(ydoc: YDoc) {
       field: 'content',
     }),
     SlashCommands,
+    MentionExtension,
   ]
 }
