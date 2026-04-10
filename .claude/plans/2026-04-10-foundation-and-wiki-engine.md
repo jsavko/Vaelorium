@@ -83,7 +83,7 @@ The Yjs document handling is a hybrid concern — Yjs serialization stays in JS 
 - [x] **3.3** Build `Editor.svelte` component — renders TipTap editor bound to the current page's Yjs document. Handles loading state, empty state, and auto-save
 - [x] **3.4** Build editor toolbar component: Bold, Italic, Underline | H1, H2, H3 | List, Link, Image, Table — matching the mockup design (surface-card background, border-subtle, radius-md)
 - [x] **3.5** Build page header above editor: entity type badge, page title (editable, Playfair Display 36px), metadata row (last edited, connections count, tags)
-- [ ] **3.6** Implement slash command menu — wire `/` trigger in TipTap to open SlashMenu, verify with Playwright
+- [x] **3.6** Implement slash command menu — `/` trigger opens floating menu, filters as you type, click/keyboard selects command, applies formatting. 5 Playwright tests passing.
 - [x] **3.7** Style the editor content area to match mockups: Newsreader body font, proper heading sizes, gold links, callout boxes, table styling
 
 ### Phase 4: Cross-Linking (@mentions & Wiki Links)

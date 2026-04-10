@@ -1,64 +1,95 @@
 <script lang="ts">
-  import type { Editor } from '@tiptap/core'
+  import { onMount, onDestroy } from 'svelte'
+  import { setSlashMenuRenderer, type SlashCommandItem } from '../editor/SlashCommands'
 
-  interface Props {
-    editor: Editor
-    onClose: () => void
+  let visible = $state(false)
+  let items = $state<SlashCommandItem[]>([])
+  let selectedIndex = $state(0)
+  let commandFn: ((item: SlashCommandItem) => void) | null = null
+  let menuX = $state(0)
+  let menuY = $state(0)
+
+  function executeCommand(index: number) {
+    const item = items[index]
+    if (item && commandFn) {
+      commandFn(item)
+    }
+    visible = false
   }
 
-  let { editor, onClose }: Props = $props()
-  let selectedIndex = $state(0)
-
-  const commands = [
-    { label: 'Heading 1', icon: 'H1', action: () => editor.chain().focus().toggleHeading({ level: 1 }).run() },
-    { label: 'Heading 2', icon: 'H2', action: () => editor.chain().focus().toggleHeading({ level: 2 }).run() },
-    { label: 'Heading 3', icon: 'H3', action: () => editor.chain().focus().toggleHeading({ level: 3 }).run() },
-    { label: 'Bullet List', icon: '•', action: () => editor.chain().focus().toggleBulletList().run() },
-    { label: 'Ordered List', icon: '1.', action: () => editor.chain().focus().toggleOrderedList().run() },
-    { label: 'Blockquote', icon: '"', action: () => editor.chain().focus().toggleBlockquote().run() },
-    { label: 'Code Block', icon: '<>', action: () => editor.chain().focus().toggleCodeBlock().run() },
-    { label: 'Divider', icon: '—', action: () => editor.chain().focus().setHorizontalRule().run() },
-    { label: 'Table', icon: '▦', action: () => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run() },
-  ]
-
   function handleKeydown(e: KeyboardEvent) {
+    if (!visible) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      selectedIndex = (selectedIndex + 1) % commands.length
+      selectedIndex = (selectedIndex + 1) % items.length
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      selectedIndex = (selectedIndex - 1 + commands.length) % commands.length
+      selectedIndex = (selectedIndex - 1 + items.length) % items.length
     } else if (e.key === 'Enter') {
       e.preventDefault()
       executeCommand(selectedIndex)
-    } else if (e.key === 'Escape') {
-      onClose()
     }
   }
 
-  function executeCommand(index: number) {
-    commands[index].action()
-    onClose()
-  }
+  onMount(() => {
+    setSlashMenuRenderer({
+      onStart(props) {
+        items = props.items
+        commandFn = props.command
+        selectedIndex = 0
+        if (props.clientRect) {
+          const rect = props.clientRect()
+          if (rect) {
+            menuX = rect.left
+            menuY = rect.bottom + 4
+          }
+        }
+        visible = true
+      },
+      onUpdate(props) {
+        items = props.items
+        commandFn = props.command
+        selectedIndex = 0
+        if (props.clientRect) {
+          const rect = props.clientRect()
+          if (rect) {
+            menuX = rect.left
+            menuY = rect.bottom + 4
+          }
+        }
+      },
+      onExit() {
+        visible = false
+      },
+    })
+
+    window.addEventListener('keydown', handleKeydown)
+  })
+
+  onDestroy(() => {
+    window.removeEventListener('keydown', handleKeydown)
+  })
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-<div class="slash-menu">
-  {#each commands as cmd, index}
-    <button
-      class="slash-item"
-      class:selected={index === selectedIndex}
-      onclick={() => executeCommand(index)}
-    >
-      <span class="slash-icon">{cmd.icon}</span>
-      <span class="slash-label">{cmd.label}</span>
-    </button>
-  {/each}
-</div>
+{#if visible && items.length > 0}
+  <div class="slash-menu" style:left="{menuX}px" style:top="{menuY}px" data-testid="slash-menu">
+    {#each items as cmd, index}
+      <button
+        class="slash-item"
+        class:selected={index === selectedIndex}
+        onmousedown={(e) => e.preventDefault()}
+        onclick={() => executeCommand(index)}
+      >
+        <span class="slash-icon">{cmd.icon}</span>
+        <span class="slash-label">{cmd.label}</span>
+      </button>
+    {/each}
+  </div>
+{/if}
 
 <style>
   .slash-menu {
+    position: fixed;
     background: var(--color-surface-card);
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-md);
@@ -67,6 +98,7 @@
     min-width: 200px;
     max-height: 300px;
     overflow-y: auto;
+    z-index: 50;
   }
 
   .slash-item {

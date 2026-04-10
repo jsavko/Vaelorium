@@ -3,6 +3,7 @@
   import MainContent from './lib/components/MainContent.svelte'
   import DetailsPanel from './lib/components/DetailsPanel.svelte'
   import SearchOverlay from './lib/components/SearchOverlay.svelte'
+  import SlashMenu from './lib/components/SlashMenu.svelte'
   import ToastContainer from './lib/components/ToastContainer.svelte'
   import { createPage } from './lib/stores/pageStore'
 
@@ -34,4 +35,5 @@
 </div>
 
 <SearchOverlay open={searchOpen} onClose={() => searchOpen = false} />
+<SlashMenu />
 <ToastContainer />
