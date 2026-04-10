@@ -1,5 +1,5 @@
 ---
-status: completed
+status: in-progress
 ---
 # Milestone 0 + 1: Foundation & Wiki Engine
 
@@ -83,15 +83,15 @@ The Yjs document handling is a hybrid concern — Yjs serialization stays in JS 
 - [x] **3.3** Build `Editor.svelte` component — renders TipTap editor bound to the current page's Yjs document. Handles loading state, empty state, and auto-save
 - [x] **3.4** Build editor toolbar component: Bold, Italic, Underline | H1, H2, H3 | List, Link, Image, Table — matching the mockup design (surface-card background, border-subtle, radius-md)
 - [x] **3.5** Build page header above editor: entity type badge, page title (editable, Playfair Display 36px), metadata row (last edited, connections count, tags)
-- [x] **3.6** Implement slash command menu — SlashMenu.svelte component with heading, list, blockquote, code, divider, table commands
+- [ ] **3.6** Implement slash command menu — wire `/` trigger in TipTap to open SlashMenu, verify with Playwright
 - [x] **3.7** Style the editor content area to match mockups: Newsreader body font, proper heading sizes, gold links, callout boxes, table styling
 
 ### Phase 4: Cross-Linking (@mentions & Wiki Links)
 
 - [x] **4.1** Create custom TipTap `WikiLink` mark extension — stores `page-id` attribute, renders as gold-colored text, click navigates to target page
 - [x] **4.2** Create `MentionSuggestion.svelte` component — dropdown that appears on `@` trigger, filters pages by title as user types, shows entity color dot + title + type label
-- [x] **4.3** Wire `@` trigger in TipTap to open MentionSuggestion. Arrow keys navigate, Enter selects, Escape dismisses
-- [x] **4.4** `[[wiki link]]` syntax — deferred to post-MVP; @mention covers the core use case
+- [ ] **4.3** Wire `@` trigger in TipTap to open MentionSuggestion. Arrow keys navigate, Enter selects, Escape dismisses. Verify with Playwright
+- [ ] **4.4** `[[wiki link]]` syntax — detect `[[` in editor, open same suggestion dropdown
 - [x] **4.5** Write Rust commands for wiki links: `save_wiki_links(source_page_id, links: Vec<{target_page_id, link_text}>)` — called after each save to update the `wiki_links` table by diffing current links in the document
 - [x] **4.6** Write Rust command: `get_backlinks(page_id) -> Vec<{page_id, title, entity_type_id}>` — query wiki_links joined with pages
 - [x] **4.7** Build `BacklinksPanel.svelte` — displays in the right details panel, shows entity-colored dots + gold page links
@@ -109,18 +109,18 @@ The Yjs document handling is a hybrid concern — Yjs serialization stays in JS 
 
 - [x] **6.1** Write Rust commands for tags: `create_tag(name, color?) -> Tag`, `list_tags() -> Vec<Tag>`, `add_tag_to_page(page_id, tag_id)`, `remove_tag_from_page(page_id, tag_id)`, `get_page_tags(page_id) -> Vec<Tag>`
 - [x] **6.2** Build `DetailsPanel.svelte` — right-hand collapsible panel (320px) with: page fields section (placeholder for M2), backlinks section, featured image section
-- [x] **6.3** Tag input — backend ready (create/add/remove/list commands). UI polish for autocomplete deferred to post-MVP
-- [x] **6.4** Featured image upload — deferred to post-MVP; needs Tauri file dialog plugin
-- [x] **6.5** File management — deferred to post-MVP; needs Tauri file dialog plugin
+- [ ] **6.3** Build tag input component — autocomplete existing tags, create new on Enter, display as removable pills
+- [ ] **6.4** Build featured image upload — click to select image, display as thumbnail
+- [ ] **6.5** Write file management commands for image storage
 - [x] **6.6** Build toolbar "Details" toggle button to show/hide the right panel (matching mockup: accent-gold-subtle fill, panel-right icon)
 
 ### Phase 7: Reading View & Version History
 
 - [x] **7.1** Build `ReadingView.svelte` — non-editable rendering of page content. Hero image at top (full-width), entity badge, Playfair title (40px), metadata row, Newsreader body content (17px, 1.8 line-height)
-- [x] **7.2** ReadingView.svelte built. Mode toggle wiring deferred to post-MVP
+- [ ] **7.2** Wire edit/read mode toggle — toolbar button switches between Editor and ReadingView
 - [x] **7.3** Write Rust commands for version history: `create_version(page_id, yjs_snapshot, summary?)`, `list_versions(page_id) -> Vec<Version>`, `get_version(version_id) -> Version`
 - [x] **7.4** Implement auto-versioning — 5-minute interval timer in YjsProvider + createSnapshot method
-- [x] **7.5** Build `VersionHistory.svelte` — side panel listing versions with timestamps and summaries
+- [ ] **7.5** Wire VersionHistory panel — accessible from page menu, shows versions, verify with Playwright
 - [x] **7.6** Add top toolbar with breadcrumbs (parent / current page), sync status placeholder (gray dot, "No sync"), share icon, more menu (⋯)
 
 ### Phase 8: Polish & Integration
@@ -130,12 +130,21 @@ The Yjs document handling is a hybrid concern — Yjs serialization stays in JS 
 - [x] **8.3** Build ConfirmDialog.svelte — modal with title, message, cancel/confirm buttons, danger variant
 - [x] **8.4** Build ToastContainer.svelte + toastStore.ts — auto-dismissing toast notifications
 - [x] **8.5** Wire all components together into the main app layout matching the mockup: sidebar (280px fixed) | main editor area (flexible) | details panel (320px, collapsible)
-- [x] **8.6** Verified: Rust (cargo check) and frontend (vite build) compile clean on Linux
-- [x] **8.7** Performance: deferred to runtime testing when app launches with tauri:dev
+- [ ] **8.6** All unit tests passing (Vitest)
+- [ ] **8.7** All E2E tests passing (Playwright)
+
+### Phase 9: Settings Page
+
+- [ ] **9.1** Build Settings layout — sidebar nav (General, Keybinds, Appearance), content area
+- [ ] **9.2** Build Keybinds tab — list all keyboard shortcuts, editable bindings, reset to defaults
+- [ ] **9.3** Build Appearance tab — theme selector (dark library default, future themes), font size
+- [ ] **9.4** Create keybinds store — persisted settings, used by all keyboard shortcut handlers
+- [ ] **9.5** Wire Settings accessible from sidebar gear icon
+- [ ] **9.6** Unit + Playwright tests for Settings
 
 ## Notes
 
-- **All 47 tasks complete.** Previously deferred items now implemented: drag-and-drop (HTML5 API), context menu, slash commands, auto-versioning (5min timer), version history panel, confirmation dialogs, toast notifications. Remaining post-MVP items: `[[wiki link]]` syntax, tag autocomplete UI, featured image upload (needs file dialog plugin), edit/read mode toggle wiring.
+- **36 of 47 tasks verified. 11 unchecked — need wiring + tests.** Previously deferred items now implemented: drag-and-drop (HTML5 API), context menu, slash commands, auto-versioning (5min timer), version history panel, confirmation dialogs, toast notifications. Remaining post-MVP items: `[[wiki link]]` syntax, tag autocomplete UI, featured image upload (needs file dialog plugin), edit/read mode toggle wiring.
 - **Yjs persistence strategy:** For M1, Yjs documents are persisted to SQLite as binary blobs (no network sync yet). The `YjsProvider` is a custom local-only provider. When sync (M8) comes, we'll add a network provider alongside the local one.
 - **Entity type references:** The pages table has an `entity_type_id` column, but the `entity_types` table itself is created in M2. For M1, this column stays NULL for all pages. The UI shows it as optional/hidden.
 - **CSS approach:** Tailwind CSS 4 with CSS custom properties matching the design system tokens. Component-scoped styles where Tailwind doesn't cover it. No CSS-in-JS.

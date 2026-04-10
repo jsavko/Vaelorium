@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "Installing Tauri system dependencies for WSL/Ubuntu..."
+echo "Installing Tauri + Playwright system dependencies for WSL/Ubuntu..."
 sudo apt-get update
 sudo apt-get install -y \
   pkg-config \
@@ -9,4 +9,6 @@ sudo apt-get install -y \
   libjavascriptcoregtk-4.1-dev \
   build-essential \
   libssl-dev
-echo "Done! You can now return to Claude Code."
+echo "Installing Playwright browser dependencies..."
+npx playwright install-deps chromium
+echo "Done!"
