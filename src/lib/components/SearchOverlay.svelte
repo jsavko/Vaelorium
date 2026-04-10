@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
+  import { callCommand } from '../api/bridge'
   import { loadPage, recentPageIds, pageTree } from '../stores/pageStore'
   import type { PageTreeNode } from '../api/pages'
 
@@ -64,7 +64,7 @@
     }
     isSearching = true
     try {
-      results = await invoke('search_pages', { query: query.trim() })
+      results = await callCommand('search_pages', { query: query.trim() })
     } catch {
       results = []
     } finally {

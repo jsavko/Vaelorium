@@ -74,6 +74,9 @@ pub async fn create_page(
 
     let sort_order = max_sort.unwrap_or(0) + 1;
 
+    // Use a transaction to ensure page + content are created atomically
+    let mut tx = pool.inner().begin().await.map_err(|e| e.to_string())?;
+
     sqlx::query(
         "INSERT INTO pages (id, title, icon, parent_id, sort_order, entity_type_id, visibility, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, 'private', ?, ?)",
@@ -86,18 +89,20 @@ pub async fn create_page(
     .bind(&input.entity_type_id)
     .bind(&now)
     .bind(&now)
-    .execute(pool.inner())
+    .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
     // Create empty Yjs document
-    let empty_yjs = vec![0u8; 0];
+    let empty_yjs: Vec<u8> = vec![];
     sqlx::query("INSERT INTO page_content (page_id, yjs_state, yjs_version) VALUES (?, ?, 0)")
         .bind(&id)
         .bind(&empty_yjs)
-        .execute(pool.inner())
+        .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
+
+    tx.commit().await.map_err(|e| e.to_string())?;
 
     get_page(pool, id).await
 }
@@ -245,6 +250,17 @@ pub async fn save_page_content(
     page_id: String,
     yjs_state: Vec<u8>,
 ) -> Result<(), String> {
+    // Check page exists first to avoid FK violation
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pages WHERE id = ?)")
+        .bind(&page_id)
+        .fetch_one(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !exists {
+        return Err(format!("Page '{}' not found", page_id));
+    }
+
     sqlx::query(
         "INSERT INTO page_content (page_id, yjs_state, yjs_version)
          VALUES (?, ?, 0)

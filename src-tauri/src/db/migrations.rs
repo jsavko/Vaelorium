@@ -1,7 +1,6 @@
 use sqlx::SqlitePool;
 
 pub async fn run(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    // Create migrations tracking table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS _migrations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,11 +26,18 @@ pub async fn run(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
         if !applied {
             log::info!("Running migration: {}", name);
 
-            // Execute each statement separately (sqlx doesn't support multi-statement execute)
-            for statement in sql.split(";\n") {
-                let trimmed = statement.trim();
-                if !trimmed.is_empty() && !trimmed.starts_with("--") {
-                    sqlx::query(trimmed).execute(pool).await?;
+            let statements = split_sql_statements(sql);
+            log::info!("Found {} statements to execute", statements.len());
+
+            for (i, statement) in statements.iter().enumerate() {
+                log::info!("Executing statement {}/{}: {}...", i + 1, statements.len(), &statement[..statement.len().min(60)]);
+                match sqlx::query(statement).execute(pool).await {
+                    Ok(_) => log::info!("Statement {}/{} OK", i + 1, statements.len()),
+                    Err(e) => {
+                        log::error!("Statement {}/{} FAILED: {}", i + 1, statements.len(), e);
+                        log::error!("Full statement: {}", statement);
+                        return Err(Box::new(e));
+                    }
                 }
             }
 
@@ -45,4 +51,43 @@ pub async fn run(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn split_sql_statements(sql: &str) -> Vec<String> {
+    let mut statements = Vec::new();
+    let mut current = String::new();
+    let mut paren_depth: i32 = 0;
+
+    for line in sql.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() || trimmed.starts_with("--") {
+            continue;
+        }
+
+        for ch in trimmed.chars() {
+            if ch == '(' { paren_depth += 1; }
+            if ch == ')' { paren_depth -= 1; }
+        }
+
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(trimmed);
+
+        if trimmed.ends_with(';') && paren_depth == 0 {
+            let stmt = current.trim_end_matches(';').trim().to_string();
+            if !stmt.is_empty() {
+                statements.push(stmt);
+            }
+            current.clear();
+        }
+    }
+
+    let remaining = current.trim().trim_end_matches(';').trim().to_string();
+    if !remaining.is_empty() {
+        statements.push(remaining);
+    }
+
+    statements
 }

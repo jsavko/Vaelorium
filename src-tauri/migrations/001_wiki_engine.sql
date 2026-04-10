@@ -83,4 +83,4 @@ CREATE INDEX idx_wiki_links_target ON wiki_links(target_page_id);
 
 CREATE INDEX idx_page_versions_page ON page_versions(page_id, version_number DESC);
 
-CREATE INDEX idx_pages_fts_content_page ON pages_fts_content(page_id)
+CREATE INDEX idx_pages_fts_content_page ON pages_fts_content(page_id);

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
+  import { callCommand } from '../api/bridge'
   import { currentPageId } from '../stores/pageStore'
 
   interface Props {
@@ -28,7 +28,7 @@
 
   async function loadVersions(pageId: string) {
     try {
-      versions = await invoke('list_versions', { pageId })
+      versions = await callCommand('list_versions', { pageId })
     } catch {
       versions = []
     }

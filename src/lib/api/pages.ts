@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { callCommand } from './bridge'
 
 export interface Page {
   id: string
@@ -49,37 +49,37 @@ export interface ReorderMove {
 }
 
 export async function createPage(input: CreatePageInput): Promise<Page> {
-  return invoke('create_page', { input })
+  return callCommand('create_page', { input })
 }
 
 export async function getPage(id: string): Promise<Page> {
-  return invoke('get_page', { id })
+  return callCommand('get_page', { id })
 }
 
 export async function updatePage(id: string, input: UpdatePageInput): Promise<Page> {
-  return invoke('update_page', { id, input })
+  return callCommand('update_page', { id, input })
 }
 
 export async function deletePage(id: string): Promise<void> {
-  return invoke('delete_page', { id })
+  return callCommand('delete_page', { id })
 }
 
 export async function listPages(): Promise<Page[]> {
-  return invoke('list_pages')
+  return callCommand('list_pages')
 }
 
 export async function getPageTree(): Promise<PageTreeNode[]> {
-  return invoke('get_page_tree')
+  return callCommand('get_page_tree')
 }
 
 export async function savePageContent(pageId: string, yjsState: number[]): Promise<void> {
-  return invoke('save_page_content', { pageId, yjsState })
+  return callCommand('save_page_content', { pageId, yjsState })
 }
 
 export async function getPageContent(pageId: string): Promise<number[]> {
-  return invoke('get_page_content', { pageId })
+  return callCommand('get_page_content', { pageId })
 }
 
 export async function reorderPages(moves: ReorderMove[]): Promise<void> {
-  return invoke('reorder_pages', { moves })
+  return callCommand('reorder_pages', { moves })
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from '@tauri-apps/api/core'
+  import { callCommand } from '../api/bridge'
   import { currentPageId, loadPage } from '../stores/pageStore'
 
   interface Backlink {
@@ -32,7 +32,7 @@
 
   async function loadBacklinks(pageId: string) {
     try {
-      backlinks = await invoke('get_backlinks', { pageId })
+      backlinks = await callCommand('get_backlinks', { pageId })
     } catch {
       backlinks = []
     }

@@ -1,5 +1,5 @@
 import * as Y from 'yjs'
-import { invoke } from '@tauri-apps/api/core'
+import { callCommand } from '../api/bridge'
 import { savePageContent, getPageContent } from '../api/pages'
 
 export class LocalYjsProvider {
@@ -55,7 +55,7 @@ export class LocalYjsProvider {
 
   async createSnapshot(summary?: string): Promise<void> {
     const snapshot = Y.encodeStateAsUpdate(this.doc)
-    await invoke('create_version', {
+    await callCommand('create_version', {
       pageId: this.pageId,
       yjsSnapshot: Array.from(snapshot),
       summary: summary || null,
