@@ -1,0 +1,39 @@
+[agents]
+  [agents.claude-code]
+    command = "claude"
+    label = "Claude"
+    planning_args = ["-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"]
+    implementation_args = []
+    default = true
+  [agents.codex]
+    command = "codex"
+    label = "Codex"
+    planning_args = ["--full-auto"]
+    default = false
+
+[preferences]
+  editor = ""
+  tmux_prefix = "planck"
+  spinner_style = "claude"
+  sidebar_width = 28
+  theme_preset = ""
+  exclude_dirs = [".git", ".hg", ".svn", "node_modules", "vendor", ".next", "build", "dist", "__pycache__"]
+
+[notifications]
+  bell = true
+
+[execution]
+  default_scope = "phase"
+  auto_advance = true
+  permission_mode = "pre-approve"
+
+[planning]
+  model = ""
+  default_approaches = 3
+
+[session]
+  backend = "auto"
+
+[markdown_style]
+  theme = "neo-brutalist"
+  [markdown_style.overrides]

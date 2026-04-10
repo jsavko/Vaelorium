@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "mempalace": {
+      "command": "/home/james/.local/share/pipx/venvs/mempalace/bin/python",
+      "args": ["-m", "mempalace.mcp_server"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["chrome-devtools-mcp@latest", "--browserUrl", "http://127.0.0.1:9222"]
+    },
+    "pencil": {
+      "command": "/mnt/c/Users/james/AppData/Local/Programs/Pencil/resources/app.asar.unpacked/out/mcp-server-windows-x64.exe",
+      "args": ["--app", "desktop"],
+      "env": {}
+    }
+  }
+}

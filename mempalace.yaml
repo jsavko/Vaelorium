@@ -1,0 +1,8 @@
+wing: kankaclone
+rooms:
+- name: skills
+  description: Files from skills/
+- name: research
+  description: Files from research/
+- name: general
+  description: Files that don't fit other rooms
