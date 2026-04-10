@@ -109,7 +109,7 @@ test.describe('Wiki Engine', () => {
     await expect(toolbar).toBeVisible()
     // Check toolbar exists with expected button count
     const buttons = toolbar.locator('.toolbar-btn')
-    await expect(buttons).toHaveCount(6) // B, I, H1, H2, H3, List
+    await expect(buttons).toHaveCount(10) // B, I, U, H1, H2, H3, List, Link, Img, Table
   })
 
   test('sidebar shows navigation items', async ({ page }) => {

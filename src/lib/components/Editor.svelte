@@ -142,6 +142,9 @@
       <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleItalic().run()}>
         <em>I</em>
       </button>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleUnderline?.().run()}>
+        <u>U</u>
+      </button>
       <span class="toolbar-sep"></span>
       <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}>
         H1
@@ -155,6 +158,15 @@
       <span class="toolbar-sep"></span>
       <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleBulletList().run()}>
         List
+      </button>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => { const url = prompt('Enter link URL:'); if (url) editor?.chain().focus().setLink({ href: url }).run(); }}>
+        Link
+      </button>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => { const url = prompt('Enter image URL:'); if (url) editor?.chain().focus().setImage({ src: url }).run(); }}>
+        Img
+      </button>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>
+        Table
       </button>
     </div>
 

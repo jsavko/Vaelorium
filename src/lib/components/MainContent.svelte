@@ -1,6 +1,10 @@
 <script lang="ts">
   import Editor from './Editor.svelte'
-  import { currentPage } from '../stores/pageStore'
+  import ReadingView from './ReadingView.svelte'
+  import VersionHistory from './VersionHistory.svelte'
+  import { currentPage, deleteCurrentPage, pageTree, loadPage } from '../stores/pageStore'
+  import { showToast } from '../stores/toastStore'
+  import { get } from 'svelte/store'
 
   interface Props {
     onToggleDetails: () => void
@@ -8,16 +12,57 @@
   }
 
   let { onToggleDetails, detailsOpen }: Props = $props()
+
+  let readingMode = $state(false)
+  let moreMenuOpen = $state(false)
+  let versionHistoryOpen = $state(false)
+
+  // Build breadcrumb chain
+  let breadcrumbs = $derived.by(() => {
+    const page = $currentPage
+    if (!page) return []
+    const tree = $pageTree
+    const chain: { id: string; title: string }[] = []
+    let current = page
+    while (current?.parent_id) {
+      const parent = tree.find((p) => p.id === current!.parent_id)
+      if (parent) {
+        chain.unshift({ id: parent.id, title: parent.title })
+        current = { ...current, parent_id: parent.parent_id } as any
+      } else break
+    }
+    return chain
+  })
+
+  function toggleMoreMenu() {
+    moreMenuOpen = !moreMenuOpen
+  }
+
+  function handleVersionHistory() {
+    moreMenuOpen = false
+    versionHistoryOpen = !versionHistoryOpen
+  }
+
+  async function handleDelete() {
+    moreMenuOpen = false
+    if (confirm(`Delete "${$currentPage?.title}"? This cannot be undone.`)) {
+      const title = $currentPage?.title
+      await deleteCurrentPage()
+      showToast(`"${title}" deleted`, 'info')
+    }
+  }
 </script>
+
+<svelte:window onclick={() => moreMenuOpen = false} />
 
 <main class="main-content">
   <header class="toolbar">
     <div class="toolbar-left">
       {#if $currentPage}
-        {#if $currentPage.parent_id}
-          <span class="breadcrumb-parent">...</span>
+        {#each breadcrumbs as crumb}
+          <button class="breadcrumb-link" onclick={() => loadPage(crumb.id)}>{crumb.title}</button>
           <span class="breadcrumb-sep">/</span>
-        {/if}
+        {/each}
         <span class="breadcrumb-current">{$currentPage.title}</span>
       {:else}
         <span class="breadcrumb-text">Welcome</span>
@@ -25,9 +70,27 @@
     </div>
     <div class="toolbar-right">
       {#if $currentPage}
+        <button
+          class="mode-toggle"
+          class:active={readingMode}
+          onclick={() => readingMode = !readingMode}
+        >
+          {readingMode ? 'Edit' : 'Read'}
+        </button>
         <button class="details-toggle" class:active={detailsOpen} onclick={onToggleDetails}>
           Details
         </button>
+        <div class="more-menu-container">
+          <button class="more-btn" onclick={(e) => { e.stopPropagation(); toggleMoreMenu(); }}>
+            &#x22EF;
+          </button>
+          {#if moreMenuOpen}
+            <div class="more-dropdown" onclick={(e) => e.stopPropagation()}>
+              <button class="more-item" onclick={handleVersionHistory}>Version History</button>
+              <button class="more-item danger" onclick={handleDelete}>Delete Page</button>
+            </div>
+          {/if}
+        </div>
       {/if}
       <span class="sync-indicator">
         <span class="sync-dot"></span>
@@ -37,9 +100,15 @@
   </header>
   <div class="divider"></div>
   <div class="editor-area">
-    <Editor />
+    {#if readingMode && $currentPage}
+      <ReadingView />
+    {:else}
+      <Editor />
+    {/if}
   </div>
 </main>
+
+<VersionHistory open={versionHistoryOpen} onClose={() => versionHistoryOpen = false} />
 
 <style>
   .main-content {
@@ -68,20 +137,28 @@
   .toolbar-right {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
   }
 
   .breadcrumb-text,
-  .breadcrumb-parent {
-    font-family: var(--font-ui);
-    font-size: 13px;
-    color: var(--color-fg-tertiary);
-  }
-
   .breadcrumb-sep {
     font-family: var(--font-ui);
     font-size: 13px;
     color: var(--color-fg-tertiary);
+  }
+
+  .breadcrumb-link {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--color-fg-tertiary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .breadcrumb-link:hover {
+    color: var(--color-accent-gold);
   }
 
   .breadcrumb-current {
@@ -91,6 +168,7 @@
     color: var(--color-fg-primary);
   }
 
+  .mode-toggle,
   .details-toggle {
     font-family: var(--font-ui);
     font-size: 12px;
@@ -103,13 +181,74 @@
     color: var(--color-fg-tertiary);
   }
 
+  .mode-toggle:hover,
   .details-toggle:hover {
     background: var(--color-surface-tertiary);
   }
 
+  .mode-toggle.active,
   .details-toggle.active {
     background: var(--color-accent-gold-subtle);
     color: var(--color-accent-gold);
+  }
+
+  .more-menu-container {
+    position: relative;
+  }
+
+  .more-btn {
+    font-size: 18px;
+    background: none;
+    border: none;
+    color: var(--color-fg-tertiary);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+  }
+
+  .more-btn:hover {
+    background: var(--color-surface-tertiary);
+    color: var(--color-fg-primary);
+  }
+
+  .more-dropdown {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    margin-top: 4px;
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    padding: 4px;
+    min-width: 160px;
+    z-index: 50;
+  }
+
+  .more-item {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--color-fg-primary);
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+  }
+
+  .more-item:hover {
+    background: var(--color-surface-tertiary);
+  }
+
+  .more-item.danger {
+    color: var(--color-status-error);
+  }
+
+  .more-item.danger:hover {
+    background: rgba(184, 92, 92, 0.15);
   }
 
   .sync-indicator {
