@@ -2,6 +2,11 @@ import * as Y from 'yjs'
 import { callCommand } from '../api/bridge'
 import { savePageContent, getPageContent } from '../api/pages'
 
+export interface SaveCallbacks {
+  getHTML?: () => string
+  getPlainText?: () => string
+}
+
 export class LocalYjsProvider {
   doc: Y.Doc
   pageId: string
@@ -9,10 +14,15 @@ export class LocalYjsProvider {
   private versionInterval: ReturnType<typeof setInterval> | null = null
   private saving = false
   private lastVersionTime = 0
+  private callbacks: SaveCallbacks = {}
 
   constructor(pageId: string) {
     this.pageId = pageId
     this.doc = new Y.Doc()
+  }
+
+  setCallbacks(callbacks: SaveCallbacks) {
+    this.callbacks = callbacks
   }
 
   async load(): Promise<void> {
@@ -26,7 +36,6 @@ export class LocalYjsProvider {
       this.scheduleSave()
     })
 
-    // Auto-versioning: snapshot every 5 minutes of active editing
     this.lastVersionTime = Date.now()
     this.versionInterval = setInterval(() => {
       this.maybeCreateVersion()
@@ -48,9 +57,42 @@ export class LocalYjsProvider {
     try {
       const state = Y.encodeStateAsUpdate(this.doc)
       await savePageContent(this.pageId, Array.from(state))
+
+      // Extract and save wiki links
+      if (this.callbacks.getHTML) {
+        const html = this.callbacks.getHTML()
+        const links = this.extractWikiLinks(html)
+        await callCommand('save_wiki_links', {
+          sourcePageId: this.pageId,
+          links,
+        })
+      }
+
+      // Update search index
+      if (this.callbacks.getPlainText) {
+        const text = this.callbacks.getPlainText()
+        await callCommand('update_search_index', {
+          pageId: this.pageId,
+          title: '', // Will be filled by the caller or from page data
+          textContent: text,
+        })
+      }
     } finally {
       this.saving = false
     }
+  }
+
+  private extractWikiLinks(html: string): Array<{ target_page_id: string; link_text: string | null }> {
+    const links: Array<{ target_page_id: string; link_text: string | null }> = []
+    const regex = /href="#page:([^"]+)"[^>]*>([^<]*)</g
+    let match
+    while ((match = regex.exec(html)) !== null) {
+      links.push({
+        target_page_id: match[1],
+        link_text: match[2] || null,
+      })
+    }
+    return links
   }
 
   async createSnapshot(summary?: string): Promise<void> {

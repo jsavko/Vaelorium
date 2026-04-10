@@ -137,15 +137,17 @@ async function mockCommand(command: string, args?: any): Promise<any> {
     }
 
     case 'save_wiki_links': {
-      mockDb.wikiLinks.set(args.source_page_id, args.links)
+      const srcId = args.sourcePageId || args.source_page_id
+      mockDb.wikiLinks.set(srcId, args.links)
       return null
     }
 
     case 'get_backlinks': {
+      const targetId = args.pageId || args.page_id
       const backlinks: any[] = []
       for (const [sourceId, links] of mockDb.wikiLinks) {
         for (const link of links) {
-          if (link.target_page_id === args.pageId) {
+          if (link.target_page_id === targetId) {
             const page = mockDb.pages.get(sourceId)
             if (page) {
               backlinks.push({ page_id: sourceId, title: page.title, entity_type_id: page.entity_type_id })

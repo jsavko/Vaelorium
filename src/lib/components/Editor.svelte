@@ -22,14 +22,15 @@
   })
 
   async function loadEditor(page: Page) {
-    // Destroy previous editor
+    // Save and destroy previous editor
+    if (provider) {
+      await provider.save() // Save with callbacks still intact
+      await provider.destroy()
+      provider = null
+    }
     if (editor) {
       editor.destroy()
       editor = null
-    }
-    if (provider) {
-      await provider.destroy()
-      provider = null
     }
 
     currentLoadedPageId = page.id
@@ -47,6 +48,12 @@
           class: 'editor-content',
         },
       },
+    })
+
+    // Wire save callbacks for link extraction + search indexing
+    provider.setCallbacks({
+      getHTML: () => editor?.getHTML() || '',
+      getPlainText: () => editor?.getText() || '',
     })
   }
 
