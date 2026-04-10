@@ -1,6 +1,7 @@
 import { writable, derived, get } from 'svelte/store'
 import type { Page, PageTreeNode } from '../api/pages'
 import * as pagesApi from '../api/pages'
+import { updatePageTitleInLinks } from '../api/wikiLinks'
 
 // Core state
 export const pages = writable<Page[]>([])
@@ -56,9 +57,20 @@ export async function createPage(title: string, parentId?: string | null) {
 export async function updateCurrentPage(input: pagesApi.UpdatePageInput) {
   const id = get(currentPageId)
   if (!id) return
+  // Capture old title as a string BEFORE the update mutates the object
+  const oldTitle = get(currentPage)?.title
   const updated = await pagesApi.updatePage(id, input)
   currentPage.set(updated)
   await loadPageTree()
+
+  // If title changed, update mentions across all linking pages
+  if (input.title && oldTitle && input.title !== oldTitle) {
+    try {
+      await updatePageTitleInLinks(id, oldTitle, input.title)
+    } catch (err) {
+      console.warn('Failed to update mentions after rename:', err)
+    }
+  }
 }
 
 export async function deleteCurrentPage() {

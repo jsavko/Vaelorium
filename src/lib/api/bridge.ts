@@ -170,6 +170,32 @@ async function mockCommand(command: string, args?: any): Promise<any> {
     case 'update_search_index':
       return null
 
+    case 'update_page_title_in_links': {
+      const { pageId, oldTitle, newTitle } = args
+      // Find all pages that link to this page and update their content
+      for (const [sourceId, links] of mockDb.wikiLinks) {
+        let hasLink = false
+        for (const link of links) {
+          if (link.target_page_id === pageId) {
+            // Update link_text in the wiki_links entry
+            link.link_text = newTitle
+            hasLink = true
+          }
+        }
+        if (hasLink) {
+          // Update the stored Yjs content for this source page
+          // In the mock, content is stored as Yjs binary — we can't easily modify it
+          // But we can mark it as needing update. For the mock, we'll store
+          // a mapping of pending title updates that the editor checks on load.
+          if (!mockDb.pendingTitleUpdates) (mockDb as any).pendingTitleUpdates = new Map()
+          const updates = (mockDb as any).pendingTitleUpdates.get(sourceId) || []
+          updates.push({ pageId, oldTitle, newTitle })
+          ;(mockDb as any).pendingTitleUpdates.set(sourceId, updates)
+        }
+      }
+      return null
+    }
+
     case 'create_tag': {
       const tag = { id: uuid(), name: args.name, color: args.color || null }
       mockDb.tags.set(tag.id, tag)
