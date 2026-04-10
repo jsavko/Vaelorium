@@ -24,7 +24,6 @@ export function createEditorExtensions(ydoc: YDoc) {
     Image.configure({ inline: false }),
     Link.configure({
       openOnClick: false,
-      HTMLAttributes: { class: 'wiki-link' },
     }),
     Placeholder.configure({
       placeholder: 'Start writing...',
@@ -33,6 +32,7 @@ export function createEditorExtensions(ydoc: YDoc) {
     CharacterCount,
     Collaboration.configure({
       document: ydoc,
+      field: 'content',
     }),
   ]
 }
