@@ -27,6 +27,10 @@
   let panStart = { x: 0, y: 0 }
   let hoveredNode = $state<any>(null)
   let filterTypeId = $state<string>('')
+  let connecting = $state<{ source: any; mouseX: number; mouseY: number } | null>(null)
+  let connectPickerOpen = $state(false)
+  let connectTarget = $state<any>(null)
+  let connectSource = $state<any>(null)
 
   onMount(async () => {
     await loadGraphData()
@@ -150,6 +154,18 @@
       ctx.fillText(node.title, node.x, node.y + radius + 4, 120)
     }
 
+    // Draw connecting line if dragging to create relation
+    if (connecting) {
+      ctx.beginPath()
+      ctx.moveTo(connecting.source.x, connecting.source.y)
+      ctx.lineTo(connecting.mouseX, connecting.mouseY)
+      ctx.strokeStyle = '#C8A55C'
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 4])
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+
     ctx.restore()
   }
 
@@ -166,7 +182,10 @@
 
   function handleMouseDown(e: MouseEvent) {
     const node = getNodeAt(e.offsetX, e.offsetY)
-    if (node) {
+    if (node && e.shiftKey) {
+      // Shift+drag from a node = start connecting
+      connecting = { source: node, mouseX: (e.offsetX - transform.x) / transform.scale, mouseY: (e.offsetY - transform.y) / transform.scale }
+    } else if (node) {
       dragging = node
       node.fx = node.x
       node.fy = node.y
@@ -178,6 +197,11 @@
   }
 
   function handleMouseMove(e: MouseEvent) {
+    if (connecting) {
+      connecting = { ...connecting, mouseX: (e.offsetX - transform.x) / transform.scale, mouseY: (e.offsetY - transform.y) / transform.scale }
+      draw()
+      return
+    }
     if (dragging) {
       dragging.fx = (e.offsetX - transform.x) / transform.scale
       dragging.fy = (e.offsetY - transform.y) / transform.scale
@@ -194,7 +218,18 @@
     }
   }
 
-  function handleMouseUp() {
+  function handleMouseUp(e: MouseEvent) {
+    if (connecting) {
+      const target = getNodeAt(e.offsetX, e.offsetY)
+      if (target && target.id !== connecting.source.id) {
+        connectSource = connecting.source
+        connectTarget = target
+        connectPickerOpen = true
+      }
+      connecting = null
+      draw()
+      return
+    }
     if (dragging) {
       dragging.fx = null
       dragging.fy = null
@@ -202,6 +237,29 @@
       dragging = null
     }
     panning = false
+  }
+
+  let connectRelTypeId = $state('')
+
+  async function confirmConnection() {
+    if (!connectSource || !connectTarget) return
+    const sourceId = connectSource.id
+    const targetId = connectTarget.id
+    if (!sourceId || !targetId || !connectRelTypeId) return
+
+    const { createRelation } = await import('../api/relations')
+    await createRelation(sourceId, targetId, connectRelTypeId)
+
+    connectPickerOpen = false
+    connectTarget = null
+    connectRelTypeId = ''
+    await loadGraphData()
+  }
+
+  function cancelConnection() {
+    connectPickerOpen = false
+    connectTarget = null
+    connectRelTypeId = ''
   }
 
   function handleDblClick(e: MouseEvent) {
@@ -269,6 +327,7 @@
           <option value={type.id}>{type.name}</option>
         {/each}
       </select>
+      <span class="hint">Shift+drag to connect</span>
       <button class="tool-btn" onclick={fitAll} title="Fit all">Fit</button>
     </div>
   </header>
@@ -283,6 +342,27 @@
       ondblclick={handleDblClick}
       onwheel={handleWheel}
     ></canvas>
+
+    {#if connectPickerOpen}
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+      <div class="connect-overlay" onclick={cancelConnection}>
+        <div class="connect-picker" onclick={(e) => e.stopPropagation()}>
+          <h3 class="connect-title">
+            Connect: {connectSource?.title} → {connectTarget?.title}
+          </h3>
+          <select class="connect-select" bind:value={connectRelTypeId}>
+            <option value="">Select relation type...</option>
+            {#each relTypes as rt (rt.id)}
+              <option value={rt.id}>{rt.name}</option>
+            {/each}
+          </select>
+          <div class="connect-actions">
+            <button class="connect-cancel" onclick={cancelConnection}>Cancel</button>
+            <button class="connect-confirm" disabled={!connectRelTypeId} onclick={confirmConnection}>Connect</button>
+          </div>
+        </div>
+      </div>
+    {/if}
 
     {#if nodes.length === 0}
       <div class="empty-overlay">
@@ -401,6 +481,87 @@
     color: var(--color-fg-tertiary);
     font-family: var(--font-ui);
     gap: 4px;
+  }
+
+  .hint {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--color-fg-tertiary);
+    opacity: 0.6;
+  }
+
+  .connect-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  .connect-picker {
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .connect-title {
+    font-family: var(--font-heading);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-fg-primary);
+    margin: 0;
+  }
+
+  .connect-select {
+    padding: 6px 10px;
+    background: var(--color-surface-primary);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--color-fg-primary);
+  }
+
+  .connect-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .connect-cancel {
+    padding: 6px 14px;
+    background: var(--color-surface-tertiary);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--color-fg-secondary);
+    cursor: pointer;
+  }
+
+  .connect-confirm {
+    padding: 6px 14px;
+    background: var(--color-accent-gold);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-fg-inverse);
+    cursor: pointer;
+  }
+
+  .connect-confirm:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .empty-hint {
