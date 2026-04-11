@@ -15,7 +15,7 @@
   import { createPage, currentPageId } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
   import { loadEntityTypes } from './lib/stores/entityTypeStore'
-  import { isTomeOpen, currentTome, currentTomeMetadata, loadRecentTomes } from './lib/stores/tomeStore'
+  import { isTomeOpen, currentTome, currentTomeMetadata, loadRecentTomes, closeTome } from './lib/stores/tomeStore'
   import { getTomeMetadata } from './lib/api/tomes'
   import { isTauri } from './lib/api/bridge'
   import { matchesKeybind } from './lib/utils/keybinds'
@@ -97,7 +97,7 @@
       onNewPage={() => newPageModalOpen = true}
       onSelectType={(typeId) => { activeTypeListId = typeId; detailsOpen = false }}
       activeTypeId={activeTypeListId}
-      onCloseTome={() => { isTomeOpen.set(false); loadRecentTomes() }}
+      onCloseTome={async () => { await closeTome(); await loadRecentTomes() }}
     />
     {#if activeTypeListId}
       <EntityListView

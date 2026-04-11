@@ -19,7 +19,7 @@ test.describe('Keybinds Actually Work', () => {
     await createPageViaModal(page, 'Untitled Page')
 
     // Open settings
-    await page.locator('.settings-btn').click()
+    await page.locator('button[aria-label="Settings"]').click()
     await expect(page.locator('[data-testid="settings"]')).toBeVisible()
 
     // Click on the Search keybind value to edit it
@@ -45,7 +45,7 @@ test.describe('Keybinds Actually Work', () => {
     await createPageViaModal(page, 'Untitled Page')
 
     // Open settings and change search keybind
-    await page.locator('.settings-btn').click()
+    await page.locator('button[aria-label="Settings"]').click()
     const searchRow = page.locator('.keybind-row').filter({ hasText: 'Search' })
     await searchRow.locator('.keybind-value').click()
     await page.keyboard.press('Control+j')
