@@ -39,6 +39,8 @@ const mockDb = {
   images: new Map<string, any>(),
   relationTypes: new Map<string, any>(),
   relations: new Map<string, any>(),
+  maps: new Map<string, any>(),
+  mapPins: new Map<string, any>(),
   tomeOpen: true,
   tomeMeta: { name: 'Dev Tome', description: 'Browser development tome', created_at: '2026-01-01T00:00:00Z' } as any,
   recentTomes: [
@@ -538,6 +540,59 @@ async function mockCommand(command: string, args?: any): Promise<any> {
           entity_type_id: p.entity_type_id,
         }))
         .sort((a: any, b: any) => a.title.localeCompare(b.title))
+    }
+
+    // ── Maps ──
+
+    case 'create_map': {
+      const id = uuid()
+      const map = { id, title: args.title, image_id: args.imageId || null, parent_map_id: null, sort_order: 0, created_at: now(), updated_at: now() }
+      mockDb.maps.set(id, map)
+      return map
+    }
+
+    case 'list_maps': {
+      return Array.from(mockDb.maps.values()).sort((a: any, b: any) => a.title.localeCompare(b.title))
+    }
+
+    case 'get_map': {
+      const map = mockDb.maps.get(args.id)
+      if (!map) throw new Error('Map not found')
+      return map
+    }
+
+    case 'delete_map': {
+      mockDb.maps.delete(args.id)
+      for (const [pId, pin] of mockDb.mapPins) {
+        if (pin.map_id === args.id) mockDb.mapPins.delete(pId)
+      }
+      return null
+    }
+
+    case 'create_pin': {
+      const id = uuid()
+      const pin = { id, map_id: args.mapId, page_id: args.pageId || null, label: args.label || null, x: args.x, y: args.y, icon: args.icon || 'map-pin', color: args.color || null, created_at: now() }
+      mockDb.mapPins.set(id, pin)
+      return pin
+    }
+
+    case 'update_pin': {
+      const pin = mockDb.mapPins.get(args.id)
+      if (!pin) throw new Error('Pin not found')
+      if (args.x !== undefined) pin.x = args.x
+      if (args.y !== undefined) pin.y = args.y
+      if (args.pageId !== undefined) pin.page_id = args.pageId
+      if (args.label !== undefined) pin.label = args.label
+      return pin
+    }
+
+    case 'delete_pin': {
+      mockDb.mapPins.delete(args.id)
+      return null
+    }
+
+    case 'get_map_pins': {
+      return Array.from(mockDb.mapPins.values()).filter((p: any) => p.map_id === args.mapId)
     }
 
     // ── Relations ──

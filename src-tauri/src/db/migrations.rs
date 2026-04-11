@@ -17,6 +17,7 @@ pub async fn run(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
         ("003_tome_metadata", include_str!("../../migrations/003_tome_metadata.sql")),
         ("004_images", include_str!("../../migrations/004_images.sql")),
         ("005_relations", include_str!("../../migrations/005_relations.sql")),
+        ("006_maps", include_str!("../../migrations/006_maps.sql")),
     ];
 
     for (name, sql) in migrations {

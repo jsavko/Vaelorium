@@ -3,6 +3,8 @@
   import MainContent from './lib/components/MainContent.svelte'
   import EntityListView from './lib/components/EntityListView.svelte'
   import GraphView from './lib/components/GraphView.svelte'
+  import MapList from './lib/components/MapList.svelte'
+  import MapViewer from './lib/components/MapViewer.svelte'
   import DetailsPanel from './lib/components/DetailsPanel.svelte'
   import SearchOverlay from './lib/components/SearchOverlay.svelte'
   import SlashMenu from './lib/components/SlashMenu.svelte'
@@ -57,12 +59,16 @@
   let createTomeModalOpen = $state(false)
   let activeTypeListId = $state<string | null>(null)
   let graphViewOpen = $state(false)
+  let atlasOpen = $state(false)
+  let activeMapId = $state<string | null>(null)
 
   // Clear entity list view when a page is selected
   $effect(() => {
     if ($currentPageId) {
       activeTypeListId = null
       graphViewOpen = false
+      atlasOpen = false
+      activeMapId = null
     }
   })
 
@@ -102,11 +108,20 @@
       onNewPage={() => { newPageInitialTypeId = null; newPageModalOpen = true }}
       onSelectType={(typeId) => { activeTypeListId = typeId; graphViewOpen = false; detailsOpen = false }}
       activeTypeId={activeTypeListId}
-      onOpenGraph={() => { graphViewOpen = true; activeTypeListId = null; detailsOpen = false }}
+      onOpenGraph={() => { graphViewOpen = true; activeTypeListId = null; atlasOpen = false; activeMapId = null; detailsOpen = false }}
+      onOpenAtlas={() => { atlasOpen = true; activeMapId = null; graphViewOpen = false; activeTypeListId = null; detailsOpen = false }}
       graphActive={graphViewOpen}
+      atlasActive={atlasOpen || !!activeMapId}
       onCloseTome={async () => { await closeTome(); await loadRecentTomes() }}
     />
-    {#if graphViewOpen}
+    {#if activeMapId}
+      <MapViewer mapId={activeMapId} onClose={() => { activeMapId = null; atlasOpen = true }} />
+    {:else if atlasOpen}
+      <MapList
+        onOpenMap={(id) => { activeMapId = id; atlasOpen = false }}
+        onClose={() => atlasOpen = false}
+      />
+    {:else if graphViewOpen}
       <GraphView onClose={() => graphViewOpen = false} />
     {:else if activeTypeListId}
       <EntityListView

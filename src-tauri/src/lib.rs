@@ -156,6 +156,15 @@ pub fn run() {
             commands::images::get_image,
             commands::images::delete_image,
             commands::images::list_images,
+            // Maps
+            commands::maps::create_map,
+            commands::maps::list_maps,
+            commands::maps::get_map,
+            commands::maps::delete_map,
+            commands::maps::create_pin,
+            commands::maps::update_pin,
+            commands::maps::delete_pin,
+            commands::maps::get_map_pins,
             // Relations
             commands::relations::list_relation_types,
             commands::relations::create_relation_type,
