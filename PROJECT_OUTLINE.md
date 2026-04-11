@@ -290,6 +290,29 @@ Each milestone follows the same process:
 
 ---
 
+### Milestone 2.5: Tomes (Multi-Project Support)
+> **Goal:** Each campaign/world is a self-contained "Tome" — a separate database file that users can create, open, and switch between
+
+A Tome is a `.vaelorium` file containing all pages, maps, timelines, boards, relations, and settings for one world/campaign. The app opens one tome at a time. Users can create new tomes, open existing ones, and see recent tomes on a home screen.
+
+**Design phase deliverables:**
+- [ ] Mockups: Tome Picker home screen (create new, open existing, recent tomes list)
+- [ ] Mockups: Tome metadata (name, description, cover image, last opened date)
+- [ ] Design spec: Tome file format (SQLite database with `.vaelorium` extension)
+- [ ] Design spec: How the Rust backend swaps database connections when switching tomes
+
+**Build phase deliverables:**
+- [ ] Tome Picker home screen — shown on app launch when no tome is loaded
+- [ ] Create New Tome — name, optional description, creates new `.vaelorium` database file
+- [ ] Open Tome — file picker to select an existing `.vaelorium` file
+- [ ] Recent Tomes list — persisted across sessions (stored outside any individual tome)
+- [ ] Rust backend: swap SQLite connection pool when opening a different tome
+- [ ] All migrations run automatically when a tome is opened (forward-compatible)
+- [ ] Current tome name displayed in sidebar header (replaces static "Vaelorium" when a tome is open)
+- [ ] Close Tome — returns to Tome Picker home screen
+
+---
+
 ### Milestone 3: Relations & Connections
 > **Goal:** Typed relationships between entities with visual exploration
 
