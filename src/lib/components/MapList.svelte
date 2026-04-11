@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Map as MapIcon, Plus } from 'lucide-svelte'
+  import InputModal from './InputModal.svelte'
   import { maps, loadMaps, createMap } from '../stores/mapStore'
   import { pickAndUploadImage } from '../api/images'
   import { onMount } from 'svelte'
@@ -10,13 +11,12 @@
   }
 
   let { onOpenMap, onClose }: Props = $props()
+  let nameModalOpen = $state(false)
 
   onMount(() => { loadMaps() })
 
-  async function handleCreateMap() {
-    const name = prompt('Map name:')
-    if (!name) return
-
+  async function handleCreateMap(name: string) {
+    nameModalOpen = false
     const imageInfo = await pickAndUploadImage()
     const map = await createMap(name, imageInfo?.id)
     onOpenMap(map.id)
@@ -35,14 +35,14 @@
       <h2 class="header-title">Atlas</h2>
       <span class="header-count">{$maps.length}</span>
     </div>
-    <button class="new-btn" onclick={handleCreateMap}>+ New Map</button>
+    <button class="new-btn" onclick={() => nameModalOpen = true}>+ New Map</button>
   </header>
 
   {#if $maps.length === 0}
     <div class="empty-state">
       <MapIcon size={48} />
       <p class="empty-text">No maps yet</p>
-      <button class="empty-create" onclick={handleCreateMap}>Upload your first map</button>
+      <button class="empty-create" onclick={() => nameModalOpen = true}>Upload your first map</button>
     </div>
   {:else}
     <div class="map-grid">
@@ -57,7 +57,7 @@
         </button>
       {/each}
 
-      <button class="map-card new-card" onclick={handleCreateMap}>
+      <button class="map-card new-card" onclick={() => nameModalOpen = true}>
         <div class="new-content">
           <Plus size={24} />
           <span>New Map</span>
@@ -66,6 +66,15 @@
     </div>
   {/if}
 </div>
+
+<InputModal
+  open={nameModalOpen}
+  title="New Map"
+  placeholder="Map name..."
+  confirmLabel="Create"
+  onConfirm={handleCreateMap}
+  onCancel={() => nameModalOpen = false}
+/>
 
 <style>
   .map-list-view { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }

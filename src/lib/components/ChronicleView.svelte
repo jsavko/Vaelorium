@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Clock, Plus, Calendar, Trash2 } from 'lucide-svelte'
+  import InputModal from './InputModal.svelte'
   import { timelines, currentTimeline, currentEvents, loadTimelines, loadTimeline, createTimeline, addEvent, removeEvent } from '../stores/timelineStore'
   import { loadPage, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
@@ -12,6 +13,7 @@
   let { onClose }: Props = $props()
 
   let addingEvent = $state(false)
+  let timelineNameModalOpen = $state(false)
   let newTitle = $state('')
   let newDate = $state('')
   let newDesc = $state('')
@@ -25,9 +27,8 @@
     }
   })
 
-  async function handleCreateTimeline() {
-    const name = prompt('Timeline name:')
-    if (!name) return
+  async function handleCreateTimeline(name: string) {
+    timelineNameModalOpen = false
     const tl = await createTimeline(name)
     await loadTimeline(tl.id)
   }
@@ -109,7 +110,7 @@
       {/if}
     </div>
     <div class="header-right">
-      <button class="tool-btn" onclick={handleCreateTimeline}>+ New Timeline</button>
+      <button class="tool-btn" onclick={() => timelineNameModalOpen = true}>+ New Timeline</button>
       {#if $currentTimeline}
         <button class="tool-btn accent" onclick={() => addingEvent = !addingEvent}>
           {addingEvent ? 'Cancel' : '+ Add Event'}
@@ -123,7 +124,7 @@
       <div class="empty-state">
         <Calendar size={48} />
         <p>No timelines yet</p>
-        <button class="empty-create" onclick={handleCreateTimeline}>Create your first timeline</button>
+        <button class="empty-create" onclick={() => timelineNameModalOpen = true}>Create your first timeline</button>
       </div>
     {:else if $currentEvents.length === 0 && !addingEvent}
       <div class="empty-state">
@@ -189,6 +190,15 @@
     {/if}
   </div>
 </div>
+
+<InputModal
+  open={timelineNameModalOpen}
+  title="New Timeline"
+  placeholder="Timeline name..."
+  confirmLabel="Create"
+  onConfirm={handleCreateTimeline}
+  onCancel={() => timelineNameModalOpen = false}
+/>
 
 <style>
   .chronicle-view { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }

@@ -6,6 +6,7 @@
   import { currentPage, updateCurrentPage, loadPage, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
   import IconPicker from './IconPicker.svelte'
+  import InputModal from './InputModal.svelte'
   import { get } from 'svelte/store'
   import { pickAndUploadImage, getImageUrl } from '../api/images'
   import type { Page } from '../api/pages'
@@ -16,6 +17,7 @@
   let titleInput: HTMLInputElement
   let currentLoadedPageId: string | null = null
   let embedPickerOpen = $state(false)
+  let linkModalOpen = $state(false)
   let embedPickerEditor: Editor | null = null
   let imageToolbar = $state<{ x: number; y: number; alignment: string } | null>(null)
 
@@ -276,7 +278,7 @@
       <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().toggleBulletList().run()}>
         List
       </button>
-      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => { const url = prompt('Enter link URL:'); if (url) editor?.chain().focus().setLink({ href: url }).run(); }}>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => linkModalOpen = true}>
         Link
       </button>
       <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={async () => {
@@ -385,6 +387,15 @@
     </div>
   </div>
 {/if}
+
+<InputModal
+  open={linkModalOpen}
+  title="Insert Link"
+  placeholder="https://..."
+  confirmLabel="Insert"
+  onConfirm={(url) => { linkModalOpen = false; editor?.chain().focus().setLink({ href: url }).run() }}
+  onCancel={() => linkModalOpen = false}
+/>
 
 <style>
   .editor-wrapper {
