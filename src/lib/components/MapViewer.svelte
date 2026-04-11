@@ -24,6 +24,10 @@
 
   let imgWidth = $state(800)
   let imgHeight = $state(600)
+  let editingPin = $state<MapPin | null>(null)
+  let editLabel = $state('')
+  let editPageId = $state('')
+  let editSearchQuery = $state('')
 
   onMount(async () => {
     await loadMap(mapId)
@@ -36,6 +40,20 @@
     const img = e.target as HTMLImageElement
     imgWidth = img.naturalWidth
     imgHeight = img.naturalHeight
+    fitToView()
+  }
+
+  function fitToView() {
+    if (!container || !imgWidth || !imgHeight) return
+    const rect = container.getBoundingClientRect()
+    const scaleX = rect.width / imgWidth
+    const scaleY = rect.height / imgHeight
+    const scale = Math.min(scaleX, scaleY) * 0.95
+    transform = {
+      scale,
+      x: (rect.width - imgWidth * scale) / 2,
+      y: (rect.height - imgHeight * scale) / 2,
+    }
   }
 
   function handleMouseDown(e: MouseEvent) {
@@ -67,14 +85,20 @@
     }
   }
 
-  function handleMapClick(e: MouseEvent) {
-    if (!addingPin) return
+  function clientToNormalized(clientX: number, clientY: number): { nx: number; ny: number } {
     const rect = container.getBoundingClientRect()
-    const mx = e.clientX - rect.left
-    const my = e.clientY - rect.top
-    // Convert to normalized coords
-    const nx = (mx - transform.x) / (imgWidth * transform.scale)
-    const ny = (my - transform.y) / (imgHeight * transform.scale)
+    const mx = clientX - rect.left
+    const my = clientY - rect.top
+    return {
+      nx: (mx - transform.x) / (imgWidth * transform.scale),
+      ny: (my - transform.y) / (imgHeight * transform.scale),
+    }
+  }
+
+  function handleMapClick(e: MouseEvent) {
+    if (editingPin) { editingPin = null; return }
+    if (!addingPin) return
+    const { nx, ny } = clientToNormalized(e.clientX, e.clientY)
     if (nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1) {
       pinForm = { x: nx, y: ny, label: '', pageId: '' }
       addingPin = false
@@ -91,9 +115,50 @@
     pinForm = null
   }
 
+  function startEditPin(pin: any, e: MouseEvent) {
+    e.stopPropagation()
+    editingPin = pin
+    editLabel = pin.label || ''
+    editPageId = pin.page_id || ''
+    editSearchQuery = ''
+    if (pin.page_id) {
+      const page = $pageTree.find((p: any) => p.id === pin.page_id)
+      editSearchQuery = page?.title || ''
+    }
+  }
+
+  async function saveEditPin() {
+    if (!editingPin) return
+    const { updatePin } = await import('../api/maps')
+    await updatePin(editingPin.id, {
+      label: editLabel || undefined,
+      pageId: editPageId || undefined,
+    })
+    // Reload pins
+    if ($currentMap) await loadMap($currentMap.id)
+    editingPin = null
+  }
+
+  async function deleteEditPin() {
+    if (!editingPin) return
+    await removePin(editingPin.id)
+    editingPin = null
+  }
+
+  function selectEditPage(pageId: string, title: string) {
+    editPageId = pageId
+    editSearchQuery = title
+  }
+
   let filteredPages = $derived(
     searchQuery.length > 0
       ? $pageTree.filter((p) => p.title.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 6)
+      : [],
+  )
+
+  let editFilteredPages = $derived(
+    editSearchQuery.length > 0
+      ? $pageTree.filter((p) => p.title.toLowerCase().includes(editSearchQuery.toLowerCase())).slice(0, 6)
       : [],
   )
 
@@ -168,8 +233,9 @@
           style:left="{px}px"
           style:top="{py}px"
           style:--pin-color={getPinColor(pin)}
-          onclick={(e) => { e.stopPropagation(); if (pin.page_id) loadPage(pin.page_id); onClose() }}
-          title={pin.label || 'Pin'}
+          onclick={(e) => startEditPin(pin, e)}
+          ondblclick={(e) => { e.stopPropagation(); if (pin.page_id) { loadPage(pin.page_id); onClose() } }}
+          title={pin.label || 'Click to edit, double-click to open page'}
         >
           <MapPinIcon size={20} />
           {#if pin.label}
@@ -201,6 +267,34 @@
         <div class="pin-form-actions">
           <button class="pin-cancel" onclick={cancelPinForm}>Cancel</button>
           <button class="pin-save" onclick={savePinForm}>Add Pin</button>
+        </div>
+      </div>
+    {/if}
+
+    {#if editingPin}
+      {@const ex = transform.x + editingPin.x * imgWidth * transform.scale}
+      {@const ey = transform.y + editingPin.y * imgHeight * transform.scale}
+      <div class="pin-form" style:left="{ex + 16}px" style:top="{ey}px">
+        <div class="pin-form-header">
+          <span class="pin-form-title">Edit Pin</span>
+          <button class="pin-delete" onclick={deleteEditPin} title="Delete pin">×</button>
+        </div>
+        <input class="pin-input" bind:value={editLabel} placeholder="Pin label..." />
+        <div class="pin-search-wrapper">
+          <input class="pin-input" bind:value={editSearchQuery} placeholder="Link to page..." />
+          {#if editFilteredPages.length > 0}
+            <div class="pin-search-results">
+              {#each editFilteredPages as page (page.id)}
+                <button class="pin-search-result" onclick={() => selectEditPage(page.id, page.title)}>
+                  {page.title}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        <div class="pin-form-actions">
+          <button class="pin-cancel" onclick={() => editingPin = null}>Cancel</button>
+          <button class="pin-save" onclick={saveEditPin}>Save</button>
         </div>
       </div>
     {/if}
@@ -270,6 +364,15 @@
     padding: 12px; width: 220px; display: flex; flex-direction: column; gap: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   }
+
+  .pin-form-header {
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .pin-form-title { font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--color-fg-tertiary); }
+  .pin-delete {
+    background: none; border: none; color: var(--color-fg-tertiary); font-size: 18px; cursor: pointer; padding: 0 2px;
+  }
+  .pin-delete:hover { color: var(--color-status-error); }
 
   .pin-input {
     width: 100%; padding: 6px 10px; background: var(--color-surface-primary);
