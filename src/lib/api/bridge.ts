@@ -41,6 +41,8 @@ const mockDb = {
   relations: new Map<string, any>(),
   maps: new Map<string, any>(),
   mapPins: new Map<string, any>(),
+  timelines: new Map<string, any>(),
+  timelineEvents: new Map<string, any>(),
   tomeOpen: true,
   tomeMeta: { name: 'Dev Tome', description: 'Browser development tome', created_at: '2026-01-01T00:00:00Z' } as any,
   recentTomes: [
@@ -540,6 +542,57 @@ async function mockCommand(command: string, args?: any): Promise<any> {
           entity_type_id: p.entity_type_id,
         }))
         .sort((a: any, b: any) => a.title.localeCompare(b.title))
+    }
+
+    // ── Timelines ──
+
+    case 'create_timeline': {
+      const id = uuid()
+      const tl = { id, name: args.name, description: args.description || null, sort_order: 0, created_at: now(), updated_at: now() }
+      mockDb.timelines.set(id, tl)
+      return tl
+    }
+
+    case 'list_timelines': {
+      return Array.from(mockDb.timelines.values()).sort((a: any, b: any) => a.name.localeCompare(b.name))
+    }
+
+    case 'delete_timeline': {
+      mockDb.timelines.delete(args.id)
+      for (const [eId, evt] of mockDb.timelineEvents) {
+        if (evt.timeline_id === args.id) mockDb.timelineEvents.delete(eId)
+      }
+      return null
+    }
+
+    case 'create_timeline_event': {
+      const id = uuid()
+      const evt = { id, timeline_id: args.timelineId, title: args.title, description: args.description || null, date: args.date, end_date: args.endDate || null, page_id: args.pageId || null, color: args.color || null, sort_order: 0, created_at: now() }
+      mockDb.timelineEvents.set(id, evt)
+      return evt
+    }
+
+    case 'update_timeline_event': {
+      const evt = mockDb.timelineEvents.get(args.id)
+      if (!evt) throw new Error('Event not found')
+      if (args.title !== undefined) evt.title = args.title
+      if (args.date !== undefined) evt.date = args.date
+      if (args.description !== undefined) evt.description = args.description
+      if (args.endDate !== undefined) evt.end_date = args.endDate
+      if (args.pageId !== undefined) evt.page_id = args.pageId
+      if (args.color !== undefined) evt.color = args.color
+      return evt
+    }
+
+    case 'delete_timeline_event': {
+      mockDb.timelineEvents.delete(args.id)
+      return null
+    }
+
+    case 'get_timeline_events': {
+      return Array.from(mockDb.timelineEvents.values())
+        .filter((e: any) => e.timeline_id === args.timelineId)
+        .sort((a: any, b: any) => a.date.localeCompare(b.date))
     }
 
     // ── Maps ──

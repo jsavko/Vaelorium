@@ -5,6 +5,7 @@
   import GraphView from './lib/components/GraphView.svelte'
   import MapList from './lib/components/MapList.svelte'
   import MapViewer from './lib/components/MapViewer.svelte'
+  import ChronicleView from './lib/components/ChronicleView.svelte'
   import DetailsPanel from './lib/components/DetailsPanel.svelte'
   import SearchOverlay from './lib/components/SearchOverlay.svelte'
   import SlashMenu from './lib/components/SlashMenu.svelte'
@@ -61,6 +62,7 @@
   let graphViewOpen = $state(false)
   let atlasOpen = $state(false)
   let activeMapId = $state<string | null>(null)
+  let chronicleOpen = $state(false)
 
   // Clear entity list view when a page is selected
   $effect(() => {
@@ -69,6 +71,7 @@
       graphViewOpen = false
       atlasOpen = false
       activeMapId = null
+      chronicleOpen = false
     }
   })
 
@@ -109,12 +112,16 @@
       onSelectType={(typeId) => { activeTypeListId = typeId; graphViewOpen = false; detailsOpen = false }}
       activeTypeId={activeTypeListId}
       onOpenGraph={() => { graphViewOpen = true; activeTypeListId = null; atlasOpen = false; activeMapId = null; detailsOpen = false }}
-      onOpenAtlas={() => { atlasOpen = true; activeMapId = null; graphViewOpen = false; activeTypeListId = null; detailsOpen = false }}
+      onOpenAtlas={() => { atlasOpen = true; activeMapId = null; graphViewOpen = false; chronicleOpen = false; activeTypeListId = null; detailsOpen = false }}
+      onOpenChronicle={() => { chronicleOpen = true; graphViewOpen = false; atlasOpen = false; activeMapId = null; activeTypeListId = null; detailsOpen = false }}
+      chronicleActive={chronicleOpen}
       graphActive={graphViewOpen}
       atlasActive={atlasOpen || !!activeMapId}
       onCloseTome={async () => { await closeTome(); await loadRecentTomes() }}
     />
-    {#if activeMapId}
+    {#if chronicleOpen}
+      <ChronicleView onClose={() => chronicleOpen = false} />
+    {:else if activeMapId}
       <MapViewer mapId={activeMapId} onClose={() => { activeMapId = null; atlasOpen = true }} />
     {:else if atlasOpen}
       <MapList

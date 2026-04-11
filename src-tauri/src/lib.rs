@@ -165,6 +165,14 @@ pub fn run() {
             commands::maps::update_pin,
             commands::maps::delete_pin,
             commands::maps::get_map_pins,
+            // Timelines
+            commands::timelines::create_timeline,
+            commands::timelines::list_timelines,
+            commands::timelines::delete_timeline,
+            commands::timelines::create_timeline_event,
+            commands::timelines::update_timeline_event,
+            commands::timelines::delete_timeline_event,
+            commands::timelines::get_timeline_events,
             // Relations
             commands::relations::list_relation_types,
             commands::relations::create_relation_type,
