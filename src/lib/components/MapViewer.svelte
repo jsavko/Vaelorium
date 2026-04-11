@@ -293,6 +293,8 @@
           {/if}
         </div>
         <div class="pin-form-actions">
+          <button class="pin-danger" onclick={deleteEditPin}>Delete</button>
+          <span style="flex:1"></span>
           <button class="pin-cancel" onclick={() => editingPin = null}>Cancel</button>
           <button class="pin-save" onclick={saveEditPin}>Save</button>
         </div>
@@ -373,6 +375,12 @@
     background: none; border: none; color: var(--color-fg-tertiary); font-size: 18px; cursor: pointer; padding: 0 2px;
   }
   .pin-delete:hover { color: var(--color-status-error); }
+  .pin-danger {
+    padding: 4px 10px; background: none; border: 1px solid var(--color-status-error);
+    border-radius: var(--radius-sm); font-family: var(--font-ui); font-size: 12px;
+    color: var(--color-status-error); cursor: pointer;
+  }
+  .pin-danger:hover { background: rgba(184, 92, 92, 0.15); }
 
   .pin-input {
     width: 100%; padding: 6px 10px; background: var(--color-surface-primary);
