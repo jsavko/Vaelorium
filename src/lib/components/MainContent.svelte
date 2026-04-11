@@ -2,9 +2,8 @@
   import Editor from './Editor.svelte'
   import ReadingView from './ReadingView.svelte'
   import VersionHistory from './VersionHistory.svelte'
+  import ConfirmDialog from './ConfirmDialog.svelte'
   import { currentPage, deleteCurrentPage, pageTree, loadPage } from '../stores/pageStore'
-  import { showToast } from '../stores/toastStore'
-  import { get } from 'svelte/store'
 
   interface Props {
     onToggleDetails: () => void
@@ -16,6 +15,7 @@
   let readingMode = $state(false)
   let moreMenuOpen = $state(false)
   let versionHistoryOpen = $state(false)
+  let deleteConfirmOpen = $state(false)
 
   // Build breadcrumb chain
   let breadcrumbs = $derived.by(() => {
@@ -43,13 +43,14 @@
     versionHistoryOpen = !versionHistoryOpen
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     moreMenuOpen = false
-    if (confirm(`Delete "${$currentPage?.title}"? This cannot be undone.`)) {
-      const title = $currentPage?.title
-      await deleteCurrentPage()
-      showToast(`"${title}" deleted`, 'info')
-    }
+    deleteConfirmOpen = true
+  }
+
+  async function confirmDelete() {
+    deleteConfirmOpen = false
+    await deleteCurrentPage()
   }
 </script>
 
@@ -109,6 +110,16 @@
 </main>
 
 <VersionHistory open={versionHistoryOpen} onClose={() => versionHistoryOpen = false} />
+
+<ConfirmDialog
+  open={deleteConfirmOpen}
+  title="Delete Page"
+  message={`Delete "${$currentPage?.title}"? This cannot be undone.`}
+  confirmLabel="Delete"
+  danger={true}
+  onConfirm={confirmDelete}
+  onCancel={() => deleteConfirmOpen = false}
+/>
 
 <style>
   .main-content {

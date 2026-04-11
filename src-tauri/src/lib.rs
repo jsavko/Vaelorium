@@ -1,7 +1,6 @@
 mod commands;
 mod db;
 
-use db::DbPool;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

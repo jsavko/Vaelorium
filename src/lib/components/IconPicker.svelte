@@ -91,6 +91,8 @@
 
   .current-icon {
     font-size: 20px;
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif;
+    line-height: 1;
   }
 
   .add-icon {
@@ -149,6 +151,8 @@
     font-size: 18px;
     padding: 4px;
     text-align: center;
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif;
+    line-height: 1;
   }
 
   .icon-option:hover {

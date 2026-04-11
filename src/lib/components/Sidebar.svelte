@@ -4,7 +4,7 @@
   import ContextMenu from './ContextMenu.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import { nestedTree, loadPageTree, createPage, pageTree, deleteCurrentPage, loadPage, currentPageId } from '../stores/pageStore'
-  import { showToast } from '../stores/toastStore'
+
   import type { PageTreeNode } from '../api/pages'
   import { deletePage } from '../api/pages'
 
@@ -27,8 +27,7 @@
   })
 
   async function handleNewPage() {
-    const page = await createPage('Untitled Page')
-    showToast('Page created', 'success')
+    await createPage('Untitled Page')
   }
 
   let hasPages = $derived($pageTree.length > 0)
@@ -49,8 +48,7 @@
     if (!contextMenu) return
     const parentId = contextMenu.node.id
     closeContextMenu()
-    const page = await createPage('Untitled Page', parentId)
-    showToast('Child page created', 'success')
+    await createPage('Untitled Page', parentId)
   }
 
   function handleDeletePage() {
@@ -68,7 +66,6 @@
       await deleteCurrentPage()
     }
     await loadPageTree()
-    showToast(`"${node.title}" deleted`, 'info')
   }
 </script>
 

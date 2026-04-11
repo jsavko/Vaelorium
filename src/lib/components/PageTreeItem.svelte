@@ -173,6 +173,8 @@
   .page-icon {
     font-size: 14px;
     flex-shrink: 0;
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Twemoji Mozilla', sans-serif;
+    line-height: 1;
   }
 
   .entity-dot {
