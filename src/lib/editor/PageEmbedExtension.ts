@@ -1,7 +1,14 @@
-import { Node, mergeAttributes } from '@tiptap/core'
+import { Node, mergeAttributes, Editor } from '@tiptap/core'
+import StarterKit from '@tiptap/starter-kit'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableHeader } from '@tiptap/extension-table-header'
+import { TableCell } from '@tiptap/extension-table-cell'
+import ImageExt from '@tiptap/extension-image'
+import Link from '@tiptap/extension-link'
+import Collaboration from '@tiptap/extension-collaboration'
 import { getPageContent } from '../api/pages'
 import { getPage } from '../api/pages'
-import { callCommand } from '../api/bridge'
 import * as Y from 'yjs'
 
 // Track which pages are embedded in the current render to prevent recursion
@@ -16,35 +23,29 @@ async function getPageHtml(pageId: string): Promise<{ title: string; html: strin
 
     let html = ''
     if (contentArray && contentArray.length > 0) {
+      // Create a temporary Yjs doc and headless TipTap editor to render content
       const doc = new Y.Doc()
       Y.applyUpdate(doc, new Uint8Array(contentArray))
-      const xmlFragment = doc.getXmlFragment('content')
-      html = xmlFragmentToHtml(xmlFragment)
+
+      const tempEditor = new Editor({
+        extensions: [
+          StarterKit.configure({ heading: { levels: [1, 2, 3] }, history: false }),
+          Table, TableRow, TableHeader, TableCell,
+          ImageExt.configure({ inline: false }),
+          Link.configure({ openOnClick: false }),
+          Collaboration.configure({ document: doc, field: 'content' }),
+        ],
+      })
+
+      html = tempEditor.getHTML()
+      tempEditor.destroy()
     }
 
     return { title: page.title, html, entityTypeId: page.entity_type_id }
-  } catch {
+  } catch (e) {
+    console.warn('Failed to load embed:', e)
     return { title: 'Page not found', html: '<p>This page could not be loaded.</p>', entityTypeId: null }
   }
-}
-
-function xmlFragmentToHtml(fragment: Y.XmlFragment): string {
-  let html = ''
-  fragment.forEach((item) => {
-    if (item instanceof Y.XmlElement) {
-      const tag = item.nodeName
-      const attrs = item.getAttributes()
-      let attrStr = ''
-      for (const [key, value] of Object.entries(attrs)) {
-        attrStr += ` ${key}="${value}"`
-      }
-      const inner = xmlFragmentToHtml(item as unknown as Y.XmlFragment)
-      html += `<${tag}${attrStr}>${inner}</${tag}>`
-    } else if (item instanceof Y.XmlText) {
-      html += item.toString()
-    }
-  })
-  return html
 }
 
 export const PageEmbedNode = Node.create({

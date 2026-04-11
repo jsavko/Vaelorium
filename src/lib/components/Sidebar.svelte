@@ -17,6 +17,20 @@
 
   let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null }: Props = $props()
 
+  // Collapsible sections with persisted state
+  let typesCollapsed = $state(localStorage.getItem('vaelorium-types-collapsed') === 'true')
+  let pagesCollapsed = $state(localStorage.getItem('vaelorium-pages-collapsed') === 'true')
+
+  function toggleTypesCollapsed() {
+    typesCollapsed = !typesCollapsed
+    localStorage.setItem('vaelorium-types-collapsed', String(typesCollapsed))
+  }
+
+  function togglePagesCollapsed() {
+    pagesCollapsed = !pagesCollapsed
+    localStorage.setItem('vaelorium-pages-collapsed', String(pagesCollapsed))
+  }
+
   const navItems = [
     { id: 'wiki', label: 'Wiki', active: true },
     { id: 'atlas', label: 'Atlas', active: false },
@@ -100,9 +114,17 @@
   <div class="divider"></div>
 
   <div class="types-section">
-    <div class="section-header">
-      <span class="section-label">TYPES</span>
+    <div class="section-header collapsible">
+      <button class="collapse-toggle" onclick={toggleTypesCollapsed}>
+        <span class="section-chevron" class:collapsed={typesCollapsed}>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </span>
+        <span class="section-label">TYPES</span>
+      </button>
     </div>
+    {#if !typesCollapsed}
     <div class="type-list">
       {#each $builtinTypes as type (type.id)}
         <button
@@ -125,28 +147,38 @@
         </button>
       {/each}
     </div>
+    {/if}
   </div>
 
   <div class="divider"></div>
 
   <div class="page-tree-section">
-    <div class="section-header">
-      <span class="section-label">PAGES</span>
+    <div class="section-header collapsible">
+      <button class="collapse-toggle" onclick={togglePagesCollapsed}>
+        <span class="section-chevron" class:collapsed={pagesCollapsed}>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </span>
+        <span class="section-label">PAGES</span>
+      </button>
       <button class="add-btn" title="New page" onclick={handleNewPage}>+</button>
     </div>
 
-    {#if hasPages}
-      <div class="tree-list">
-        {#each $nestedTree as node (node.id)}
-          <PageTreeItem {node} onContextMenu={handleContextMenu} />
-        {/each}
-      </div>
-    {:else}
-      <div class="tree-placeholder">
-        <button class="create-first" onclick={handleNewPage}>
-          Create your first page
-        </button>
-      </div>
+    {#if !pagesCollapsed}
+      {#if hasPages}
+        <div class="tree-list">
+          {#each $nestedTree as node (node.id)}
+            <PageTreeItem {node} onContextMenu={handleContextMenu} />
+          {/each}
+        </div>
+      {:else}
+        <div class="tree-placeholder">
+          <button class="create-first" onclick={handleNewPage}>
+            Create your first page
+          </button>
+        </div>
+      {/if}
     {/if}
   </div>
 </aside>
@@ -278,6 +310,26 @@
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--color-fg-tertiary);
+  }
+
+  .collapse-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  .section-chevron {
+    display: inline-flex;
+    transition: transform 0.15s ease;
+    color: var(--color-fg-tertiary);
+  }
+
+  .section-chevron.collapsed {
+    transform: rotate(-90deg);
   }
 
   .types-section {
