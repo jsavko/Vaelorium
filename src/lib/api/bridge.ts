@@ -37,6 +37,8 @@ const mockDb = {
   entityFieldValues: new Map<string, any>(),
   nextSortOrder: 1,
   images: new Map<string, any>(),
+  relationTypes: new Map<string, any>(),
+  relations: new Map<string, any>(),
   tomeOpen: true,
   tomeMeta: { name: 'Dev Tome', description: 'Browser development tome', created_at: '2026-01-01T00:00:00Z' } as any,
   recentTomes: [
@@ -133,6 +135,23 @@ function seedBuiltinEntityTypes() {
 }
 
 seedBuiltinEntityTypes()
+
+// Seed built-in relation types
+const builtinRelTypes = [
+  { id: 'rel-leader-of', name: 'Leader of', inverse_name: 'Led by', color: '#C8A55C' },
+  { id: 'rel-member-of', name: 'Member of', inverse_name: 'Has member', color: '#8B5CB8' },
+  { id: 'rel-resides-at', name: 'Resides at', inverse_name: 'Home of', color: '#4A8C6A' },
+  { id: 'rel-located-in', name: 'Located in', inverse_name: 'Contains', color: '#4A8C6A' },
+  { id: 'rel-ally-of', name: 'Ally of', inverse_name: 'Ally of', color: '#5C8A5C' },
+  { id: 'rel-enemy-of', name: 'Enemy of', inverse_name: 'Enemy of', color: '#B85C5C' },
+  { id: 'rel-mentor-of', name: 'Mentor of', inverse_name: 'Mentored by', color: '#5C7AB8' },
+  { id: 'rel-parent-of', name: 'Parent of', inverse_name: 'Child of', color: '#B8955C' },
+  { id: 'rel-owns', name: 'Owns', inverse_name: 'Owned by', color: '#B8955C' },
+  { id: 'rel-created-by', name: 'Created by', inverse_name: 'Created', color: '#5CB8A8' },
+]
+for (const t of builtinRelTypes) {
+  mockDb.relationTypes.set(t.id, { ...t, is_builtin: true, created_at: '2026-01-01T00:00:00Z' })
+}
 
 function uuid() {
   return crypto.randomUUID()
@@ -519,6 +538,57 @@ async function mockCommand(command: string, args?: any): Promise<any> {
           entity_type_id: p.entity_type_id,
         }))
         .sort((a: any, b: any) => a.title.localeCompare(b.title))
+    }
+
+    // ── Relations ──
+
+    case 'list_relation_types': {
+      return Array.from(mockDb.relationTypes.values()).sort((a: any, b: any) => a.name.localeCompare(b.name))
+    }
+
+    case 'create_relation_type': {
+      const id = uuid()
+      const rt = { id, name: args.name, inverse_name: args.inverseName || null, color: args.color || null, is_builtin: false, created_at: now() }
+      mockDb.relationTypes.set(id, rt)
+      return rt
+    }
+
+    case 'create_relation': {
+      const id = uuid()
+      const rel = { id, source_page_id: args.sourcePageId, target_page_id: args.targetPageId, relation_type_id: args.relationTypeId, description: args.description || null, created_at: now() }
+      mockDb.relations.set(id, rel)
+      return rel
+    }
+
+    case 'delete_relation': {
+      mockDb.relations.delete(args.id)
+      return null
+    }
+
+    case 'get_page_relations': {
+      const pgId = args.pageId
+      const results: any[] = []
+      for (const rel of mockDb.relations.values()) {
+        if (rel.source_page_id === pgId) {
+          const page = mockDb.pages.get(rel.target_page_id)
+          const rt = mockDb.relationTypes.get(rel.relation_type_id)
+          if (page && rt) {
+            results.push({ id: rel.id, page_id: page.id, page_title: page.title, page_icon: page.icon, page_entity_type_id: page.entity_type_id, relation_type_id: rel.relation_type_id, relation_label: rt.name, description: rel.description, direction: 'outgoing' })
+          }
+        }
+        if (rel.target_page_id === pgId) {
+          const page = mockDb.pages.get(rel.source_page_id)
+          const rt = mockDb.relationTypes.get(rel.relation_type_id)
+          if (page && rt) {
+            results.push({ id: rel.id, page_id: page.id, page_title: page.title, page_icon: page.icon, page_entity_type_id: page.entity_type_id, relation_type_id: rel.relation_type_id, relation_label: rt.inverse_name || rt.name, description: rel.description, direction: 'incoming' })
+          }
+        }
+      }
+      return results.sort((a: any, b: any) => a.page_title.localeCompare(b.page_title))
+    }
+
+    case 'list_all_relations': {
+      return Array.from(mockDb.relations.values())
     }
 
     // ── Images ──

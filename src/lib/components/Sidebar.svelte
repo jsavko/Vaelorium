@@ -15,9 +15,11 @@
     onSelectType?: (typeId: string) => void
     activeTypeId?: string | null
     onCloseTome?: () => void
+    onOpenGraph?: () => void
+    graphActive?: boolean
   }
 
-  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome }: Props = $props()
+  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false }: Props = $props()
 
   // Collapsible sections with persisted state
   let typesCollapsed = $state(localStorage.getItem('vaelorium-types-collapsed') === 'true')
@@ -140,7 +142,11 @@
 
   <nav class="nav-section">
     {#each navItems as item}
-      <button class="nav-item" class:active={item.active}>
+      <button
+        class="nav-item"
+        class:active={item.id === 'relations' ? graphActive : item.active}
+        onclick={() => { if (item.id === 'relations') onOpenGraph?.() }}
+      >
         <span class="nav-label">{item.label}</span>
       </button>
     {/each}

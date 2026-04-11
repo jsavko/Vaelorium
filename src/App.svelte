@@ -2,6 +2,7 @@
   import Sidebar from './lib/components/Sidebar.svelte'
   import MainContent from './lib/components/MainContent.svelte'
   import EntityListView from './lib/components/EntityListView.svelte'
+  import GraphView from './lib/components/GraphView.svelte'
   import DetailsPanel from './lib/components/DetailsPanel.svelte'
   import SearchOverlay from './lib/components/SearchOverlay.svelte'
   import SlashMenu from './lib/components/SlashMenu.svelte'
@@ -55,11 +56,13 @@
   let newPageInitialTypeId = $state<string | null>(null)
   let createTomeModalOpen = $state(false)
   let activeTypeListId = $state<string | null>(null)
+  let graphViewOpen = $state(false)
 
   // Clear entity list view when a page is selected
   $effect(() => {
     if ($currentPageId) {
       activeTypeListId = null
+      graphViewOpen = false
     }
   })
 
@@ -97,11 +100,15 @@
     <Sidebar
       onOpenSettings={() => settingsOpen = true}
       onNewPage={() => { newPageInitialTypeId = null; newPageModalOpen = true }}
-      onSelectType={(typeId) => { activeTypeListId = typeId; detailsOpen = false }}
+      onSelectType={(typeId) => { activeTypeListId = typeId; graphViewOpen = false; detailsOpen = false }}
       activeTypeId={activeTypeListId}
+      onOpenGraph={() => { graphViewOpen = true; activeTypeListId = null; detailsOpen = false }}
+      graphActive={graphViewOpen}
       onCloseTome={async () => { await closeTome(); await loadRecentTomes() }}
     />
-    {#if activeTypeListId}
+    {#if graphViewOpen}
+      <GraphView onClose={() => graphViewOpen = false} />
+    {:else if activeTypeListId}
       <EntityListView
         entityTypeId={activeTypeListId}
         onOpenNewPage={() => { newPageInitialTypeId = activeTypeListId; newPageModalOpen = true }}

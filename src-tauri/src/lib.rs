@@ -156,6 +156,13 @@ pub fn run() {
             commands::images::get_image,
             commands::images::delete_image,
             commands::images::list_images,
+            // Relations
+            commands::relations::list_relation_types,
+            commands::relations::create_relation_type,
+            commands::relations::create_relation,
+            commands::relations::delete_relation,
+            commands::relations::get_page_relations,
+            commands::relations::list_all_relations,
             // Field Values
             commands::field_values::get_page_field_values,
             commands::field_values::set_field_value,

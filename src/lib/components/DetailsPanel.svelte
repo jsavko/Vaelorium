@@ -1,5 +1,6 @@
 <script lang="ts">
   import BacklinksPanel from './BacklinksPanel.svelte'
+  import RelationsPanel from './RelationsPanel.svelte'
   import EntityFields from './EntityFields.svelte'
   import TagInput from './TagInput.svelte'
   import { currentPage, updateCurrentPage } from '../stores/pageStore'
@@ -84,6 +85,10 @@
       <div class="section-divider"></div>
 
       <TagInput />
+
+      <div class="section-divider"></div>
+
+      <RelationsPanel />
 
       <div class="section-divider"></div>
 

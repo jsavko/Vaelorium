@@ -8,3 +8,4 @@ pub mod entity_fields;
 pub mod field_values;
 pub mod tomes;
 pub mod images;
+pub mod relations;
