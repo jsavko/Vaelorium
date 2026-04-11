@@ -2,6 +2,7 @@
   import BacklinksPanel from './BacklinksPanel.svelte'
   import TagInput from './TagInput.svelte'
   import { currentPage, updateCurrentPage } from '../stores/pageStore'
+  import { entityTypes, entityTypeMap } from '../stores/entityTypeStore'
 
   interface Props {
     open: boolean
@@ -38,7 +39,25 @@
     <div class="panel-divider-h"></div>
 
     <div class="panel-content">
-      <!-- Entity fields placeholder for Milestone 2 -->
+      <div class="section">
+        <h3 class="section-label">ENTITY TYPE</h3>
+        <select
+          class="type-select"
+          value={$currentPage.entity_type_id || ''}
+          onchange={(e) => {
+            const val = (e.target as HTMLSelectElement).value
+            updateCurrentPage({ entity_type_id: val || '' })
+          }}
+        >
+          <option value="">None (blank page)</option>
+          {#each $entityTypes as type (type.id)}
+            <option value={type.id}>{type.name}</option>
+          {/each}
+        </select>
+      </div>
+
+      <div class="section-divider"></div>
+
       <div class="section">
         <h3 class="section-label">PAGE INFO</h3>
         <div class="field">
@@ -154,6 +173,18 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+  }
+
+  .type-select {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--color-surface-primary);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--color-fg-primary);
+    cursor: pointer;
   }
 
   .field-label {

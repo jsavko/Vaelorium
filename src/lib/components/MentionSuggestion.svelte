@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { setMentionMenuRenderer } from '../editor/MentionExtension'
+  import { entityTypeMap } from '../stores/entityTypeStore'
   import type { PageTreeNode } from '../api/pages'
 
   let visible = $state(false)
@@ -10,15 +11,10 @@
   let menuX = $state(0)
   let menuY = $state(0)
 
-  const entityColors: Record<string, string> = {
-    character: 'var(--color-entity-character)',
-    location: 'var(--color-entity-location)',
-    quest: 'var(--color-entity-quest)',
-    organisation: 'var(--color-entity-organisation)',
-    item: 'var(--color-entity-item)',
-    creature: 'var(--color-entity-creature)',
-    event: 'var(--color-entity-event)',
-    journal: 'var(--color-entity-journal)',
+  function getEntityColor(typeId: string | null): string {
+    if (!typeId) return 'var(--color-fg-tertiary)'
+    const type = $entityTypeMap.get(typeId)
+    return type?.color || 'var(--color-fg-tertiary)'
   }
 
   function executeCommand(index: number) {
@@ -95,7 +91,7 @@
       >
         <span
           class="mention-dot"
-          style:background-color={entityColors[item.entity_type_id ?? ''] || 'var(--color-fg-tertiary)'}
+          style:background-color={getEntityColor(item.entity_type_id)}
         ></span>
         <span class="mention-title">{item.title}</span>
         <span class="mention-spacer"></span>

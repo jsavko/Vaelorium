@@ -10,9 +10,10 @@
 
   interface Props {
     onOpenSettings?: () => void
+    onNewPage?: () => void
   }
 
-  let { onOpenSettings }: Props = $props()
+  let { onOpenSettings, onNewPage }: Props = $props()
 
   const navItems = [
     { id: 'wiki', label: 'Wiki', active: true },
@@ -26,8 +27,12 @@
     loadPageTree()
   })
 
-  async function handleNewPage() {
-    await createPage('Untitled Page')
+  function handleNewPage() {
+    if (onNewPage) {
+      onNewPage()
+    } else {
+      createPage('Untitled Page')
+    }
   }
 
   let hasPages = $derived($pageTree.length > 0)

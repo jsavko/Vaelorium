@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { createPageViaModal } from './helpers'
 
 test.describe('Keybinds Actually Work', () => {
   test.beforeEach(async ({ page }) => {
@@ -9,13 +10,13 @@ test.describe('Keybinds Actually Work', () => {
   })
 
   test('default Ctrl+K opens search', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page', { via: 'keyboard' })
     await page.keyboard.press('Meta+k')
     await expect(page.locator('.search-modal')).toBeVisible()
   })
 
   test('changing search keybind to Ctrl+J makes Ctrl+J open search', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
 
     // Open settings
     await page.locator('.settings-btn').click()
@@ -41,7 +42,7 @@ test.describe('Keybinds Actually Work', () => {
   })
 
   test('reset to defaults restores original keybinds', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
 
     // Open settings and change search keybind
     await page.locator('.settings-btn').click()

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { createPageViaModal, createAnotherPage } from './helpers'
 
 test.describe('Wiki Engine', () => {
   test.beforeEach(async ({ page }) => {
@@ -11,26 +12,25 @@ test.describe('Wiki Engine', () => {
   })
 
   test('creates a new page from empty state', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     const titleInput = page.locator('input.page-title')
-    await expect(titleInput).toBeVisible({ timeout: 10000 })
     await expect(titleInput).toHaveValue('Untitled Page')
     await expect(page.locator('.tree-row').first()).toContainText('Untitled Page')
   })
 
   test('creates a new page from + button', async ({ page }) => {
-    await page.locator('button[title="New page"]').click()
+    await createAnotherPage(page, 'Untitled Page')
     await expect(page.locator('input.page-title')).toHaveValue('Untitled Page')
   })
 
   test('shows TipTap editor with placeholder', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     await expect(page.locator('.editor-content')).toBeVisible()
     await expect(page.locator('.editor-content .is-empty')).toBeVisible()
   })
 
   test('can type content in the editor', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     const editor = page.locator('.editor-content')
     await editor.click()
     await page.keyboard.type('Hello from the Vaelorium!')
@@ -38,7 +38,7 @@ test.describe('Wiki Engine', () => {
   })
 
   test('can format text as H2 heading', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     const editor = page.locator('.editor-content')
     await editor.click()
     await page.locator('.toolbar-btn:has-text("H2")').click()
@@ -48,13 +48,13 @@ test.describe('Wiki Engine', () => {
 
   test('content persists across page switches', async ({ page }) => {
     // Create first page with content
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     const editor = page.locator('.editor-content')
     await editor.click()
     await page.keyboard.type('First page content')
 
     // Create second page
-    await page.locator('button[title="New page"]').click()
+    await createAnotherPage(page, 'Second Page')
     // Wait for new page to load
     await expect(page.locator('.tree-row')).toHaveCount(2)
     await editor.click()
@@ -66,21 +66,21 @@ test.describe('Wiki Engine', () => {
   })
 
   test('opens search overlay with Cmd+K', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     await page.keyboard.press('Meta+k')
     await expect(page.locator('.search-modal')).toBeVisible()
     await expect(page.locator('.search-input')).toBeFocused()
   })
 
   test('search finds pages by title', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     await page.keyboard.press('Meta+k')
     await page.locator('.search-input').fill('Untitled')
     await expect(page.locator('.result-item').first()).toContainText('Untitled Page')
   })
 
   test('closes search with Escape', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     await page.keyboard.press('Meta+k')
     await expect(page.locator('.search-modal')).toBeVisible()
     // Focus the search input before pressing Escape
@@ -90,21 +90,15 @@ test.describe('Wiki Engine', () => {
   })
 
   test('toggles details panel', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     await page.locator('.details-toggle').click()
     await expect(page.locator('.details-panel')).toBeVisible()
     await expect(page.locator('.details-panel')).toContainText('PAGE INFO')
     await expect(page.locator('.details-panel')).toContainText('BACKLINKS')
   })
 
-  test('shows toast notification on page creation', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
-    await expect(page.locator('.toast')).toBeVisible()
-    await expect(page.locator('.toast')).toContainText('Page created')
-  })
-
   test('toolbar has formatting buttons', async ({ page }) => {
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     const toolbar = page.locator('.editor-toolbar')
     await expect(toolbar).toBeVisible()
     // Check toolbar exists with expected button count

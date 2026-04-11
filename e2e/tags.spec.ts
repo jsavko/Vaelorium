@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { createPageViaModal } from './helpers'
 
 test.describe('Tags', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Create your first page' }).click()
-    await expect(page.locator('input.page-title')).toBeVisible()
+    await createPageViaModal(page, 'Untitled Page')
     // Open details panel
     await page.locator('.details-toggle').click()
     await expect(page.locator('.details-panel')).toBeVisible()

@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { createPageViaModal } from './helpers'
 
 test.describe('Slash Commands', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Create your first page' }).click()
+    await createPageViaModal(page, 'Untitled Page')
     await expect(page.locator('.editor-content')).toBeVisible()
   })
 

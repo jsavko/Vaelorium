@@ -50,6 +50,7 @@
     "@tiptap/pm": "^3.22.3",
     "@tiptap/starter-kit": "^3.22.3",
     "@tiptap/suggestion": "^3.22.3",
+    "lucide-svelte": "^1.0.1",
     "uuid": "^13.0.0",
     "yjs": "^13.6.30"
   }

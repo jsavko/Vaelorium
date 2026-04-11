@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test'
+import { createPageViaModal, createAnotherPage } from './helpers'
 
 test.describe('@Mention Linking', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
     // Create two pages so we have something to mention
-    await page.getByRole('button', { name: 'Create your first page' }).click()
-    await expect(page.locator('input.page-title')).toBeVisible()
-    await page.locator('button[title="New page"]').click()
+    await createPageViaModal(page, 'Untitled Page')
+    await createAnotherPage(page, 'Untitled Page')
     await expect(page.locator('.tree-row')).toHaveCount(2)
   })
 

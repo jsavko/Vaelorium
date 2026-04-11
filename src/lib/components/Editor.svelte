@@ -4,6 +4,7 @@
   import { createEditorExtensions } from '../editor/EditorConfig'
   import { LocalYjsProvider } from '../editor/YjsProvider'
   import { currentPage, updateCurrentPage, loadPage, pageTree } from '../stores/pageStore'
+  import { entityTypeMap } from '../stores/entityTypeStore'
   import IconPicker from './IconPicker.svelte'
   import { get } from 'svelte/store'
   import type { Page } from '../api/pages'
@@ -117,9 +118,13 @@
   <div class="editor-wrapper">
     <div class="page-header">
       {#if $currentPage.entity_type_id}
-        <span class="entity-badge">
-          {$currentPage.entity_type_id}
-        </span>
+        {@const entityType = $entityTypeMap.get($currentPage.entity_type_id)}
+        {#if entityType}
+          <span class="entity-badge" style:--badge-color={entityType.color || 'var(--color-fg-tertiary)'}>
+            <span class="badge-dot"></span>
+            {entityType.name}
+          </span>
+        {/if}
       {/if}
 
       <div class="title-row">
@@ -220,8 +225,15 @@
     font-weight: 500;
     border-radius: 20px;
     background: var(--color-surface-tertiary);
-    color: var(--color-fg-tertiary);
+    color: var(--badge-color, var(--color-fg-tertiary));
     width: fit-content;
+  }
+
+  .badge-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--badge-color, var(--color-fg-tertiary));
   }
 
   .title-row {

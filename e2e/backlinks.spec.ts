@@ -1,15 +1,15 @@
 import { test, expect } from '@playwright/test'
+import { createPageViaModal, createAnotherPage } from './helpers'
 
 test.describe('Backlinks', () => {
   test('shows backlinks when a page is mentioned from another', async ({ page }) => {
     await page.goto('/')
 
     // Create page 1
-    await page.getByRole('button', { name: 'Create your first page' }).click()
-    await expect(page.locator('input.page-title')).toBeVisible()
+    await createPageViaModal(page, 'Untitled Page')
 
     // Create page 2
-    await page.locator('button[title="New page"]').click()
+    await createAnotherPage(page, 'Untitled Page')
     await expect(page.locator('.tree-row')).toHaveCount(2)
 
     // Type @mention in page 2 linking to page 1

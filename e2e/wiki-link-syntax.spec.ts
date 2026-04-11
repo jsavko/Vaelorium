@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test'
+import { createPageViaModal, createAnotherPage } from './helpers'
 
 test.describe('[[Wiki Link]] Syntax', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Create your first page' }).click()
-    await expect(page.locator('input.page-title')).toBeVisible()
-    await page.locator('button[title="New page"]').click()
+    await createPageViaModal(page, 'Untitled Page')
+    await createAnotherPage(page, 'Untitled Page')
     await expect(page.locator('.tree-row')).toHaveCount(2)
   })
 

@@ -47,8 +47,8 @@ export async function loadPage(id: string) {
   }
 }
 
-export async function createPage(title: string, parentId?: string | null) {
-  const page = await pagesApi.createPage({ title, parent_id: parentId })
+export async function createPage(title: string, parentId?: string | null, entityTypeId?: string | null) {
+  const page = await pagesApi.createPage({ title, parent_id: parentId, entity_type_id: entityTypeId })
   await loadPageTree()
   await loadPage(page.id)
   return page

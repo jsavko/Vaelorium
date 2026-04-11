@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getChildren, currentPageId, loadPage, reorderPages } from '../stores/pageStore'
+  import { entityTypeMap } from '../stores/entityTypeStore'
   import type { PageTreeNode } from '../api/pages'
   import PageTreeItem from './PageTreeItem.svelte'
 
@@ -58,15 +59,10 @@
     onContextMenu?.(e, node)
   }
 
-  const entityColors: Record<string, string> = {
-    character: 'var(--color-entity-character)',
-    location: 'var(--color-entity-location)',
-    quest: 'var(--color-entity-quest)',
-    organisation: 'var(--color-entity-organisation)',
-    item: 'var(--color-entity-item)',
-    creature: 'var(--color-entity-creature)',
-    event: 'var(--color-entity-event)',
-    journal: 'var(--color-entity-journal)',
+  function getEntityColor(typeId: string | null): string {
+    if (!typeId) return 'var(--color-fg-tertiary)'
+    const type = $entityTypeMap.get(typeId)
+    return type?.color || 'var(--color-fg-tertiary)'
   }
 </script>
 
@@ -98,7 +94,7 @@
     {#if node.icon}
       <span class="page-icon">{node.icon}</span>
     {:else if node.entity_type_id}
-      <span class="entity-dot" style:background-color={entityColors[node.entity_type_id] || 'var(--color-fg-tertiary)'}></span>
+      <span class="entity-dot" style:background-color={getEntityColor(node.entity_type_id)}></span>
     {:else}
       <span class="entity-dot" style:background-color="var(--color-fg-tertiary)"></span>
     {/if}

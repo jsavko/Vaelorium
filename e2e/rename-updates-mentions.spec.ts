@@ -1,15 +1,15 @@
 import { test, expect } from '@playwright/test'
+import { createPageViaModal, createAnotherPage } from './helpers'
 
 test.describe('Rename Updates Mentions', () => {
   test('renaming a page updates its @mention link text in other pages', async ({ page }) => {
     await page.goto('/')
 
     // Create Page A
-    await page.getByRole('button', { name: 'Create your first page' }).click()
-    await expect(page.locator('input.page-title')).toBeVisible()
+    await createPageViaModal(page, 'Untitled Page')
 
     // Create Page B
-    await page.locator('button[title="New page"]').click()
+    await createAnotherPage(page, 'Untitled Page')
     await expect(page.locator('.tree-row')).toHaveCount(2)
 
     // In Page B, type @ to open mention menu and click first item (Page A)

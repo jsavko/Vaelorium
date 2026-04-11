@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { createPageViaModal } from './helpers'
 
 test.describe('Read Mode', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Create your first page' }).click()
-    await expect(page.locator('input.page-title')).toBeVisible()
+    await createPageViaModal(page, 'Untitled Page')
   })
 
   test('clicking Read toggles to reading view', async ({ page }) => {

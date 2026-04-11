@@ -1,6 +1,7 @@
 <script lang="ts">
   import { callCommand } from '../api/bridge'
   import { currentPageId, loadPage } from '../stores/pageStore'
+  import { entityTypeMap } from '../stores/entityTypeStore'
 
   interface Backlink {
     page_id: string
@@ -10,15 +11,10 @@
 
   let backlinks = $state<Backlink[]>([])
 
-  const entityColors: Record<string, string> = {
-    character: 'var(--color-entity-character)',
-    location: 'var(--color-entity-location)',
-    quest: 'var(--color-entity-quest)',
-    organisation: 'var(--color-entity-organisation)',
-    item: 'var(--color-entity-item)',
-    creature: 'var(--color-entity-creature)',
-    event: 'var(--color-entity-event)',
-    journal: 'var(--color-entity-journal)',
+  function getEntityColor(typeId: string | null): string {
+    if (!typeId) return 'var(--color-fg-tertiary)'
+    const type = $entityTypeMap.get(typeId)
+    return type?.color || 'var(--color-fg-tertiary)'
   }
 
   $effect(() => {
@@ -48,7 +44,7 @@
       <button class="backlink-item" onclick={() => loadPage(bl.page_id)}>
         <span
           class="bl-dot"
-          style:background-color={entityColors[bl.entity_type_id ?? ''] || 'var(--color-fg-tertiary)'}
+          style:background-color={getEntityColor(bl.entity_type_id)}
         ></span>
         <span class="bl-title">{bl.title}</span>
       </button>

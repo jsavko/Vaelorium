@@ -1,5 +1,5 @@
 ---
-status: created
+status: completed
 ---
 # M2 Phase 2: Type Selector UI
 
@@ -35,9 +35,9 @@ Build the "New Page" modal with entity type picker. Replace the current inline p
 
 ## Tasks
 
-- [ ] **1.** Initialize entity type store on app startup — call `loadEntityTypes()` from the main layout/app initialization so entity types are available immediately.
+- [x] **1.** Initialize entity type store on app startup — call `loadEntityTypes()` from the main layout/app initialization so entity types are available immediately.
 
-- [ ] **2.** Build `NewPageModal.svelte` — Modal overlay with:
+- [x] **2.** Build `NewPageModal.svelte` — Modal overlay with:
   - "Blank Page" full-width option at top
   - "ENTITY TYPES" section label
   - 3-column grid of type cards (icon from lucide, name, colored left border)
@@ -47,19 +47,19 @@ Build the "New Page" modal with entity type picker. Replace the current inline p
   - "Create" button disabled until title entered
   - Escape closes the modal
 
-- [ ] **3.** Wire Cmd/Ctrl+N to open `NewPageModal` instead of directly creating a page. Update sidebar "New Page" button to also open the modal.
+- [x] **3.** Wire Cmd/Ctrl+N to open `NewPageModal` instead of directly creating a page. Update sidebar "New Page" button to also open the modal.
 
-- [ ] **4.** Update `pageStore.createPage()` to accept `entity_type_id` parameter. Wire the modal's Create button to call it with selected type.
+- [x] **4.** Update `pageStore.createPage()` to accept `entity_type_id` parameter. Wire the modal's Create button to call it with selected type.
 
-- [ ] **5.** Update sidebar page tree to use `entityTypeMap` store for entity type colors — replace the hardcoded gray dot with actual type color when the page has an `entity_type_id`.
+- [x] **5.** Update sidebar page tree to use `entityTypeMap` store for entity type colors — replace the hardcoded gray dot with actual type color when the page has an `entity_type_id`.
 
-- [ ] **6.** Update search results and @mention dropdown to show entity type name label + color dot from `entityTypeMap` store.
+- [x] **6.** Update search results and @mention dropdown to show entity type name label + color dot from `entityTypeMap` store.
 
-- [ ] **7.** Update entity type badge in editor header — show type name + colored badge above the page title when the page has an entity type.
+- [x] **7.** Update entity type badge in editor header — show type name + colored badge above the page title when the page has an entity type.
 
-- [ ] **8.** Add "Change Type" option to the ⋯ more menu or details panel — dropdown to change or remove a page's entity type.
+- [x] **8.** Add "Change Type" option to the ⋯ more menu or details panel — dropdown to change or remove a page's entity type.
 
-- [ ] **9.** Write Playwright E2E tests:
+- [x] **9.** Write Playwright E2E tests:
   - Open new page modal via Cmd+N
   - Create a blank page (no type)
   - Create a typed page (select Character type)
@@ -68,7 +68,7 @@ Build the "New Page" modal with entity type picker. Replace the current inline p
   - Change page type via menu
   - Remove page type
 
-- [ ] **10.** Verify all existing tests still pass (no regressions).
+- [x] **10.** Verify all existing tests still pass (no regressions).
 
 ## Notes
 

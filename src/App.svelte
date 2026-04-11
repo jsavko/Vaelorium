@@ -6,14 +6,22 @@
   import SlashMenu from './lib/components/SlashMenu.svelte'
   import MentionSuggestion from './lib/components/MentionSuggestion.svelte'
   import ToastContainer from './lib/components/ToastContainer.svelte'
+  import NewPageModal from './lib/components/NewPageModal.svelte'
   import Settings from './lib/components/Settings.svelte'
+  import { onMount } from 'svelte'
   import { createPage } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
+  import { loadEntityTypes } from './lib/stores/entityTypeStore'
   import { matchesKeybind } from './lib/utils/keybinds'
+
+  onMount(() => {
+    loadEntityTypes()
+  })
 
   let searchOpen = $state(false)
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
+  let newPageModalOpen = $state(false)
 
   function getKeybindCombo(id: string): string {
     return $settings.keybinds.find((k) => k.id === id)?.keys || ''
@@ -33,7 +41,7 @@
     }
     if (newPageCombo && matchesKeybind(e, newPageCombo)) {
       e.preventDefault()
-      createPage('Untitled Page')
+      newPageModalOpen = true
     }
     if (detailsCombo && matchesKeybind(e, detailsCombo)) {
       e.preventDefault()
@@ -45,7 +53,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="app-layout">
-  <Sidebar onOpenSettings={() => settingsOpen = true} />
+  <Sidebar onOpenSettings={() => settingsOpen = true} onNewPage={() => newPageModalOpen = true} />
   <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
   <DetailsPanel open={detailsOpen} onClose={() => detailsOpen = false} />
 </div>
@@ -62,4 +70,12 @@
 <SlashMenu />
 <MentionSuggestion />
 <Settings open={settingsOpen} onClose={() => settingsOpen = false} />
+<NewPageModal
+  open={newPageModalOpen}
+  onClose={() => newPageModalOpen = false}
+  onCreate={async (title, parentId, entityTypeId) => {
+    newPageModalOpen = false
+    await createPage(title, parentId, entityTypeId)
+  }}
+/>
 <ToastContainer />
