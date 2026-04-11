@@ -4,6 +4,7 @@
   import { createEditorExtensions } from '../editor/EditorConfig'
   import { LocalYjsProvider } from '../editor/YjsProvider'
   import { currentPage, updateCurrentPage, loadPage, pageTree } from '../stores/pageStore'
+  import IconPicker from './IconPicker.svelte'
   import { get } from 'svelte/store'
   import type { Page } from '../api/pages'
 
@@ -121,14 +122,20 @@
         </span>
       {/if}
 
-      <input
-        bind:this={titleInput}
-        class="page-title"
-        value={$currentPage.title}
-        onblur={handleTitleBlur}
-        onkeydown={handleTitleKeydown}
-        placeholder="Untitled"
-      />
+      <div class="title-row">
+        <IconPicker
+          currentIcon={$currentPage.icon}
+          onSelect={(icon) => updateCurrentPage({ icon: icon || '' })}
+        />
+        <input
+          bind:this={titleInput}
+          class="page-title"
+          value={$currentPage.title}
+          onblur={handleTitleBlur}
+          onkeydown={handleTitleKeydown}
+          placeholder="Untitled"
+        />
+      </div>
 
       <div class="page-meta">
         <span class="meta-text">Last edited {new Date($currentPage.updated_at).toLocaleDateString()}</span>
@@ -215,6 +222,12 @@
     background: var(--color-surface-tertiary);
     color: var(--color-fg-tertiary);
     width: fit-content;
+  }
+
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
 
   .page-title {

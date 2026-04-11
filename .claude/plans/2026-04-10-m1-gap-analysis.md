@@ -129,14 +129,14 @@ status: created
 - [x] Type label in search results — already implemented, shows when entity_type_id is set
 
 ### P2: Feature Completion
-- [ ] Wire [[wiki link]] syntax trigger
-- [ ] Build tag input component in details panel  
-- [ ] Build featured image upload in details panel
+- [x] Wire [[wiki link]] syntax trigger — commit 766fb6f
+- [x] Build tag input component in details panel — commit 1db9947
+- [x] Build featured image upload in details panel — commit 1db9947
 - [ ] Build callout block TipTap extension
-- [ ] Build settings page (keybinds + appearance)
+- [x] Build settings page (keybinds + appearance) — commit 6917a63, e9cf673, cd69635
 
 ### P3: Polish
-- [ ] Settings gear icon in sidebar
+- [x] Settings gear icon in sidebar — commit 6917a63
 - [ ] Share button placeholder
 - [ ] Connection count in metadata row
 - [ ] ⌘K badge in search (not just Esc)
