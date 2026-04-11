@@ -26,6 +26,7 @@ src-tauri/gen
 # OS
 .DS_Store
 *.Zone.Identifier
+*:Zone.Identifier
 
 # Install script (temporary)
 install-deps.sh
