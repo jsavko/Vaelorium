@@ -2,7 +2,77 @@ mod app_state;
 mod commands;
 mod db;
 
+use db::ManagedDb;
 use tauri::Manager;
+
+/// Migrate legacy vaelorium.db (pre-Tomes) to a .vaelorium file on first launch.
+async fn migrate_legacy_db(app: &tauri::AppHandle, managed: &ManagedDb) {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .expect("Failed to get app data directory");
+
+    let legacy_path = app_data.join("vaelorium.db");
+    if !legacy_path.exists() {
+        return;
+    }
+
+    // Check if we already have recent tomes — if so, migration was already done
+    let state = app_state::load_app_state(app);
+    if !state.recent_tomes.is_empty() {
+        return;
+    }
+
+    log::info!("Found legacy database, migrating to Tome format...");
+
+    // Copy to a .vaelorium file in Documents or alongside the old DB
+    let docs_dir = app
+        .path()
+        .document_dir()
+        .unwrap_or_else(|_| app_data.clone());
+
+    let tome_dir = docs_dir.join("Vaelorium Tomes");
+    std::fs::create_dir_all(&tome_dir).ok();
+
+    let tome_path = tome_dir.join("My Campaign.vaelorium");
+    let tome_path_str = tome_path.to_string_lossy().to_string();
+
+    if let Err(e) = std::fs::copy(&legacy_path, &tome_path) {
+        log::error!("Failed to copy legacy DB: {}", e);
+        return;
+    }
+
+    // Open the copied tome and run migrations (adds tome_metadata table)
+    match db::open_database(&tome_path_str).await {
+        Ok(pool) => {
+            // Seed tome metadata
+            let now = chrono::Utc::now().to_rfc3339();
+            sqlx::query("INSERT OR IGNORE INTO tome_metadata (key, value) VALUES ('name', 'My Campaign')")
+                .execute(&pool)
+                .await
+                .ok();
+            sqlx::query("INSERT OR IGNORE INTO tome_metadata (key, value) VALUES ('created_at', ?)")
+                .bind(&now)
+                .execute(&pool)
+                .await
+                .ok();
+
+            // Set as active pool
+            {
+                let mut guard = managed.write().await;
+                *guard = Some(pool);
+            }
+
+            // Add to recent tomes
+            app_state::add_recent_tome(app, &tome_path_str, "My Campaign", None);
+
+            log::info!("Legacy database migrated to: {}", tome_path_str);
+        }
+        Err(e) => {
+            log::error!("Failed to open migrated tome: {}", e);
+        }
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +88,14 @@ pub fn run() {
 
             // Manage a ManagedDb with no active connection — Tome Picker will open a Tome
             let managed_db = db::create_managed_db();
+
+            // Auto-migrate legacy vaelorium.db to a .vaelorium Tome file
+            let handle = app.handle().clone();
+            let managed_clone = managed_db.clone();
+            tauri::async_runtime::block_on(async {
+                migrate_legacy_db(&handle, &managed_clone).await;
+            });
+
             app.manage(managed_db);
 
             Ok(())

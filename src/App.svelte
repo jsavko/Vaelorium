@@ -15,14 +15,25 @@
   import { createPage, currentPageId } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
   import { loadEntityTypes } from './lib/stores/entityTypeStore'
-  import { isTomeOpen, loadRecentTomes } from './lib/stores/tomeStore'
+  import { isTomeOpen, currentTome, currentTomeMetadata, loadRecentTomes } from './lib/stores/tomeStore'
+  import { getTomeMetadata } from './lib/api/tomes'
   import { isTauri } from './lib/api/bridge'
   import { matchesKeybind } from './lib/utils/keybinds'
 
   onMount(async () => {
     if (isTauri) {
-      // In Tauri, start on Tome Picker — no DB until a Tome is opened
       await loadRecentTomes()
+      // Check if a Tome was auto-opened (legacy migration)
+      try {
+        const meta = await getTomeMetadata()
+        if (meta) {
+          isTomeOpen.set(true)
+          currentTomeMetadata.set(meta)
+          currentTome.set({ path: '', name: meta.name, description: meta.description })
+        }
+      } catch {
+        // No Tome open — stay on Tome Picker
+      }
     } else {
       // In browser mock, a Tome is always "open"
       isTomeOpen.set(true)
