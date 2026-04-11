@@ -34,7 +34,11 @@
     if (e.shiftKey) parts.push('Shift')
     if (e.altKey) parts.push('Alt')
     if (!['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
-      parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key)
+      if (e.key === ' ') {
+        parts.push('Space')
+      } else {
+        parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key)
+      }
     }
     if (parts.length > 1 || (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey)) {
       const combo = parts.join('+')

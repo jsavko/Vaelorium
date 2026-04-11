@@ -31,6 +31,16 @@ describe('parseKeybind', () => {
     const result = parseKeybind('Escape')
     expect(result).toEqual({ ctrl: false, shift: false, alt: false, key: 'Escape' })
   })
+
+  it('parses Ctrl+Space', () => {
+    const result = parseKeybind('Ctrl+Space')
+    expect(result).toEqual({ ctrl: true, shift: false, alt: false, key: ' ' })
+  })
+
+  it('parses Ctrl+ (raw space char)', () => {
+    const result = parseKeybind('Ctrl+ ')
+    expect(result).toEqual({ ctrl: true, shift: false, alt: false, key: ' ' })
+  })
 })
 
 describe('matchesKeybind', () => {
@@ -71,6 +81,10 @@ describe('matchesKeybind', () => {
 
   it('matches Ctrl+\\', () => {
     expect(matchesKeybind(makeEvent({ key: '\\', ctrlKey: true }), 'Ctrl+\\')).toBe(true)
+  })
+
+  it('matches Ctrl+Space', () => {
+    expect(matchesKeybind(makeEvent({ key: ' ', ctrlKey: true }), 'Ctrl+Space')).toBe(true)
   })
 
   it('matches case-insensitively for single chars', () => {
