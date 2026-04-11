@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createTome } from '../stores/tomeStore'
+  import { isTauri } from '../api/bridge'
 
   interface Props {
     open: boolean
@@ -16,8 +17,21 @@
     if (!name.trim()) return
     saving = true
     try {
-      // For browser mock, use a synthetic path. In Tauri, this would be a file dialog result.
-      const path = `/tomes/${name.trim().toLowerCase().replace(/\s+/g, '-')}.vaelorium`
+      let path: string | null = null
+
+      if (isTauri) {
+        // Use native save dialog for real file path
+        const { save } = await import('@tauri-apps/plugin-dialog')
+        path = await save({
+          defaultPath: `${name.trim().replace(/\s+/g, '-')}.vaelorium`,
+          filters: [{ name: 'Vaelorium Tome', extensions: ['vaelorium'] }],
+        }) as string | null
+        if (!path) { saving = false; return }
+      } else {
+        // Browser mock — synthetic path
+        path = `/tomes/${name.trim().toLowerCase().replace(/\s+/g, '-')}.vaelorium`
+      }
+
       await createTome(path, name.trim(), description.trim() || undefined)
       resetAndClose()
     } finally {

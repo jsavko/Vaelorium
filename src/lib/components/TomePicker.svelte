@@ -1,6 +1,7 @@
 <script lang="ts">
   import { BookOpen, FolderOpen, Plus, Map as MapIcon } from 'lucide-svelte'
   import { recentTomes, openTome, loadRecentTomes } from '../stores/tomeStore'
+  import { isTauri } from '../api/bridge'
   import { onMount } from 'svelte'
   import type { RecentTome } from '../api/tomes'
 
@@ -16,6 +17,19 @@
 
   async function handleOpenRecent(tome: RecentTome) {
     await openTome(tome.path)
+  }
+
+  async function handleOpenFile() {
+    if (isTauri) {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const path = await open({
+        filters: [{ name: 'Vaelorium Tome', extensions: ['vaelorium'] }],
+        multiple: false,
+      })
+      if (path) {
+        await openTome(path as string)
+      }
+    }
   }
 
   function formatDate(iso: string): string {
@@ -75,7 +89,7 @@
     {/if}
 
     <div class="picker-footer">
-      <button class="open-file-btn" onclick={onCreateNew}>
+      <button class="open-file-btn" onclick={handleOpenFile}>
         <FolderOpen size={16} />
         <span>Open Tome File</span>
       </button>
