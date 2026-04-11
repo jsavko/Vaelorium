@@ -1,5 +1,6 @@
 <script lang="ts">
   import BacklinksPanel from './BacklinksPanel.svelte'
+  import EntityFields from './EntityFields.svelte'
   import TagInput from './TagInput.svelte'
   import { currentPage, updateCurrentPage } from '../stores/pageStore'
   import { entityTypes, entityTypeMap } from '../stores/entityTypeStore'
@@ -55,6 +56,10 @@
           {/each}
         </select>
       </div>
+
+      <div class="section-divider"></div>
+
+      <EntityFields />
 
       <div class="section-divider"></div>
 
