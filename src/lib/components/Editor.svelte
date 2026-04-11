@@ -7,6 +7,7 @@
   import { entityTypeMap } from '../stores/entityTypeStore'
   import IconPicker from './IconPicker.svelte'
   import { get } from 'svelte/store'
+  import { pickAndUploadImage, getImageUrl } from '../api/images'
   import type { Page } from '../api/pages'
 
   let editorElement: HTMLDivElement
@@ -90,9 +91,26 @@
     }
   }
 
-  function handleEditorDrop(e: DragEvent) {
+  async function handleEditorDrop(e: DragEvent) {
+    if (!editor) return
+
+    // Check for dropped image files
+    const files = e.dataTransfer?.files
+    if (files && files.length > 0) {
+      const file = files[0]
+      if (file.type.startsWith('image/')) {
+        e.preventDefault()
+        const { uploadFileObject } = await import('../api/images')
+        const info = await uploadFileObject(file)
+        const url = await getImageUrl(info.id)
+        editor.chain().focus().setImage({ src: url }).run()
+        return
+      }
+    }
+
+    // Check for page drag (wiki link)
     const pageId = e.dataTransfer?.getData('text/plain')
-    if (!pageId || !editor) return
+    if (!pageId) return
 
     if (pageId.match(/^[0-9a-f-]{36}$/)) {
       e.preventDefault()
@@ -206,7 +224,13 @@
       <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => { const url = prompt('Enter link URL:'); if (url) editor?.chain().focus().setLink({ href: url }).run(); }}>
         Link
       </button>
-      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => { const url = prompt('Enter image URL:'); if (url) editor?.chain().focus().setImage({ src: url }).run(); }}>
+      <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={async () => {
+        const info = await pickAndUploadImage()
+        if (info) {
+          const url = await getImageUrl(info.id)
+          editor?.chain().focus().setImage({ src: url }).run()
+        }
+      }}>
         Img
       </button>
       <button class="toolbar-btn" onmousedown={(e) => e.preventDefault()} onclick={() => editor?.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>

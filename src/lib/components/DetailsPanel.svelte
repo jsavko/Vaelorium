@@ -4,6 +4,7 @@
   import TagInput from './TagInput.svelte'
   import { currentPage, updateCurrentPage } from '../stores/pageStore'
   import { entityTypes, entityTypeMap } from '../stores/entityTypeStore'
+  import { pickAndUploadImage, getImageUrl } from '../api/images'
 
   interface Props {
     open: boolean
@@ -13,8 +14,9 @@
   let { open, onClose }: Props = $props()
 
   async function setImage() {
-    const url = prompt('Enter image URL:')
-    if (url) {
+    const info = await pickAndUploadImage()
+    if (info) {
+      const url = await getImageUrl(info.id)
       await updateCurrentPage({ featured_image_path: url })
     }
   }

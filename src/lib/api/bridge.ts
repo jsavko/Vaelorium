@@ -36,6 +36,7 @@ const mockDb = {
   entityTypeFields: new Map<string, any>(),
   entityFieldValues: new Map<string, any>(),
   nextSortOrder: 1,
+  images: new Map<string, any>(),
   tomeOpen: true,
   tomeMeta: { name: 'Dev Tome', description: 'Browser development tome', created_at: '2026-01-01T00:00:00Z' } as any,
   recentTomes: [
@@ -518,6 +519,39 @@ async function mockCommand(command: string, args?: any): Promise<any> {
           entity_type_id: p.entity_type_id,
         }))
         .sort((a: any, b: any) => a.title.localeCompare(b.title))
+    }
+
+    // ── Images ──
+
+    case 'upload_image': {
+      const id = uuid()
+      const img = { id, filename: args.path?.split('/').pop() || 'image', mime_type: 'image/png', data: [], created_at: now() }
+      mockDb.images.set(id, img)
+      return { id: img.id, filename: img.filename, mime_type: img.mime_type, created_at: img.created_at }
+    }
+
+    case 'upload_image_data': {
+      const id = uuid()
+      const img = { id, filename: args.filename, mime_type: 'image/png', data: args.data || [], created_at: now() }
+      mockDb.images.set(id, img)
+      return { id: img.id, filename: img.filename, mime_type: img.mime_type, created_at: img.created_at }
+    }
+
+    case 'get_image': {
+      const img = mockDb.images.get(args.id)
+      if (!img) throw new Error('Image not found')
+      return img
+    }
+
+    case 'delete_image': {
+      mockDb.images.delete(args.id)
+      return null
+    }
+
+    case 'list_images': {
+      return Array.from(mockDb.images.values()).map((img: any) => ({
+        id: img.id, filename: img.filename, mime_type: img.mime_type, created_at: img.created_at,
+      }))
     }
 
     // ── Tomes ──

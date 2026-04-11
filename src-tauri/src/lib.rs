@@ -86,6 +86,9 @@ pub fn run() {
                 )?;
             }
 
+            app.handle().plugin(tauri_plugin_dialog::init())?;
+            app.handle().plugin(tauri_plugin_fs::init())?;
+
             // Manage a ManagedDb with no active connection — Tome Picker will open a Tome
             let managed_db = db::create_managed_db();
 
@@ -147,6 +150,12 @@ pub fn run() {
             commands::entity_fields::update_entity_type_field,
             commands::entity_fields::delete_entity_type_field,
             commands::entity_fields::reorder_entity_type_fields,
+            // Images
+            commands::images::upload_image,
+            commands::images::upload_image_data,
+            commands::images::get_image,
+            commands::images::delete_image,
+            commands::images::list_images,
             // Field Values
             commands::field_values::get_page_field_values,
             commands::field_values::set_field_value,

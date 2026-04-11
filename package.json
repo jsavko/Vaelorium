@@ -36,6 +36,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/cli": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "@tauri-apps/plugin-fs": "^2.5.0",
     "@tiptap/core": "^3.22.3",
     "@tiptap/extension-character-count": "^3.22.3",
     "@tiptap/extension-collaboration": "^3.22.3",
