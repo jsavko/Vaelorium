@@ -266,7 +266,8 @@
     {#if pinForm}
       {@const fx = transform.x + pinForm.x * imgWidth * transform.scale}
       {@const fy = transform.y + pinForm.y * imgHeight * transform.scale}
-      <div class="pin-form" style:left="{fx + 16}px" style:top="{fy}px">
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+      <div class="pin-form" style:left="{fx + 16}px" style:top="{fy}px" onclick={(e) => e.stopPropagation()} onmousedown={(e) => e.stopPropagation()}>
         <input class="pin-input" bind:value={pinForm.label} placeholder="Pin label..." />
         <div class="color-row">
           <label class="color-label">Color</label>
@@ -294,7 +295,8 @@
     {#if editingPin}
       {@const ex = transform.x + editingPin.x * imgWidth * transform.scale}
       {@const ey = transform.y + editingPin.y * imgHeight * transform.scale}
-      <div class="pin-form" style:left="{ex + 16}px" style:top="{ey}px">
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+      <div class="pin-form" style:left="{ex + 16}px" style:top="{ey}px" onclick={(e) => e.stopPropagation()} onmousedown={(e) => e.stopPropagation()}>
         <div class="pin-form-header">
           <span class="pin-form-title">Edit Pin</span>
           <button class="pin-delete" onclick={deleteEditPin} title="Delete pin">×</button>
