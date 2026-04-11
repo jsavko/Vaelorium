@@ -1,5 +1,5 @@
 ---
-status: created
+status: completed
 ---
 # M2 Phase 1: Entity Type Data Layer
 
@@ -38,37 +38,37 @@ Create the database schema, Rust commands, bridge mock, and unit tests for the e
 
 ## Tasks
 
-- [ ] **1.** Create `src-tauri/migrations/002_entity_types.sql` — CREATE TABLE for entity_types, entity_type_fields, entity_field_values + indexes. INSERT 8 built-in types with hardcoded UUIDs. INSERT default fields for each type (per design spec table).
+- [x] **1.** Create `src-tauri/migrations/002_entity_types.sql` — CREATE TABLE for entity_types, entity_type_fields, entity_field_values + indexes. INSERT 8 built-in types with hardcoded UUIDs. INSERT default fields for each type (per design spec table).
 
-- [ ] **2.** Create `src-tauri/src/commands/entity_types.rs` — Rust commands:
+- [x] **2.** Create `src-tauri/src/commands/entity_types.rs` — Rust commands:
   - `list_entity_types() -> Vec<EntityType>`
   - `get_entity_type(id) -> EntityType`
   - `create_entity_type(name, icon, color) -> EntityType`
   - `update_entity_type(id, name?, icon?, color?) -> EntityType`
   - `delete_entity_type(id)` (only custom types, not built-in)
 
-- [ ] **3.** Create `src-tauri/src/commands/entity_fields.rs` — Rust commands:
+- [x] **3.** Create `src-tauri/src/commands/entity_fields.rs` — Rust commands:
   - `list_entity_type_fields(entity_type_id) -> Vec<EntityTypeField>`
   - `create_entity_type_field(entity_type_id, name, field_type, options?, ...) -> EntityTypeField`
   - `update_entity_type_field(id, name?, field_type?, sort_order?, ...) -> EntityTypeField`
   - `delete_entity_type_field(id)`
   - `reorder_entity_type_fields(moves: Vec<{id, sort_order}>)`
 
-- [ ] **4.** Create `src-tauri/src/commands/field_values.rs` — Rust commands:
+- [x] **4.** Create `src-tauri/src/commands/field_values.rs` — Rust commands:
   - `get_page_field_values(page_id) -> Vec<FieldValue>`
   - `set_field_value(page_id, field_id, value)` (upsert)
   - `delete_field_value(page_id, field_id)`
   - `query_pages_by_field(field_id, value) -> Vec<Page>` (for cross-entity queries)
 
-- [ ] **5.** Register all new commands in `src-tauri/src/lib.rs` invoke_handler. Add modules to `commands/mod.rs`. Verify `cargo check` passes.
+- [x] **5.** Register all new commands in `src-tauri/src/lib.rs` invoke_handler. Add modules to `commands/mod.rs`. Verify `cargo check` passes.
 
-- [ ] **6.** Add all new commands to `src/lib/api/bridge.ts` mock backend — mock entity_types, entity_type_fields, entity_field_values maps. Seed 8 built-in types on mock initialization.
+- [x] **6.** Add all new commands to `src/lib/api/bridge.ts` mock backend — mock entity_types, entity_type_fields, entity_field_values maps. Seed 8 built-in types on mock initialization.
 
-- [ ] **7.** Create `src/lib/api/entityTypes.ts` — TypeScript API wrappers (typed `callCommand` wrappers for all entity type/field/value commands).
+- [x] **7.** Create `src/lib/api/entityTypes.ts` — TypeScript API wrappers (typed `callCommand` wrappers for all entity type/field/value commands).
 
-- [ ] **8.** Create `src/lib/stores/entityTypeStore.ts` — Svelte store wrapping entity type commands. Reactive state for: all types, current page's type + fields + values.
+- [x] **8.** Create `src/lib/stores/entityTypeStore.ts` — Svelte store wrapping entity type commands. Reactive state for: all types, current page's type + fields + values.
 
-- [ ] **9.** Write unit tests (`src/lib/api/entityTypes.test.ts`):
+- [x] **9.** Write unit tests (`src/lib/api/entityTypes.test.ts`):
   - List built-in types returns 8
   - Create custom type
   - Add fields to custom type
@@ -76,9 +76,9 @@ Create the database schema, Rust commands, bridge mock, and unit tests for the e
   - Delete custom type (verify built-in types can't be deleted)
   - Query pages by field value
 
-- [ ] **10.** Verify all existing tests still pass (no regressions from new migration/commands).
+- [x] **10.** Verify all existing tests still pass (no regressions from new migration/commands).
 
-- [ ] **11.** Create Phase 2 plan: `.claude/plans/2026-04-11-m2-phase2-type-selector.md`
+- [x] **11.** Create Phase 2 plan: `.claude/plans/2026-04-11-m2-phase2-type-selector.md`
 
 ## Notes
 

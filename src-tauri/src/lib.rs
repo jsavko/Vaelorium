@@ -53,6 +53,23 @@ pub fn run() {
             commands::versions::create_version,
             commands::versions::list_versions,
             commands::versions::get_version_snapshot,
+            // Entity Types
+            commands::entity_types::list_entity_types,
+            commands::entity_types::get_entity_type,
+            commands::entity_types::create_entity_type,
+            commands::entity_types::update_entity_type,
+            commands::entity_types::delete_entity_type,
+            // Entity Fields
+            commands::entity_fields::list_entity_type_fields,
+            commands::entity_fields::create_entity_type_field,
+            commands::entity_fields::update_entity_type_field,
+            commands::entity_fields::delete_entity_type_field,
+            commands::entity_fields::reorder_entity_type_fields,
+            // Field Values
+            commands::field_values::get_page_field_values,
+            commands::field_values::set_field_value,
+            commands::field_values::delete_field_value,
+            commands::field_values::query_pages_by_field,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

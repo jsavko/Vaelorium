@@ -3,3 +3,6 @@ pub mod wiki_links;
 pub mod search;
 pub mod tags;
 pub mod versions;
+pub mod entity_types;
+pub mod entity_fields;
+pub mod field_values;

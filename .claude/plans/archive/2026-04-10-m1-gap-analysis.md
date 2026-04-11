@@ -1,5 +1,5 @@
 ---
-status: created
+status: completed
 ---
 # M1 Wiki Engine — Gap Analysis & Fix Plan
 

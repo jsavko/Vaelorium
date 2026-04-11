@@ -13,6 +13,7 @@ pub async fn run(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
 
     let migrations: Vec<(&str, &str)> = vec![
         ("001_wiki_engine", include_str!("../../migrations/001_wiki_engine.sql")),
+        ("002_entity_types", include_str!("../../migrations/002_entity_types.sql")),
     ];
 
     for (name, sql) in migrations {

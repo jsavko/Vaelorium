@@ -32,8 +32,87 @@ const mockDb = {
   pageTags: new Map<string, Set<string>>(),
   wikiLinks: new Map<string, any[]>(),
   versions: new Map<string, any[]>(),
+  entityTypes: new Map<string, any>(),
+  entityTypeFields: new Map<string, any>(),
+  entityFieldValues: new Map<string, any>(),
   nextSortOrder: 1,
 }
+
+// Seed built-in entity types
+function seedBuiltinEntityTypes() {
+  const ts = '2026-01-01T00:00:00Z'
+  const builtinTypes = [
+    { id: 'builtin-character', name: 'Character', icon: 'shield', color: '#B85C5C', sort_order: 1 },
+    { id: 'builtin-location', name: 'Location', icon: 'compass', color: '#4A8C6A', sort_order: 2 },
+    { id: 'builtin-quest', name: 'Quest', icon: 'scroll', color: '#5C7AB8', sort_order: 3 },
+    { id: 'builtin-organisation', name: 'Organisation', icon: 'users', color: '#8B5CB8', sort_order: 4 },
+    { id: 'builtin-item', name: 'Item', icon: 'gem', color: '#B8955C', sort_order: 5 },
+    { id: 'builtin-creature', name: 'Creature', icon: 'bug', color: '#5CB8A8', sort_order: 6 },
+    { id: 'builtin-event', name: 'Event', icon: 'sparkles', color: '#B85C8B', sort_order: 7 },
+    { id: 'builtin-journal', name: 'Journal', icon: 'notebook-pen', color: '#7A8C5C', sort_order: 8 },
+  ]
+  for (const t of builtinTypes) {
+    mockDb.entityTypes.set(t.id, { ...t, is_builtin: true, created_at: ts, updated_at: ts })
+  }
+
+  const builtinFields: Array<{ id: string; entity_type_id: string; name: string; field_type: string; sort_order: number; options?: string; default_value?: string; reference_type_id?: string }> = [
+    // Character
+    { id: 'field-char-race', entity_type_id: 'builtin-character', name: 'Race', field_type: 'text', sort_order: 1 },
+    { id: 'field-char-class', entity_type_id: 'builtin-character', name: 'Class', field_type: 'text', sort_order: 2 },
+    { id: 'field-char-alignment', entity_type_id: 'builtin-character', name: 'Alignment', field_type: 'select', sort_order: 3, options: '["Lawful Good","Neutral Good","Chaotic Good","Lawful Neutral","True Neutral","Chaotic Neutral","Lawful Evil","Neutral Evil","Chaotic Evil"]' },
+    { id: 'field-char-status', entity_type_id: 'builtin-character', name: 'Status', field_type: 'select', sort_order: 4, default_value: '"Alive"', options: '["Alive","Dead","Missing","Unknown"]' },
+    { id: 'field-char-hp', entity_type_id: 'builtin-character', name: 'HP', field_type: 'number', sort_order: 5 },
+    { id: 'field-char-location', entity_type_id: 'builtin-character', name: 'Location', field_type: 'page_reference', sort_order: 6, reference_type_id: 'builtin-location' },
+    { id: 'field-char-organisation', entity_type_id: 'builtin-character', name: 'Organisation', field_type: 'page_reference', sort_order: 7, reference_type_id: 'builtin-organisation' },
+    // Location
+    { id: 'field-loc-type', entity_type_id: 'builtin-location', name: 'Type', field_type: 'select', sort_order: 1, options: '["City","Town","Village","Fortress","Temple","Wilderness","Other"]' },
+    { id: 'field-loc-region', entity_type_id: 'builtin-location', name: 'Region', field_type: 'page_reference', sort_order: 2, reference_type_id: 'builtin-location' },
+    { id: 'field-loc-population', entity_type_id: 'builtin-location', name: 'Population', field_type: 'number', sort_order: 3 },
+    { id: 'field-loc-climate', entity_type_id: 'builtin-location', name: 'Climate', field_type: 'text', sort_order: 4 },
+    // Quest
+    { id: 'field-quest-status', entity_type_id: 'builtin-quest', name: 'Status', field_type: 'select', sort_order: 1, default_value: '"Active"', options: '["Active","Completed","Failed","Abandoned"]' },
+    { id: 'field-quest-priority', entity_type_id: 'builtin-quest', name: 'Priority', field_type: 'select', sort_order: 2, default_value: '"Medium"', options: '["Low","Medium","High","Critical"]' },
+    { id: 'field-quest-giver', entity_type_id: 'builtin-quest', name: 'Giver', field_type: 'page_reference', sort_order: 3, reference_type_id: 'builtin-character' },
+    { id: 'field-quest-reward', entity_type_id: 'builtin-quest', name: 'Reward', field_type: 'text', sort_order: 4 },
+    // Organisation
+    { id: 'field-org-type', entity_type_id: 'builtin-organisation', name: 'Type', field_type: 'select', sort_order: 1, options: '["Guild","Order","Government","Criminal","Religious","Other"]' },
+    { id: 'field-org-leader', entity_type_id: 'builtin-organisation', name: 'Leader', field_type: 'page_reference', sort_order: 2, reference_type_id: 'builtin-character' },
+    { id: 'field-org-headquarters', entity_type_id: 'builtin-organisation', name: 'Headquarters', field_type: 'page_reference', sort_order: 3, reference_type_id: 'builtin-location' },
+    { id: 'field-org-members', entity_type_id: 'builtin-organisation', name: 'Members', field_type: 'number', sort_order: 4 },
+    // Item
+    { id: 'field-item-type', entity_type_id: 'builtin-item', name: 'Type', field_type: 'select', sort_order: 1, options: '["Weapon","Armor","Potion","Scroll","Wondrous","Other"]' },
+    { id: 'field-item-rarity', entity_type_id: 'builtin-item', name: 'Rarity', field_type: 'select', sort_order: 2, options: '["Common","Uncommon","Rare","Very Rare","Legendary","Artifact"]' },
+    { id: 'field-item-value', entity_type_id: 'builtin-item', name: 'Value', field_type: 'text', sort_order: 3 },
+    { id: 'field-item-owner', entity_type_id: 'builtin-item', name: 'Owner', field_type: 'page_reference', sort_order: 4, reference_type_id: 'builtin-character' },
+    // Creature
+    { id: 'field-creature-type', entity_type_id: 'builtin-creature', name: 'Type', field_type: 'select', sort_order: 1, options: '["Beast","Monstrosity","Undead","Fiend","Celestial","Dragon","Other"]' },
+    { id: 'field-creature-cr', entity_type_id: 'builtin-creature', name: 'Challenge Rating', field_type: 'text', sort_order: 2 },
+    { id: 'field-creature-habitat', entity_type_id: 'builtin-creature', name: 'Habitat', field_type: 'page_reference', sort_order: 3, reference_type_id: 'builtin-location' },
+    { id: 'field-creature-alignment', entity_type_id: 'builtin-creature', name: 'Alignment', field_type: 'select', sort_order: 4, options: '["Lawful Good","Neutral Good","Chaotic Good","Lawful Neutral","True Neutral","Chaotic Neutral","Lawful Evil","Neutral Evil","Chaotic Evil"]' },
+    // Event
+    { id: 'field-event-date', entity_type_id: 'builtin-event', name: 'Date', field_type: 'text', sort_order: 1 },
+    { id: 'field-event-duration', entity_type_id: 'builtin-event', name: 'Duration', field_type: 'text', sort_order: 2 },
+    { id: 'field-event-location', entity_type_id: 'builtin-event', name: 'Location', field_type: 'page_reference', sort_order: 3, reference_type_id: 'builtin-location' },
+    { id: 'field-event-significance', entity_type_id: 'builtin-event', name: 'Significance', field_type: 'select', sort_order: 4, options: '["Minor","Major","World-changing"]' },
+    // Journal
+    { id: 'field-journal-session', entity_type_id: 'builtin-journal', name: 'Session Number', field_type: 'number', sort_order: 1 },
+    { id: 'field-journal-date', entity_type_id: 'builtin-journal', name: 'Date Played', field_type: 'text', sort_order: 2 },
+    { id: 'field-journal-dm', entity_type_id: 'builtin-journal', name: 'DM', field_type: 'page_reference', sort_order: 3, reference_type_id: 'builtin-character' },
+    { id: 'field-journal-location', entity_type_id: 'builtin-journal', name: 'Location', field_type: 'page_reference', sort_order: 4, reference_type_id: 'builtin-location' },
+  ]
+  for (const f of builtinFields) {
+    mockDb.entityTypeFields.set(f.id, {
+      ...f,
+      is_required: false,
+      default_value: f.default_value || null,
+      options: f.options || null,
+      reference_type_id: f.reference_type_id || null,
+      created_at: ts,
+    })
+  }
+}
+
+seedBuiltinEntityTypes()
 
 function uuid() {
   return crypto.randomUUID()
@@ -240,6 +319,173 @@ async function mockCommand(command: string, args?: any): Promise<any> {
 
     case 'get_version_snapshot':
       return []
+
+    // ── Entity Types ──
+
+    case 'list_entity_types': {
+      return Array.from(mockDb.entityTypes.values()).sort(
+        (a: any, b: any) => a.sort_order - b.sort_order,
+      )
+    }
+
+    case 'get_entity_type': {
+      const et = mockDb.entityTypes.get(args.id)
+      if (!et) throw new Error('Entity type not found')
+      return et
+    }
+
+    case 'create_entity_type': {
+      const id = uuid()
+      const maxSort = Array.from(mockDb.entityTypes.values()).reduce(
+        (max: number, t: any) => Math.max(max, t.sort_order),
+        0,
+      )
+      const et = {
+        id,
+        name: args.name,
+        icon: args.icon || null,
+        color: args.color || null,
+        is_builtin: false,
+        sort_order: maxSort + 1,
+        created_at: now(),
+        updated_at: now(),
+      }
+      mockDb.entityTypes.set(id, et)
+      return et
+    }
+
+    case 'update_entity_type': {
+      const et = mockDb.entityTypes.get(args.id)
+      if (!et) throw new Error('Entity type not found')
+      if (args.name !== undefined) et.name = args.name
+      if (args.icon !== undefined) et.icon = args.icon
+      if (args.color !== undefined) et.color = args.color
+      et.updated_at = now()
+      return et
+    }
+
+    case 'delete_entity_type': {
+      const et = mockDb.entityTypes.get(args.id)
+      if (!et) throw new Error('Entity type not found')
+      if (et.is_builtin) throw new Error('Cannot delete built-in entity types')
+      // Clear entity_type_id from pages using this type
+      for (const page of mockDb.pages.values()) {
+        if (page.entity_type_id === args.id) page.entity_type_id = null
+      }
+      // Delete fields belonging to this type
+      for (const [fId, field] of mockDb.entityTypeFields) {
+        if (field.entity_type_id === args.id) {
+          // Delete field values for this field
+          for (const [vKey, val] of mockDb.entityFieldValues) {
+            if (val.field_id === fId) mockDb.entityFieldValues.delete(vKey)
+          }
+          mockDb.entityTypeFields.delete(fId)
+        }
+      }
+      mockDb.entityTypes.delete(args.id)
+      return null
+    }
+
+    // ── Entity Fields ──
+
+    case 'list_entity_type_fields': {
+      return Array.from(mockDb.entityTypeFields.values())
+        .filter((f: any) => f.entity_type_id === args.entity_type_id)
+        .sort((a: any, b: any) => a.sort_order - b.sort_order)
+    }
+
+    case 'create_entity_type_field': {
+      const id = uuid()
+      const existing = Array.from(mockDb.entityTypeFields.values()).filter(
+        (f: any) => f.entity_type_id === args.entity_type_id,
+      )
+      const maxSort = existing.reduce((max: number, f: any) => Math.max(max, f.sort_order), 0)
+      const field = {
+        id,
+        entity_type_id: args.entity_type_id,
+        name: args.name,
+        field_type: args.field_type,
+        sort_order: maxSort + 1,
+        is_required: args.is_required || false,
+        default_value: args.default_value || null,
+        options: args.options || null,
+        reference_type_id: args.reference_type_id || null,
+        created_at: now(),
+      }
+      mockDb.entityTypeFields.set(id, field)
+      return field
+    }
+
+    case 'update_entity_type_field': {
+      const field = mockDb.entityTypeFields.get(args.id)
+      if (!field) throw new Error('Field not found')
+      if (args.name !== undefined) field.name = args.name
+      if (args.field_type !== undefined) field.field_type = args.field_type
+      if (args.is_required !== undefined) field.is_required = args.is_required
+      if (args.default_value !== undefined) field.default_value = args.default_value
+      if (args.options !== undefined) field.options = args.options
+      if (args.reference_type_id !== undefined) field.reference_type_id = args.reference_type_id
+      return field
+    }
+
+    case 'delete_entity_type_field': {
+      // Delete field values for this field
+      for (const [vKey, val] of mockDb.entityFieldValues) {
+        if (val.field_id === args.id) mockDb.entityFieldValues.delete(vKey)
+      }
+      mockDb.entityTypeFields.delete(args.id)
+      return null
+    }
+
+    case 'reorder_entity_type_fields': {
+      for (const m of args.moves) {
+        const field = mockDb.entityTypeFields.get(m.id)
+        if (field) field.sort_order = m.sort_order
+      }
+      return null
+    }
+
+    // ── Field Values ──
+
+    case 'get_page_field_values': {
+      return Array.from(mockDb.entityFieldValues.values()).filter(
+        (v: any) => v.page_id === args.page_id,
+      )
+    }
+
+    case 'set_field_value': {
+      const key = `${args.page_id}:${args.field_id}`
+      const existing = mockDb.entityFieldValues.get(key)
+      const fv = {
+        id: existing?.id || uuid(),
+        page_id: args.page_id,
+        field_id: args.field_id,
+        value: args.value ?? null,
+      }
+      mockDb.entityFieldValues.set(key, fv)
+      return fv
+    }
+
+    case 'delete_field_value': {
+      const key = `${args.page_id}:${args.field_id}`
+      mockDb.entityFieldValues.delete(key)
+      return null
+    }
+
+    case 'query_pages_by_field': {
+      const matchingPageIds = Array.from(mockDb.entityFieldValues.values())
+        .filter((v: any) => v.field_id === args.field_id && v.value === args.value)
+        .map((v: any) => v.page_id)
+      return Array.from(mockDb.pages.values())
+        .filter((p: any) => matchingPageIds.includes(p.id))
+        .map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          icon: p.icon,
+          entity_type_id: p.entity_type_id,
+        }))
+        .sort((a: any, b: any) => a.title.localeCompare(b.title))
+    }
 
     default:
       console.warn(`Mock: unhandled command '${command}'`, args)
