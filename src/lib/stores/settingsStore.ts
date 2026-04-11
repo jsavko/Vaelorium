@@ -53,26 +53,28 @@ export const settings = writable<AppSettings>(loadSettings())
 
 export function updateKeybind(id: string, newKeys: string) {
   settings.update((s) => {
-    const kb = s.keybinds.find((k) => k.id === id)
-    if (kb) kb.keys = newKeys
-    saveSettings(s)
-    return s
+    const newKeybinds = s.keybinds.map((k) =>
+      k.id === id ? { ...k, keys: newKeys } : k
+    )
+    const newSettings = { ...s, keybinds: newKeybinds }
+    saveSettings(newSettings)
+    return newSettings
   })
 }
 
 export function resetKeybinds() {
   settings.update((s) => {
-    s.keybinds = defaultKeybinds.map((k) => ({ ...k }))
-    saveSettings(s)
-    return s
+    const newSettings = { ...s, keybinds: defaultKeybinds.map((k) => ({ ...k })) }
+    saveSettings(newSettings)
+    return newSettings
   })
 }
 
 export function updateAppearance(updates: Partial<AppSettings['appearance']>) {
   settings.update((s) => {
-    s.appearance = { ...s.appearance, ...updates }
-    saveSettings(s)
-    return s
+    const newSettings = { ...s, appearance: { ...s.appearance, ...updates } }
+    saveSettings(newSettings)
+    return newSettings
   })
 }
 

@@ -8,23 +8,36 @@
   import ToastContainer from './lib/components/ToastContainer.svelte'
   import Settings from './lib/components/Settings.svelte'
   import { createPage } from './lib/stores/pageStore'
+  import { settings } from './lib/stores/settingsStore'
+  import { matchesKeybind } from './lib/utils/keybinds'
 
   let searchOpen = $state(false)
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
 
+  function getKeybindCombo(id: string): string {
+    return $settings.keybinds.find((k) => k.id === id)?.keys || ''
+  }
+
   function handleKeydown(e: KeyboardEvent) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    // Don't handle keybinds when settings is open and listening for key input
+    if (settingsOpen) return
+
+    const searchCombo = getKeybindCombo('search')
+    const newPageCombo = getKeybindCombo('new-page')
+    const detailsCombo = getKeybindCombo('toggle-details')
+
+    if (searchCombo && matchesKeybind(e, searchCombo)) {
       e.preventDefault()
       searchOpen = !searchOpen
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
-      e.preventDefault()
-      detailsOpen = !detailsOpen
-    }
-    if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+    if (newPageCombo && matchesKeybind(e, newPageCombo)) {
       e.preventDefault()
       createPage('Untitled Page')
+    }
+    if (detailsCombo && matchesKeybind(e, detailsCombo)) {
+      e.preventDefault()
+      detailsOpen = !detailsOpen
     }
   }
 </script>
