@@ -12,6 +12,7 @@ import Collaboration from '@tiptap/extension-collaboration'
 import { SlashCommands } from './SlashCommands'
 import { MentionExtension } from './MentionExtension'
 import { WikiLinkSyntax } from './WikiLinkSyntax'
+import { PageEmbedNode } from './PageEmbedExtension'
 import type { Doc as YDoc } from 'yjs'
 
 export function createEditorExtensions(ydoc: YDoc) {
@@ -40,5 +41,6 @@ export function createEditorExtensions(ydoc: YDoc) {
     SlashCommands,
     MentionExtension,
     WikiLinkSyntax,
+    PageEmbedNode,
   ]
 }

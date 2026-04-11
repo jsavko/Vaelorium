@@ -14,6 +14,8 @@
   let provider: LocalYjsProvider | null = null
   let titleInput: HTMLInputElement
   let currentLoadedPageId: string | null = null
+  let embedPickerOpen = $state(false)
+  let embedPickerEditor: Editor | null = null
 
   // React to page changes
   $effect(() => {
@@ -108,6 +110,36 @@
     }
   }
 
+  // Listen for embed request from slash command
+  function handleEmbedRequest(e: Event) {
+    const detail = (e as CustomEvent).detail
+    embedPickerEditor = detail.editor
+    embedPickerOpen = true
+  }
+
+  // Listen for navigation from embedded page "Open" button
+  function handleEmbedNavigate(e: Event) {
+    const detail = (e as CustomEvent).detail
+    loadPage(detail.pageId)
+  }
+
+  function selectPageForEmbed(pageId: string, pageTitle: string) {
+    if (embedPickerEditor) {
+      ;(embedPickerEditor.commands as any).insertPageEmbed({ pageId, pageTitle })
+    }
+    embedPickerOpen = false
+    embedPickerEditor = null
+  }
+
+  $effect(() => {
+    window.addEventListener('vaelorium:embed-request', handleEmbedRequest)
+    window.addEventListener('vaelorium:navigate', handleEmbedNavigate)
+    return () => {
+      window.removeEventListener('vaelorium:embed-request', handleEmbedRequest)
+      window.removeEventListener('vaelorium:navigate', handleEmbedNavigate)
+    }
+  })
+
   onDestroy(async () => {
     if (editor) editor.destroy()
     if (provider) await provider.destroy()
@@ -195,6 +227,25 @@
   <div class="welcome">
     <h1 class="welcome-title">Welcome to Vaelorium</h1>
     <p class="welcome-subtitle">The Arcane Library awaits. Create your first page to begin.</p>
+  </div>
+{/if}
+
+{#if embedPickerOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="embed-overlay" onclick={() => { embedPickerOpen = false; embedPickerEditor = null }} role="dialog" aria-modal="true">
+    <div class="embed-picker" onclick={(e) => e.stopPropagation()}>
+      <h3 class="embed-picker-title">Embed a Page</h3>
+      <div class="embed-page-list">
+        {#each $pageTree.filter((p) => p.id !== $currentPage?.id) as node (node.id)}
+          <button class="embed-page-item" onclick={() => selectPageForEmbed(node.id, node.title)}>
+            {node.title}
+          </button>
+        {/each}
+        {#if $pageTree.filter((p) => p.id !== $currentPage?.id).length === 0}
+          <p class="embed-empty">No other pages to embed.</p>
+        {/if}
+      </div>
+    </div>
   </div>
 {/if}
 
@@ -426,5 +477,127 @@
     font-family: var(--font-body);
     font-size: 18px;
     color: var(--color-fg-secondary);
+  }
+
+  /* Embed picker overlay */
+  .embed-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+  }
+
+  .embed-picker {
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    width: 360px;
+    max-height: 400px;
+    overflow-y: auto;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .embed-picker-title {
+    font-family: var(--font-heading);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-fg-primary);
+    margin: 0 0 12px;
+  }
+
+  .embed-page-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .embed-page-item {
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    color: var(--color-fg-primary);
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .embed-page-item:hover {
+    background: var(--color-surface-tertiary);
+  }
+
+  .embed-empty {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--color-fg-tertiary);
+    margin: 0;
+  }
+
+  /* Page embed node styles */
+  .editor-container :global(.page-embed-wrapper) {
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    margin: 16px 0;
+    overflow: hidden;
+    background: var(--color-surface-tertiary);
+  }
+
+  .editor-container :global(.page-embed-header) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: var(--color-surface-card);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+
+  .editor-container :global(.page-embed-title) {
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-accent-gold);
+  }
+
+  .editor-container :global(.page-embed-open) {
+    background: none;
+    border: none;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--color-accent-gold);
+    cursor: pointer;
+    opacity: 0.7;
+  }
+
+  .editor-container :global(.page-embed-open:hover) {
+    opacity: 1;
+  }
+
+  .editor-container :global(.page-embed-content) {
+    padding: 12px 14px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--color-fg-secondary);
+  }
+
+  .editor-container :global(.page-embed-loading) {
+    color: var(--color-fg-tertiary);
+    font-style: italic;
+  }
+
+  .editor-container :global(.page-embed-error) {
+    color: var(--color-status-error);
+    font-style: italic;
+  }
+
+  .editor-container :global(.page-embed-empty) {
+    color: var(--color-fg-tertiary);
+    font-style: italic;
   }
 </style>

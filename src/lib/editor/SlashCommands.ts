@@ -19,6 +19,10 @@ export const slashCommandItems: SlashCommandItem[] = [
   { label: 'Code Block', icon: '<>', action: (editor) => editor.chain().focus().toggleCodeBlock().run() },
   { label: 'Divider', icon: '—', action: (editor) => editor.chain().focus().setHorizontalRule().run() },
   { label: 'Table', icon: '▦', action: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run() },
+  { label: 'Page Embed', icon: '📄', action: (editor) => {
+    // Dispatch event for Editor.svelte to handle page selection
+    window.dispatchEvent(new CustomEvent('vaelorium:embed-request', { detail: { editor } }))
+  }},
 ]
 
 export type SlashMenuRenderer = {
