@@ -5,6 +5,7 @@
   import ConfirmDialog from './ConfirmDialog.svelte'
   import { nestedTree, loadPageTree, createPage, pageTree, reorderPages, deleteCurrentPage, loadPage, currentPageId } from '../stores/pageStore'
   import { builtinTypes, customTypes } from '../stores/entityTypeStore'
+  import { currentTome } from '../stores/tomeStore'
   import type { PageTreeNode } from '../api/pages'
   import { deletePage } from '../api/pages'
 
@@ -13,9 +14,10 @@
     onNewPage?: () => void
     onSelectType?: (typeId: string) => void
     activeTypeId?: string | null
+    onCloseTome?: () => void
   }
 
-  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null }: Props = $props()
+  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome }: Props = $props()
 
   // Collapsible sections with persisted state
   let typesCollapsed = $state(localStorage.getItem('vaelorium-types-collapsed') === 'true')
@@ -117,7 +119,7 @@
 
 <aside class="sidebar">
   <header class="sidebar-header">
-    <h1 class="logo">Vaelorium</h1>
+    <h1 class="logo">{$currentTome?.name || 'Vaelorium'}</h1>
     <button class="settings-btn" onclick={() => onOpenSettings?.()} aria-label="Settings">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="3"></circle>

@@ -1,4 +1,4 @@
-use crate::db::DbPool;
+use crate::db::{self, DbPool, ManagedDb};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -57,9 +57,10 @@ pub struct ReorderMove {
 
 #[tauri::command]
 pub async fn create_page(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     input: CreatePageInput,
 ) -> Result<Page, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -68,14 +69,14 @@ pub async fn create_page(
         "SELECT MAX(sort_order) FROM pages WHERE parent_id IS ?",
     )
     .bind(&input.parent_id)
-    .fetch_one(pool.inner())
+    .fetch_one(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
     let sort_order = max_sort.unwrap_or(0) + 1;
 
     // Use a transaction to ensure page + content are created atomically
-    let mut tx = pool.inner().begin().await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     sqlx::query(
         "INSERT INTO pages (id, title, icon, parent_id, sort_order, entity_type_id, visibility, created_at, updated_at)
@@ -104,16 +105,16 @@ pub async fn create_page(
 
     tx.commit().await.map_err(|e| e.to_string())?;
 
-    get_page(pool, id).await
+    get_page_by_pool(&pool, &id).await
 }
 
-#[tauri::command]
-pub async fn get_page(pool: State<'_, DbPool>, id: String) -> Result<Page, String> {
+/// Internal helper that fetches a page by id using a pool reference directly.
+async fn get_page_by_pool(pool: &DbPool, id: &str) -> Result<Page, String> {
     sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, i64, Option<String>, String, String, String, Option<String>, Option<String>)>(
         "SELECT id, title, icon, featured_image_path, parent_id, sort_order, entity_type_id, visibility, created_at, updated_at, created_by, updated_by FROM pages WHERE id = ?",
     )
-    .bind(&id)
-    .fetch_optional(pool.inner())
+    .bind(id)
+    .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?
     .map(|row| Page {
@@ -134,11 +135,18 @@ pub async fn get_page(pool: State<'_, DbPool>, id: String) -> Result<Page, Strin
 }
 
 #[tauri::command]
+pub async fn get_page(managed: State<'_, ManagedDb>, id: String) -> Result<Page, String> {
+    let pool = db::get_pool(managed.inner()).await?;
+    get_page_by_pool(&pool, &id).await
+}
+
+#[tauri::command]
 pub async fn update_page(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     id: String,
     input: UpdatePageInput,
 ) -> Result<Page, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let now = chrono::Utc::now().to_rfc3339();
 
     // Build dynamic update query
@@ -154,7 +162,7 @@ pub async fn update_page(
     if input.entity_type_id.is_some() { updates.push("entity_type_id = ?".to_string()); has_field = true; }
 
     if !has_field {
-        return get_page(pool, id).await;
+        return get_page_by_pool(&pool, &id).await;
     }
 
     let query_str = format!("UPDATE pages SET {} WHERE id = ?", updates.join(", "));
@@ -168,27 +176,29 @@ pub async fn update_page(
     if let Some(ref fip) = input.featured_image_path { query = query.bind(fip); }
     if let Some(ref etid) = input.entity_type_id { query = query.bind(etid); }
 
-    query.bind(&id).execute(pool.inner()).await.map_err(|e| e.to_string())?;
+    query.bind(&id).execute(&pool).await.map_err(|e| e.to_string())?;
 
-    get_page(pool, id).await
+    get_page_by_pool(&pool, &id).await
 }
 
 #[tauri::command]
-pub async fn delete_page(pool: State<'_, DbPool>, id: String) -> Result<(), String> {
+pub async fn delete_page(managed: State<'_, ManagedDb>, id: String) -> Result<(), String> {
+    let pool = db::get_pool(managed.inner()).await?;
     sqlx::query("DELETE FROM pages WHERE id = ?")
         .bind(&id)
-        .execute(pool.inner())
+        .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn list_pages(pool: State<'_, DbPool>) -> Result<Vec<Page>, String> {
+pub async fn list_pages(managed: State<'_, ManagedDb>) -> Result<Vec<Page>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, i64, Option<String>, String, String, String, Option<String>, Option<String>)>(
         "SELECT id, title, icon, featured_image_path, parent_id, sort_order, entity_type_id, visibility, created_at, updated_at, created_by, updated_by FROM pages ORDER BY sort_order",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -213,14 +223,15 @@ pub async fn list_pages(pool: State<'_, DbPool>) -> Result<Vec<Page>, String> {
 
 #[tauri::command]
 pub async fn list_pages_by_type(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     entity_type_id: String,
 ) -> Result<Vec<Page>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, i64, Option<String>, String, String, String, Option<String>, Option<String>)>(
         "SELECT id, title, icon, featured_image_path, parent_id, sort_order, entity_type_id, visibility, created_at, updated_at, created_by, updated_by FROM pages WHERE entity_type_id = ? ORDER BY title",
     )
     .bind(&entity_type_id)
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -244,11 +255,12 @@ pub async fn list_pages_by_type(
 }
 
 #[tauri::command]
-pub async fn get_page_tree(pool: State<'_, DbPool>) -> Result<Vec<PageTreeNode>, String> {
+pub async fn get_page_tree(managed: State<'_, ManagedDb>) -> Result<Vec<PageTreeNode>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, i64)>(
         "SELECT p.id, p.title, p.icon, p.entity_type_id, p.parent_id, p.sort_order FROM pages p ORDER BY p.sort_order",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -256,7 +268,7 @@ pub async fn get_page_tree(pool: State<'_, DbPool>) -> Result<Vec<PageTreeNode>,
     let child_counts = sqlx::query_as::<_, (String, i64)>(
         "SELECT parent_id, COUNT(*) FROM pages WHERE parent_id IS NOT NULL GROUP BY parent_id",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -278,14 +290,15 @@ pub async fn get_page_tree(pool: State<'_, DbPool>) -> Result<Vec<PageTreeNode>,
 
 #[tauri::command]
 pub async fn save_page_content(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     page_id: String,
     yjs_state: Vec<u8>,
 ) -> Result<(), String> {
+    let pool = db::get_pool(managed.inner()).await?;
     // Check page exists first to avoid FK violation
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pages WHERE id = ?)")
         .bind(&page_id)
-        .fetch_one(pool.inner())
+        .fetch_one(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -300,7 +313,7 @@ pub async fn save_page_content(
     )
     .bind(&page_id)
     .bind(&yjs_state)
-    .execute(pool.inner())
+    .execute(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -309,7 +322,7 @@ pub async fn save_page_content(
     sqlx::query("UPDATE pages SET updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(&page_id)
-        .execute(pool.inner())
+        .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -318,14 +331,15 @@ pub async fn save_page_content(
 
 #[tauri::command]
 pub async fn get_page_content(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     page_id: String,
 ) -> Result<Vec<u8>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let result: Option<Vec<u8>> = sqlx::query_scalar(
         "SELECT yjs_state FROM page_content WHERE page_id = ?",
     )
     .bind(&page_id)
-    .fetch_optional(pool.inner())
+    .fetch_optional(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -334,15 +348,16 @@ pub async fn get_page_content(
 
 #[tauri::command]
 pub async fn reorder_pages(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     moves: Vec<ReorderMove>,
 ) -> Result<(), String> {
+    let pool = db::get_pool(managed.inner()).await?;
     for m in moves {
         sqlx::query("UPDATE pages SET parent_id = ?, sort_order = ? WHERE id = ?")
             .bind(&m.parent_id)
             .bind(m.sort_order)
             .bind(&m.id)
-            .execute(pool.inner())
+            .execute(&pool)
             .await
             .map_err(|e| e.to_string())?;
     }

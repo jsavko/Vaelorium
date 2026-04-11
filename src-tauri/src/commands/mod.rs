@@ -6,3 +6,4 @@ pub mod versions;
 pub mod entity_types;
 pub mod entity_fields;
 pub mod field_values;
+pub mod tomes;

@@ -1,4 +1,4 @@
-use crate::db::DbPool;
+use crate::db::{self, DbPool, ManagedDb};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -15,12 +15,13 @@ pub struct EntityType {
 }
 
 #[tauri::command]
-pub async fn list_entity_types(pool: State<'_, DbPool>) -> Result<Vec<EntityType>, String> {
+pub async fn list_entity_types(managed: State<'_, ManagedDb>) -> Result<Vec<EntityType>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, bool, i64, String, String)>(
         "SELECT id, name, icon, color, is_builtin, sort_order, created_at, updated_at
          FROM entity_types ORDER BY sort_order, name",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -39,17 +40,14 @@ pub async fn list_entity_types(pool: State<'_, DbPool>) -> Result<Vec<EntityType
         .collect())
 }
 
-#[tauri::command]
-pub async fn get_entity_type(
-    pool: State<'_, DbPool>,
-    id: String,
-) -> Result<EntityType, String> {
+/// Internal helper that fetches an entity type by id using a pool reference directly.
+async fn get_entity_type_by_pool(pool: &DbPool, id: &str) -> Result<EntityType, String> {
     let row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, bool, i64, String, String)>(
         "SELECT id, name, icon, color, is_builtin, sort_order, created_at, updated_at
          FROM entity_types WHERE id = ?",
     )
-    .bind(&id)
-    .fetch_optional(pool.inner())
+    .bind(id)
+    .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?
     .ok_or_else(|| "Entity type not found".to_string())?;
@@ -67,12 +65,22 @@ pub async fn get_entity_type(
 }
 
 #[tauri::command]
+pub async fn get_entity_type(
+    managed: State<'_, ManagedDb>,
+    id: String,
+) -> Result<EntityType, String> {
+    let pool = db::get_pool(managed.inner()).await?;
+    get_entity_type_by_pool(&pool, &id).await
+}
+
+#[tauri::command]
 pub async fn create_entity_type(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     name: String,
     icon: Option<String>,
     color: Option<String>,
 ) -> Result<EntityType, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -80,7 +88,7 @@ pub async fn create_entity_type(
     let max_sort: Option<i64> = sqlx::query_scalar(
         "SELECT MAX(sort_order) FROM entity_types",
     )
-    .fetch_one(pool.inner())
+    .fetch_one(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -97,7 +105,7 @@ pub async fn create_entity_type(
     .bind(sort_order)
     .bind(&now)
     .bind(&now)
-    .execute(pool.inner())
+    .execute(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -115,12 +123,13 @@ pub async fn create_entity_type(
 
 #[tauri::command]
 pub async fn update_entity_type(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     id: String,
     name: Option<String>,
     icon: Option<String>,
     color: Option<String>,
 ) -> Result<EntityType, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let now = chrono::Utc::now().to_rfc3339();
 
     let mut updates = vec!["updated_at = ?".to_string()];
@@ -155,22 +164,23 @@ pub async fn update_entity_type(
     }
     query = query.bind(&id);
 
-    query.execute(pool.inner()).await.map_err(|e| e.to_string())?;
+    query.execute(&pool).await.map_err(|e| e.to_string())?;
 
-    get_entity_type(pool, id).await
+    get_entity_type_by_pool(&pool, &id).await
 }
 
 #[tauri::command]
 pub async fn delete_entity_type(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     id: String,
 ) -> Result<(), String> {
+    let pool = db::get_pool(managed.inner()).await?;
     // Prevent deleting built-in types
     let is_builtin: bool = sqlx::query_scalar(
         "SELECT is_builtin FROM entity_types WHERE id = ?",
     )
     .bind(&id)
-    .fetch_optional(pool.inner())
+    .fetch_optional(&pool)
     .await
     .map_err(|e| e.to_string())?
     .ok_or_else(|| "Entity type not found".to_string())?;
@@ -182,14 +192,14 @@ pub async fn delete_entity_type(
     // Clear entity_type_id from pages using this type
     sqlx::query("UPDATE pages SET entity_type_id = NULL WHERE entity_type_id = ?")
         .bind(&id)
-        .execute(pool.inner())
+        .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
     // Delete the type (cascades to fields and values)
     sqlx::query("DELETE FROM entity_types WHERE id = ?")
         .bind(&id)
-        .execute(pool.inner())
+        .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
 

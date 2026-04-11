@@ -1,4 +1,4 @@
-use crate::db::DbPool;
+use crate::db::{self, ManagedDb};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -14,11 +14,12 @@ pub struct PageVersion {
 
 #[tauri::command]
 pub async fn create_version(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     page_id: String,
     yjs_snapshot: Vec<u8>,
     summary: Option<String>,
 ) -> Result<PageVersion, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -26,7 +27,7 @@ pub async fn create_version(
         "SELECT MAX(version_number) FROM page_versions WHERE page_id = ?",
     )
     .bind(&page_id)
-    .fetch_one(pool.inner())
+    .fetch_one(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -42,7 +43,7 @@ pub async fn create_version(
     .bind(version_number)
     .bind(&now)
     .bind(&summary)
-    .execute(pool.inner())
+    .execute(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -58,15 +59,16 @@ pub async fn create_version(
 
 #[tauri::command]
 pub async fn list_versions(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     page_id: String,
 ) -> Result<Vec<PageVersion>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let rows = sqlx::query_as::<_, (String, String, i64, String, Option<String>, Option<String>)>(
         "SELECT id, page_id, version_number, created_at, created_by, summary
          FROM page_versions WHERE page_id = ? ORDER BY version_number DESC",
     )
     .bind(&page_id)
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -85,14 +87,15 @@ pub async fn list_versions(
 
 #[tauri::command]
 pub async fn get_version_snapshot(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     version_id: String,
 ) -> Result<Vec<u8>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let result: Option<Vec<u8>> = sqlx::query_scalar(
         "SELECT yjs_snapshot FROM page_versions WHERE id = ?",
     )
     .bind(&version_id)
-    .fetch_optional(pool.inner())
+    .fetch_optional(&pool)
     .await
     .map_err(|e| e.to_string())?;
 

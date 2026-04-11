@@ -8,21 +8,40 @@
   import MentionSuggestion from './lib/components/MentionSuggestion.svelte'
   import ToastContainer from './lib/components/ToastContainer.svelte'
   import NewPageModal from './lib/components/NewPageModal.svelte'
+  import TomePicker from './lib/components/TomePicker.svelte'
+  import CreateTomeModal from './lib/components/CreateTomeModal.svelte'
   import Settings from './lib/components/Settings.svelte'
   import { onMount } from 'svelte'
   import { createPage, currentPageId } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
   import { loadEntityTypes } from './lib/stores/entityTypeStore'
+  import { isTomeOpen, loadRecentTomes } from './lib/stores/tomeStore'
+  import { isTauri } from './lib/api/bridge'
   import { matchesKeybind } from './lib/utils/keybinds'
 
-  onMount(() => {
-    loadEntityTypes()
+  onMount(async () => {
+    if (isTauri) {
+      // In Tauri, start on Tome Picker — no DB until a Tome is opened
+      await loadRecentTomes()
+    } else {
+      // In browser mock, a Tome is always "open"
+      isTomeOpen.set(true)
+      await loadEntityTypes()
+    }
+  })
+
+  // Load entity types when a Tome is opened
+  $effect(() => {
+    if ($isTomeOpen) {
+      loadEntityTypes()
+    }
   })
 
   let searchOpen = $state(false)
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
   let newPageModalOpen = $state(false)
+  let createTomeModalOpen = $state(false)
   let activeTypeListId = $state<string | null>(null)
 
   // Clear entity list view when a page is selected
@@ -37,8 +56,7 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    // Don't handle keybinds when settings is open and listening for key input
-    if (settingsOpen) return
+    if (settingsOpen || !$isTomeOpen) return
 
     const searchCombo = getKeybindCombo('search')
     const newPageCombo = getKeybindCombo('new-page')
@@ -61,24 +79,48 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<div class="app-layout">
-  <Sidebar
-    onOpenSettings={() => settingsOpen = true}
-    onNewPage={() => newPageModalOpen = true}
-    onSelectType={(typeId) => { activeTypeListId = typeId; detailsOpen = false }}
-    activeTypeId={activeTypeListId}
-  />
-  {#if activeTypeListId}
-    <EntityListView
-      entityTypeId={activeTypeListId}
-      onOpenNewPage={() => newPageModalOpen = true}
-      onClose={() => activeTypeListId = null}
+{#if $isTomeOpen}
+  <div class="app-layout">
+    <Sidebar
+      onOpenSettings={() => settingsOpen = true}
+      onNewPage={() => newPageModalOpen = true}
+      onSelectType={(typeId) => { activeTypeListId = typeId; detailsOpen = false }}
+      activeTypeId={activeTypeListId}
+      onCloseTome={() => { isTomeOpen.set(false); loadRecentTomes() }}
     />
-  {:else}
-    <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
-    <DetailsPanel open={detailsOpen} onClose={() => detailsOpen = false} />
-  {/if}
-</div>
+    {#if activeTypeListId}
+      <EntityListView
+        entityTypeId={activeTypeListId}
+        onOpenNewPage={() => newPageModalOpen = true}
+        onClose={() => activeTypeListId = null}
+      />
+    {:else}
+      <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
+      <DetailsPanel open={detailsOpen} onClose={() => detailsOpen = false} />
+    {/if}
+  </div>
+
+  <SearchOverlay open={searchOpen} onClose={() => searchOpen = false} />
+  <SlashMenu />
+  <MentionSuggestion />
+  <Settings open={settingsOpen} onClose={() => settingsOpen = false} />
+  <NewPageModal
+    open={newPageModalOpen}
+    onClose={() => newPageModalOpen = false}
+    onCreate={async (title, parentId, entityTypeId) => {
+      newPageModalOpen = false
+      await createPage(title, parentId, entityTypeId)
+    }}
+  />
+{:else}
+  <TomePicker onCreateNew={() => createTomeModalOpen = true} />
+  <CreateTomeModal
+    open={createTomeModalOpen}
+    onClose={() => createTomeModalOpen = false}
+  />
+{/if}
+
+<ToastContainer />
 
 <style>
   .app-layout {
@@ -87,17 +129,3 @@
     height: 100%;
   }
 </style>
-
-<SearchOverlay open={searchOpen} onClose={() => searchOpen = false} />
-<SlashMenu />
-<MentionSuggestion />
-<Settings open={settingsOpen} onClose={() => settingsOpen = false} />
-<NewPageModal
-  open={newPageModalOpen}
-  onClose={() => newPageModalOpen = false}
-  onCreate={async (title, parentId, entityTypeId) => {
-    newPageModalOpen = false
-    await createPage(title, parentId, entityTypeId)
-  }}
-/>
-<ToastContainer />

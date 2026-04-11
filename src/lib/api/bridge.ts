@@ -36,6 +36,25 @@ const mockDb = {
   entityTypeFields: new Map<string, any>(),
   entityFieldValues: new Map<string, any>(),
   nextSortOrder: 1,
+  tomeOpen: true,
+  tomeMeta: { name: 'Dev Tome', description: 'Browser development tome', created_at: '2026-01-01T00:00:00Z' } as any,
+  recentTomes: [
+    { path: '/mock/dev-tome.vaelorium', name: 'Dev Tome', description: 'Browser development tome', last_opened: new Date().toISOString() },
+  ] as any[],
+}
+
+function resetMockDb() {
+  mockDb.pages.clear()
+  mockDb.pageContent.clear()
+  mockDb.tags.clear()
+  mockDb.pageTags.clear()
+  mockDb.wikiLinks.clear()
+  mockDb.versions.clear()
+  mockDb.entityTypes.clear()
+  mockDb.entityTypeFields.clear()
+  mockDb.entityFieldValues.clear()
+  mockDb.nextSortOrder = 1
+  seedBuiltinEntityTypes()
 }
 
 // Seed built-in entity types
@@ -500,6 +519,48 @@ async function mockCommand(command: string, args?: any): Promise<any> {
           entity_type_id: p.entity_type_id,
         }))
         .sort((a: any, b: any) => a.title.localeCompare(b.title))
+    }
+
+    // ── Tomes ──
+
+    case 'get_app_state': {
+      return { recent_tomes: mockDb.recentTomes }
+    }
+
+    case 'create_tome': {
+      mockDb.tomeOpen = true
+      mockDb.tomeMeta = { name: args.name, description: args.description || null, created_at: now(), cover_image: null }
+      resetMockDb()
+      const entry = { path: args.path || '/mock/' + args.name.toLowerCase().replace(/\s+/g, '-') + '.vaelorium', name: args.name, description: args.description || null, last_opened: now() }
+      mockDb.recentTomes = [entry, ...mockDb.recentTomes.filter((t: any) => t.path !== entry.path)].slice(0, 10)
+      return { path: entry.path, name: args.name, description: args.description || null }
+    }
+
+    case 'open_tome': {
+      mockDb.tomeOpen = true
+      const existing = mockDb.recentTomes.find((t: any) => t.path === args.path)
+      mockDb.tomeMeta = { name: existing?.name || 'Opened Tome', description: existing?.description || null, created_at: now(), cover_image: null }
+      resetMockDb()
+      if (existing) existing.last_opened = now()
+      return { path: args.path, name: mockDb.tomeMeta.name, description: mockDb.tomeMeta.description }
+    }
+
+    case 'close_tome': {
+      mockDb.tomeOpen = false
+      return null
+    }
+
+    case 'get_tome_metadata': {
+      if (!mockDb.tomeOpen) throw new Error('No Tome is currently open')
+      return mockDb.tomeMeta
+    }
+
+    case 'update_tome_metadata': {
+      if (!mockDb.tomeOpen) throw new Error('No Tome is currently open')
+      if (args.key === 'name') mockDb.tomeMeta.name = args.value
+      if (args.key === 'description') mockDb.tomeMeta.description = args.value
+      if (args.key === 'cover_image') mockDb.tomeMeta.cover_image = args.value
+      return null
     }
 
     default:

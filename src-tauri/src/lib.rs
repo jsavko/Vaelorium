@@ -1,3 +1,4 @@
+mod app_state;
 mod commands;
 mod db;
 
@@ -15,17 +16,20 @@ pub fn run() {
                 )?;
             }
 
-            let handle = app.handle().clone();
-            tauri::async_runtime::block_on(async {
-                let pool = db::init_db(&handle)
-                    .await
-                    .expect("Failed to initialize database");
-                handle.manage(pool);
-            });
+            // Manage a ManagedDb with no active connection — Tome Picker will open a Tome
+            let managed_db = db::create_managed_db();
+            app.manage(managed_db);
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Tomes
+            commands::tomes::get_app_state,
+            commands::tomes::create_tome,
+            commands::tomes::open_tome,
+            commands::tomes::close_tome,
+            commands::tomes::get_tome_metadata,
+            commands::tomes::update_tome_metadata,
             // Pages
             commands::pages::create_page,
             commands::pages::get_page,

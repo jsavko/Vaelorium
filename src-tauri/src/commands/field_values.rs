@@ -1,4 +1,4 @@
-use crate::db::DbPool;
+use crate::db::{self, ManagedDb};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -20,14 +20,15 @@ pub struct PageByFieldResult {
 
 #[tauri::command]
 pub async fn get_page_field_values(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     page_id: String,
 ) -> Result<Vec<FieldValue>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let rows = sqlx::query_as::<_, (String, String, String, Option<String>)>(
         "SELECT id, page_id, field_id, value FROM entity_field_values WHERE page_id = ?",
     )
     .bind(&page_id)
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -44,11 +45,12 @@ pub async fn get_page_field_values(
 
 #[tauri::command]
 pub async fn set_field_value(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     page_id: String,
     field_id: String,
     value: Option<String>,
 ) -> Result<FieldValue, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let id = uuid::Uuid::new_v4().to_string();
 
     // Upsert: INSERT OR REPLACE using the UNIQUE(page_id, field_id) constraint
@@ -58,7 +60,7 @@ pub async fn set_field_value(
     )
     .bind(&page_id)
     .bind(&field_id)
-    .fetch_optional(pool.inner())
+    .fetch_optional(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -73,7 +75,7 @@ pub async fn set_field_value(
     .bind(&page_id)
     .bind(&field_id)
     .bind(&value)
-    .execute(pool.inner())
+    .execute(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -87,14 +89,15 @@ pub async fn set_field_value(
 
 #[tauri::command]
 pub async fn delete_field_value(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     page_id: String,
     field_id: String,
 ) -> Result<(), String> {
+    let pool = db::get_pool(managed.inner()).await?;
     sqlx::query("DELETE FROM entity_field_values WHERE page_id = ? AND field_id = ?")
         .bind(&page_id)
         .bind(&field_id)
-        .execute(pool.inner())
+        .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -102,10 +105,11 @@ pub async fn delete_field_value(
 
 #[tauri::command]
 pub async fn query_pages_by_field(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     field_id: String,
     value: String,
 ) -> Result<Vec<PageByFieldResult>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
         "SELECT p.id, p.title, p.icon, p.entity_type_id
          FROM pages p
@@ -115,7 +119,7 @@ pub async fn query_pages_by_field(
     )
     .bind(&field_id)
     .bind(&value)
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 

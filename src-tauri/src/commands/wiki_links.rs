@@ -1,4 +1,4 @@
-use crate::db::DbPool;
+use crate::db::{self, ManagedDb};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -17,14 +17,15 @@ pub struct BacklinkResult {
 
 #[tauri::command]
 pub async fn save_wiki_links(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     source_page_id: String,
     links: Vec<WikiLinkInput>,
 ) -> Result<(), String> {
+    let pool = db::get_pool(managed.inner()).await?;
     // Delete existing links from this page
     sqlx::query("DELETE FROM wiki_links WHERE source_page_id = ?")
         .bind(&source_page_id)
-        .execute(pool.inner())
+        .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -36,7 +37,7 @@ pub async fn save_wiki_links(
         .bind(&source_page_id)
         .bind(&link.target_page_id)
         .bind(&link.link_text)
-        .execute(pool.inner())
+        .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
     }
@@ -46,9 +47,10 @@ pub async fn save_wiki_links(
 
 #[tauri::command]
 pub async fn get_backlinks(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     page_id: String,
 ) -> Result<Vec<BacklinkResult>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     let rows = sqlx::query_as::<_, (String, String, Option<String>)>(
         "SELECT p.id, p.title, p.entity_type_id
          FROM wiki_links wl
@@ -57,7 +59,7 @@ pub async fn get_backlinks(
          ORDER BY p.title",
     )
     .bind(&page_id)
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 

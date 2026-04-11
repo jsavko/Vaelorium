@@ -1,4 +1,4 @@
-use crate::db::DbPool;
+use crate::db::{self, ManagedDb};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -12,11 +12,12 @@ pub struct SearchResult {
 
 #[tauri::command]
 pub async fn update_search_index(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     page_id: String,
     title: String,
     text_content: String,
 ) -> Result<(), String> {
+    let pool = db::get_pool(managed.inner()).await?;
     // Upsert into backing table
     sqlx::query(
         "INSERT INTO pages_fts_content (page_id, title, text_content)
@@ -26,7 +27,7 @@ pub async fn update_search_index(
     .bind(&page_id)
     .bind(&title)
     .bind(&text_content)
-    .execute(pool.inner())
+    .execute(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -35,7 +36,7 @@ pub async fn update_search_index(
         "SELECT rowid FROM pages_fts_content WHERE page_id = ?",
     )
     .bind(&page_id)
-    .fetch_optional(pool.inner())
+    .fetch_optional(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -45,7 +46,7 @@ pub async fn update_search_index(
             .bind(rid)
             .bind(&title)
             .bind(&text_content)
-            .execute(pool.inner())
+            .execute(&pool)
             .await
             .ok(); // Ignore error if entry didn't exist
 
@@ -53,7 +54,7 @@ pub async fn update_search_index(
             .bind(rid)
             .bind(&title)
             .bind(&text_content)
-            .execute(pool.inner())
+            .execute(&pool)
             .await
             .map_err(|e| e.to_string())?;
     }
@@ -63,9 +64,10 @@ pub async fn update_search_index(
 
 #[tauri::command]
 pub async fn search_pages(
-    pool: State<'_, DbPool>,
+    managed: State<'_, ManagedDb>,
     query: String,
 ) -> Result<Vec<SearchResult>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
     if query.trim().is_empty() {
         return Ok(vec![]);
     }
@@ -83,7 +85,7 @@ pub async fn search_pages(
          LIMIT 20",
     )
     .bind(&fts_query)
-    .fetch_all(pool.inner())
+    .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
