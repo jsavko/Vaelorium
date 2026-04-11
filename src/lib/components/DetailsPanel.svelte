@@ -1,6 +1,7 @@
 <script lang="ts">
   import BacklinksPanel from './BacklinksPanel.svelte'
-  import { currentPage } from '../stores/pageStore'
+  import TagInput from './TagInput.svelte'
+  import { currentPage, updateCurrentPage } from '../stores/pageStore'
 
   interface Props {
     open: boolean
@@ -8,6 +9,17 @@
   }
 
   let { open, onClose }: Props = $props()
+
+  async function setImage() {
+    const url = prompt('Enter image URL:')
+    if (url) {
+      await updateCurrentPage({ featured_image_path: url })
+    }
+  }
+
+  async function removeImage() {
+    await updateCurrentPage({ featured_image_path: '' })
+  }
 </script>
 
 {#if open && $currentPage}
@@ -45,7 +57,23 @@
 
       <div class="section-divider"></div>
 
+      <TagInput />
+
+      <div class="section-divider"></div>
+
       <BacklinksPanel />
+
+      <div class="section-divider"></div>
+
+      <div class="section">
+        <h3 class="section-label">FEATURED IMAGE</h3>
+        {#if $currentPage?.featured_image_path}
+          <img class="featured-img" src={$currentPage.featured_image_path} alt="Featured" />
+          <button class="remove-img-btn" onclick={removeImage}>Remove image</button>
+        {:else}
+          <button class="set-img-btn" onclick={setImage}>Set featured image</button>
+        {/if}
+      </div>
     </div>
   </aside>
 {/if}
@@ -145,5 +173,32 @@
   .section-divider {
     height: 1px;
     background: var(--color-border-subtle);
+  }
+
+  .featured-img {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+  }
+
+  .set-img-btn,
+  .remove-img-btn {
+    background: none;
+    border: 1px dashed var(--color-border-default);
+    color: var(--color-fg-tertiary);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    width: 100%;
+    text-align: center;
+  }
+
+  .set-img-btn:hover,
+  .remove-img-btn:hover {
+    border-color: var(--color-accent-gold);
+    color: var(--color-accent-gold);
   }
 </style>
