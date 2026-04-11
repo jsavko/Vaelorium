@@ -8,6 +8,12 @@
   import type { PageTreeNode } from '../api/pages'
   import { deletePage } from '../api/pages'
 
+  interface Props {
+    onOpenSettings?: () => void
+  }
+
+  let { onOpenSettings }: Props = $props()
+
   const navItems = [
     { id: 'wiki', label: 'Wiki', active: true },
     { id: 'atlas', label: 'Atlas', active: false },
@@ -69,6 +75,12 @@
 <aside class="sidebar">
   <header class="sidebar-header">
     <h1 class="logo">Vaelorium</h1>
+    <button class="settings-btn" onclick={() => onOpenSettings?.()} aria-label="Settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+      </svg>
+    </button>
   </header>
 
   <div class="divider"></div>
@@ -153,6 +165,22 @@
     font-weight: 700;
     color: var(--color-accent-gold);
     margin: 0;
+  }
+
+  .settings-btn {
+    background: none;
+    border: none;
+    color: var(--color-fg-tertiary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+  }
+
+  .settings-btn:hover {
+    color: var(--color-fg-primary);
+    background: var(--color-surface-tertiary);
   }
 
   .divider {

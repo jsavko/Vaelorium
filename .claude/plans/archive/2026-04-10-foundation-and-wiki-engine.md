@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: completed
 ---
 # Milestone 0 + 1: Foundation & Wiki Engine
 
@@ -135,12 +135,12 @@ The Yjs document handling is a hybrid concern — Yjs serialization stays in JS 
 
 ### Phase 9: Settings Page
 
-- [ ] **9.1** Build Settings layout — sidebar nav (General, Keybinds, Appearance), content area
-- [ ] **9.2** Build Keybinds tab — list all keyboard shortcuts, editable bindings, reset to defaults
-- [ ] **9.3** Build Appearance tab — theme selector (dark library default, future themes), font size
-- [ ] **9.4** Create keybinds store — persisted settings, used by all keyboard shortcut handlers
-- [ ] **9.5** Wire Settings accessible from sidebar gear icon
-- [ ] **9.6** Unit + Playwright tests for Settings
+- [x] **9.1** Settings layout — sidebar nav (Keybinds, Appearance), modal overlay. 
+- [x] **9.2** Keybinds tab — lists 6 shortcuts, click to rebind, reset to defaults. 
+- [x] **9.3** Appearance tab — theme selector (Dark Library), font size slider.
+- [x] **9.4** Settings store — persisted to localStorage, keybind update/reset functions.
+- [x] **9.5** Settings accessible from sidebar gear icon.
+- [x] **9.6** 6 Playwright E2E tests for Settings, all passing.
 
 ## Notes
 

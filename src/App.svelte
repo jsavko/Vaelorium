@@ -6,10 +6,12 @@
   import SlashMenu from './lib/components/SlashMenu.svelte'
   import MentionSuggestion from './lib/components/MentionSuggestion.svelte'
   import ToastContainer from './lib/components/ToastContainer.svelte'
+  import Settings from './lib/components/Settings.svelte'
   import { createPage } from './lib/stores/pageStore'
 
   let searchOpen = $state(false)
   let detailsOpen = $state(false)
+  let settingsOpen = $state(false)
 
   function handleKeydown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -30,7 +32,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="app-layout">
-  <Sidebar />
+  <Sidebar onOpenSettings={() => settingsOpen = true} />
   <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
   <DetailsPanel open={detailsOpen} onClose={() => detailsOpen = false} />
 </div>
@@ -46,4 +48,5 @@
 <SearchOverlay open={searchOpen} onClose={() => searchOpen = false} />
 <SlashMenu />
 <MentionSuggestion />
+<Settings open={settingsOpen} onClose={() => settingsOpen = false} />
 <ToastContainer />
