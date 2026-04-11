@@ -222,12 +222,12 @@ Each milestone follows the same process:
 
 **Deliverables:**
 - [x] Project name and branding direction decided — **Vaelorium**, library/arcane athenaeum theme
-- [ ] Tauri 2 project scaffolded with chosen frontend framework
-- [ ] Rust backend skeleton with SQLite integration
-- [ ] Development environment documented (README with setup instructions)
-- [ ] CI pipeline (build + test on all 3 platforms)
-- [ ] Design system / component library foundations (typography, colors, spacing, base components)
-- [ ] Design tool and workflow established for mockups
+- [x] Tauri 2 project scaffolded with Svelte 5
+- [x] Rust backend skeleton with SQLite integration (sqlx, 21 commands)
+- [x] Development environment documented (README with setup instructions)
+- [ ] CI pipeline (build + test on all 3 platforms) — **DEFERRED to Milestone 10**
+- [x] Design system / component library foundations (Tailwind CSS 4 + design tokens in app.css)
+- [x] Design tool and workflow established for mockups (Pencil MCP)
 
 ---
 
@@ -235,25 +235,35 @@ Each milestone follows the same process:
 > **Goal:** The core writing and organizing experience — pages, nesting, rich text, linking, search
 
 **Design phase deliverables:**
-- [ ] Mockups: Page editor view (editing state, reading state)
-- [ ] Mockups: Page tree / sidebar navigation
-- [ ] Mockups: Cross-linking UI (@-mentions, wiki links, backlinks panel)
-- [ ] Mockups: Search interface and results
-- [ ] Mockups: Page metadata panel (tags, icon, featured image)
-- [ ] Design spec: TipTap editor configuration (which extensions, custom blocks)
-- [ ] Design spec: Page data model (SQLite schema + Yjs document structure)
-- [ ] Design spec: FTS5 search indexing strategy
+- [x] Mockups: Page editor view (editing state, reading state)
+- [x] Mockups: Page tree / sidebar navigation
+- [x] Mockups: Cross-linking UI (@-mentions, wiki links, backlinks panel)
+- [x] Mockups: Search interface and results
+- [x] Mockups: Page metadata panel (tags, icon, featured image)
+- [x] Design spec: TipTap editor configuration (which extensions, custom blocks)
+- [x] Design spec: Page data model (SQLite schema + Yjs document structure)
+- [x] Design spec: FTS5 search indexing strategy
 
 **Build phase deliverables:**
-- [ ] TipTap editor integrated with Yjs for CRDT storage
-- [ ] Page CRUD operations (create, read, update, delete)
-- [ ] Nested page tree with drag-and-drop reordering
-- [ ] Cross-linking with @-mentions and [[wiki links]]
-- [ ] Backlinks panel (show all pages that link to this one)
-- [ ] Full-text search
-- [ ] Page metadata (tags, icon, featured image)
-- [ ] Version history (Yjs snapshots, diff view)
-- [ ] Keyboard shortcuts for power users
+- [x] TipTap editor integrated with Yjs for CRDT storage
+- [x] Page CRUD operations (create, read, update, delete)
+- [x] Nested page tree with drag-and-drop reordering
+- [x] Cross-linking with @-mentions and [[wiki links]]
+- [x] Backlinks panel (show all pages that link to this one)
+- [x] Full-text search
+- [x] Page metadata (tags, icon, featured image)
+- [x] Version history (Yjs snapshots, preview, restore) — diff view **DEFERRED to Milestone 10**
+- [x] Keyboard shortcuts for power users (customizable in Settings)
+
+**Additional features delivered (not in original spec):**
+- [x] Slash commands (/ trigger with 9 block types)
+- [x] Settings page (keybinds + appearance/themes)
+- [x] Reading view toggle
+- [x] Rename propagates across all page mentions
+- [x] Context menu (right-click: new child, delete)
+- [x] Toast notifications, confirmation dialogs
+- [x] Browser mock bridge for testing without Tauri
+- [x] 80 tests (30 unit + 50 E2E)
 
 ---
 
@@ -447,6 +457,12 @@ Each milestone follows the same process:
 - [ ] SaaS billing integration (if launching managed sync)
 - [ ] Packaging and distribution (GitHub Releases, platform-specific installers)
 - [ ] Open source repository setup (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT)
+- [ ] CI pipeline (build + test on all 3 platforms) — deferred from M0
+- [ ] Version diff view (side-by-side comparison between versions) — deferred from M1
+- [ ] Callout block TipTap extension (info/warning/note boxes) — deferred from M1
+- [ ] Share button placeholder in toolbar
+- [ ] Connection count in page metadata row
+- [ ] ⌘K shortcut badge in search overlay
 
 ---
 
