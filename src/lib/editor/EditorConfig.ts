@@ -11,6 +11,7 @@ import CharacterCount from '@tiptap/extension-character-count'
 import Collaboration from '@tiptap/extension-collaboration'
 import { SlashCommands } from './SlashCommands'
 import { MentionExtension } from './MentionExtension'
+import { WikiLinkSyntax } from './WikiLinkSyntax'
 import type { Doc as YDoc } from 'yjs'
 
 export function createEditorExtensions(ydoc: YDoc) {
@@ -38,5 +39,6 @@ export function createEditorExtensions(ydoc: YDoc) {
     }),
     SlashCommands,
     MentionExtension,
+    WikiLinkSyntax,
   ]
 }

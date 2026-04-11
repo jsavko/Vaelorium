@@ -116,17 +116,17 @@ status: created
 
 ## Priority Order
 
-### P0: Critical Bugs
-- [ ] Fix backlinks: extract wiki links from doc on save, update wiki_links table
-- [ ] Fix SQLite multi-connection: verify WAL + pool config  
+### P0: Critical Bugs — ALL DONE
+- [x] Fix backlinks: extract wiki links from doc on save — commit 5b13bb9
+- [x] Fix SQLite multi-connection: PRAGMAs per-connection — commit 5b13bb9
 
-### P1: Missing from Mockups (visible gaps)
-- [ ] Add toolbar buttons: Underline, Link, Image, Table
-- [ ] Add ⋯ more menu with Version History and Delete
-- [ ] Wire reading view with edit/read toggle
-- [ ] Fix breadcrumbs to show parent chain
-- [ ] Add entity type colors to search results and mention dropdown
-- [ ] Add type label to search results
+### P1: Missing from Mockups (visible gaps) — ALL DONE
+- [x] Add toolbar buttons: Underline, Link, Image, Table — commit 7f0afbf
+- [x] Add ⋯ more menu with Version History and Delete — commit 7f0afbf
+- [x] Wire reading view with edit/read toggle — commit 7f0afbf
+- [x] Fix breadcrumbs to show parent chain — commit 7f0afbf
+- [x] Entity type colors in search/mention — already wired, shows gray for untyped pages (correct for M1)
+- [x] Type label in search results — already implemented, shows when entity_type_id is set
 
 ### P2: Feature Completion
 - [ ] Wire [[wiki link]] syntax trigger

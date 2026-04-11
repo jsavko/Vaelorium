@@ -3,33 +3,21 @@ import Suggestion from '@tiptap/suggestion'
 import { PluginKey } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/core'
 import type { PageTreeNode } from '../api/pages'
-import { callCommand } from '../api/bridge'
 import { get } from 'svelte/store'
 import { pageTree } from '../stores/pageStore'
+import { getMentionMenuRenderer } from './MentionExtension'
 
-export type MentionMenuRenderer = {
-  onStart: (props: { items: PageTreeNode[]; command: (item: PageTreeNode) => void; clientRect: (() => DOMRect | null) | null }) => void
-  onUpdate: (props: { items: PageTreeNode[]; command: (item: PageTreeNode) => void; clientRect: (() => DOMRect | null) | null }) => void
-  onExit: () => void
-}
-
-let menuRenderer: MentionMenuRenderer | null = null
-
-export function setMentionMenuRenderer(renderer: MentionMenuRenderer) {
-  menuRenderer = renderer
-}
-
-export function getMentionMenuRenderer(): MentionMenuRenderer | null {
-  return menuRenderer
-}
-
-export const MentionExtension = Extension.create({
-  name: 'mentionSuggestion',
+/**
+ * [[wiki link]] syntax — triggers the same mention dropdown as @,
+ * but activated by typing [[ instead.
+ */
+export const WikiLinkSyntax = Extension.create({
+  name: 'wikiLinkSyntax',
 
   addOptions() {
     return {
       suggestion: {
-        char: '@',
+        char: '[[',
         command: ({ editor, range, props }: { editor: Editor; range: any; props: PageTreeNode }) => {
           editor
             .chain()
@@ -51,7 +39,6 @@ export const MentionExtension = Extension.create({
             .run()
         },
         items: ({ query }: { query: string }) => {
-          // Use the reactive store synchronously — pageTree is already loaded
           const tree = get(pageTree)
           if (!query) return tree.slice(0, 8)
           return tree
@@ -61,14 +48,14 @@ export const MentionExtension = Extension.create({
         render: () => {
           return {
             onStart(props: any) {
-              menuRenderer?.onStart({
+              getMentionMenuRenderer()?.onStart({
                 items: props.items,
                 command: (item: PageTreeNode) => props.command(item),
                 clientRect: props.clientRect,
               })
             },
             onUpdate(props: any) {
-              menuRenderer?.onUpdate({
+              getMentionMenuRenderer()?.onUpdate({
                 items: props.items,
                 command: (item: PageTreeNode) => props.command(item),
                 clientRect: props.clientRect,
@@ -76,13 +63,13 @@ export const MentionExtension = Extension.create({
             },
             onKeyDown(props: any) {
               if (props.event.key === 'Escape') {
-                menuRenderer?.onExit()
+                getMentionMenuRenderer()?.onExit()
                 return true
               }
               return false
             },
             onExit() {
-              menuRenderer?.onExit()
+              getMentionMenuRenderer()?.onExit()
             },
           }
         },
@@ -94,7 +81,7 @@ export const MentionExtension = Extension.create({
     return [
       Suggestion({
         editor: this.editor,
-        pluginKey: new PluginKey('mentionSuggestion'),
+        pluginKey: new PluginKey('wikiLinkSyntaxSuggestion'),
         ...this.options.suggestion,
       }),
     ]

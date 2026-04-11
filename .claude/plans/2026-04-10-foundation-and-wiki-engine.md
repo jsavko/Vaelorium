@@ -91,7 +91,7 @@ The Yjs document handling is a hybrid concern — Yjs serialization stays in JS 
 - [x] **4.1** Create custom TipTap `WikiLink` mark extension — stores `page-id` attribute, renders as gold-colored text, click navigates to target page
 - [x] **4.2** Create `MentionSuggestion.svelte` component — dropdown that appears on `@` trigger, filters pages by title as user types, shows entity color dot + title + type label
 - [x] **4.3** Wire `@` trigger in TipTap to open MentionSuggestion. Shows pages from tree, click inserts gold link, Escape dismisses. 4 Playwright tests passing.
-- [ ] **4.4** `[[wiki link]]` syntax — detect `[[` in editor, open same suggestion dropdown
+- [x] **4.4** `[[wiki link]]` syntax — `[[` opens same mention dropdown, inserts gold link. 3 Playwright tests.
 - [x] **4.5** Write Rust commands for wiki links: `save_wiki_links(source_page_id, links: Vec<{target_page_id, link_text}>)` — called after each save to update the `wiki_links` table by diffing current links in the document
 - [x] **4.6** Write Rust command: `get_backlinks(page_id) -> Vec<{page_id, title, entity_type_id}>` — query wiki_links joined with pages
 - [x] **4.7** Build `BacklinksPanel.svelte` — displays in the right details panel, shows entity-colored dots + gold page links
@@ -117,10 +117,10 @@ The Yjs document handling is a hybrid concern — Yjs serialization stays in JS 
 ### Phase 7: Reading View & Version History
 
 - [x] **7.1** Build `ReadingView.svelte` — non-editable rendering of page content. Hero image at top (full-width), entity badge, Playfair title (40px), metadata row, Newsreader body content (17px, 1.8 line-height)
-- [ ] **7.2** Wire edit/read mode toggle — toolbar button switches between Editor and ReadingView
+- [x] **7.2** Edit/read mode toggle — Read/Edit button in toolbar, switches views. 2 Playwright tests.
 - [x] **7.3** Write Rust commands for version history: `create_version(page_id, yjs_snapshot, summary?)`, `list_versions(page_id) -> Vec<Version>`, `get_version(version_id) -> Version`
 - [x] **7.4** Implement auto-versioning — 5-minute interval timer in YjsProvider + createSnapshot method
-- [ ] **7.5** Wire VersionHistory panel — accessible from page menu, shows versions, verify with Playwright
+- [x] **7.5** VersionHistory panel — accessible from ⋯ menu, opens/closes. 3 Playwright tests.
 - [x] **7.6** Add top toolbar with breadcrumbs (parent / current page), sync status placeholder (gray dot, "No sync"), share icon, more menu (⋯)
 
 ### Phase 8: Polish & Integration
