@@ -28,6 +28,7 @@
   let editLabel = $state('')
   let editPageId = $state('')
   let editSearchQuery = $state('')
+  let editColor = $state('#C8A55C')
 
   onMount(async () => {
     await loadMap(mapId)
@@ -100,14 +101,14 @@
     if (!addingPin) return
     const { nx, ny } = clientToNormalized(e.clientX, e.clientY)
     if (nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1) {
-      pinForm = { x: nx, y: ny, label: '', pageId: '' }
+      pinForm = { x: nx, y: ny, label: '', pageId: '', color: '#C8A55C' }
       addingPin = false
     }
   }
 
   async function savePinForm() {
     if (!pinForm || !$currentMap) return
-    await addPin($currentMap.id, pinForm.x, pinForm.y, pinForm.pageId || null, pinForm.label || null)
+    await addPin($currentMap.id, pinForm.x, pinForm.y, pinForm.pageId || null, pinForm.label || null, null, pinForm.color || null)
     pinForm = null
   }
 
@@ -120,6 +121,7 @@
     editingPin = pin
     editLabel = pin.label || ''
     editPageId = pin.page_id || ''
+    editColor = pin.color || getPinColor(pin)
     editSearchQuery = ''
     if (pin.page_id) {
       const page = $pageTree.find((p: any) => p.id === pin.page_id)
@@ -129,10 +131,12 @@
 
   async function saveEditPin() {
     if (!editingPin) return
-    const { updatePin } = await import('../api/maps')
-    await updatePin(editingPin.id, {
+    const { updatePin: updatePinApi } = await import('../api/maps')
+    // Update label, page, and color
+    await updatePinApi(editingPin.id, {
       label: editLabel || undefined,
       pageId: editPageId || undefined,
+      color: editColor || undefined,
     })
     // Reload pins
     if ($currentMap) await loadMap($currentMap.id)
@@ -189,7 +193,19 @@
           <polyline points="15 18 9 12 15 6"></polyline>
         </svg>
       </button>
-      <h2 class="header-title">{$currentMap?.title || 'Map'}</h2>
+      <input
+        class="header-title-input"
+        value={$currentMap?.title || 'Map'}
+        onblur={async (e) => {
+          const val = (e.target as HTMLInputElement).value.trim()
+          if (val && $currentMap && val !== $currentMap.title) {
+            const { callCommand } = await import('../api/bridge')
+            // Update map title via direct SQL — no dedicated command yet
+            // For now just update local state
+            currentMap.update(m => m ? { ...m, title: val } : m)
+          }
+        }}
+      />
     </div>
     <div class="header-right">
       <button
@@ -252,6 +268,10 @@
       {@const fy = transform.y + pinForm.y * imgHeight * transform.scale}
       <div class="pin-form" style:left="{fx + 16}px" style:top="{fy}px">
         <input class="pin-input" bind:value={pinForm.label} placeholder="Pin label..." />
+        <div class="color-row">
+          <label class="color-label">Color</label>
+          <input type="color" class="color-picker" bind:value={pinForm.color} />
+        </div>
         <div class="pin-search-wrapper">
           <input class="pin-input" bind:value={searchQuery} placeholder="Link to page..." />
           {#if filteredPages.length > 0}
@@ -280,6 +300,10 @@
           <button class="pin-delete" onclick={deleteEditPin} title="Delete pin">×</button>
         </div>
         <input class="pin-input" bind:value={editLabel} placeholder="Pin label..." />
+        <div class="color-row">
+          <label class="color-label">Color</label>
+          <input type="color" class="color-picker" bind:value={editColor} />
+        </div>
         <div class="pin-search-wrapper">
           <input class="pin-input" bind:value={editSearchQuery} placeholder="Link to page..." />
           {#if editFilteredPages.length > 0}
@@ -329,7 +353,11 @@
   }
   .back-btn:hover { background: var(--color-surface-tertiary); color: var(--color-fg-primary); }
 
-  .header-title { font-family: var(--font-heading); font-size: 18px; font-weight: 600; color: var(--color-fg-primary); margin: 0; }
+  .header-title-input {
+    font-family: var(--font-heading); font-size: 18px; font-weight: 600; color: var(--color-fg-primary);
+    background: none; border: none; outline: none; padding: 0; margin: 0;
+  }
+  .header-title-input:focus { border-bottom: 1px solid var(--color-accent-gold); }
   .header-right { display: flex; gap: 8px; }
 
   .tool-btn {
@@ -348,11 +376,14 @@
   }
 
   .map-pin {
-    position: absolute; transform: translate(-50%, -100%); background: none; border: none;
+    position: absolute; background: none; border: none;
     color: var(--pin-color, #C8A55C); cursor: pointer; display: flex; flex-direction: column; align-items: center; z-index: 5;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    /* Offset so the pin tip lands on the coordinate */
+    margin-left: -10px;
+    margin-top: -20px;
   }
-  .map-pin:hover { transform: translate(-50%, -100%) scale(1.2); }
+  .map-pin:hover { transform: scale(1.2); transform-origin: bottom center; }
 
   .pin-label {
     font-family: var(--font-ui); font-size: 10px; color: var(--color-fg-primary);
@@ -381,6 +412,17 @@
     color: var(--color-status-error); cursor: pointer;
   }
   .pin-danger:hover { background: rgba(184, 92, 92, 0.15); }
+
+  .color-row {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .color-label {
+    font-family: var(--font-ui); font-size: 12px; color: var(--color-fg-tertiary);
+  }
+  .color-picker {
+    width: 32px; height: 28px; border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm); background: none; cursor: pointer; padding: 2px;
+  }
 
   .pin-input {
     width: 100%; padding: 6px 10px; background: var(--color-surface-primary);

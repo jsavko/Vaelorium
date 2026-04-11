@@ -583,6 +583,7 @@ async function mockCommand(command: string, args?: any): Promise<any> {
       if (args.y !== undefined) pin.y = args.y
       if (args.pageId !== undefined) pin.page_id = args.pageId
       if (args.label !== undefined) pin.label = args.label
+      if (args.color !== undefined) pin.color = args.color
       return pin
     }
 

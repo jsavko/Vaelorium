@@ -30,8 +30,10 @@ export async function addPin(
   y: number,
   pageId?: string | null,
   label?: string | null,
+  icon?: string | null,
+  color?: string | null,
 ) {
-  const pin = await api.createPin(mapId, x, y, pageId, label)
+  const pin = await api.createPin(mapId, x, y, pageId, label, icon, color)
   currentMapPins.update((pins) => [...pins, pin])
   return pin
 }

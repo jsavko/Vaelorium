@@ -105,6 +105,7 @@ pub async fn update_pin(
     y: Option<f64>,
     page_id: Option<String>,
     label: Option<String>,
+    color: Option<String>,
 ) -> Result<MapPin, String> {
     let pool = db::get_pool(managed.inner()).await?;
 
@@ -112,6 +113,7 @@ pub async fn update_pin(
     if let Some(py) = y { sqlx::query("UPDATE map_pins SET y = ? WHERE id = ?").bind(py).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
     if let Some(ref pid) = page_id { sqlx::query("UPDATE map_pins SET page_id = ? WHERE id = ?").bind(pid).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
     if let Some(ref lbl) = label { sqlx::query("UPDATE map_pins SET label = ? WHERE id = ?").bind(lbl).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
+    if let Some(ref clr) = color { sqlx::query("UPDATE map_pins SET color = ? WHERE id = ?").bind(clr).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
 
     let row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, f64, f64, Option<String>, Option<String>, String)>(
         "SELECT id, map_id, page_id, label, x, y, icon, color, created_at FROM map_pins WHERE id = ?",

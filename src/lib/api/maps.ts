@@ -52,7 +52,7 @@ export async function createPin(
 
 export async function updatePin(
   id: string,
-  updates: { x?: number; y?: number; pageId?: string; label?: string },
+  updates: { x?: number; y?: number; pageId?: string; label?: string; color?: string },
 ): Promise<MapPin> {
   return callCommand('update_pin', { id, ...updates })
 }
