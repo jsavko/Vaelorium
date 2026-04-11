@@ -9,9 +9,10 @@
     open: boolean
     onClose: () => void
     onCreate: (title: string, parentId: string | null, entityTypeId: string | null) => void
+    initialTypeId?: string | null
   }
 
-  let { open, onClose, onCreate }: Props = $props()
+  let { open, onClose, onCreate, initialTypeId = null }: Props = $props()
 
   let title = $state('')
   let selectedTypeId = $state<string | null>(null)
@@ -71,9 +72,10 @@
     }
   }
 
-  // Focus title input when modal opens
+  // Set initial type and focus title input when modal opens
   $effect(() => {
     if (open) {
+      selectedTypeId = initialTypeId || null
       setTimeout(() => titleInput?.focus(), 100)
     }
   })

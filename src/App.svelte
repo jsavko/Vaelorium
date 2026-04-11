@@ -52,6 +52,7 @@
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
   let newPageModalOpen = $state(false)
+  let newPageInitialTypeId = $state<string | null>(null)
   let createTomeModalOpen = $state(false)
   let activeTypeListId = $state<string | null>(null)
 
@@ -79,6 +80,7 @@
     }
     if (newPageCombo && matchesKeybind(e, newPageCombo)) {
       e.preventDefault()
+      newPageInitialTypeId = null
       newPageModalOpen = true
     }
     if (detailsCombo && matchesKeybind(e, detailsCombo)) {
@@ -94,7 +96,7 @@
   <div class="app-layout">
     <Sidebar
       onOpenSettings={() => settingsOpen = true}
-      onNewPage={() => newPageModalOpen = true}
+      onNewPage={() => { newPageInitialTypeId = null; newPageModalOpen = true }}
       onSelectType={(typeId) => { activeTypeListId = typeId; detailsOpen = false }}
       activeTypeId={activeTypeListId}
       onCloseTome={async () => { await closeTome(); await loadRecentTomes() }}
@@ -102,7 +104,7 @@
     {#if activeTypeListId}
       <EntityListView
         entityTypeId={activeTypeListId}
-        onOpenNewPage={() => newPageModalOpen = true}
+        onOpenNewPage={() => { newPageInitialTypeId = activeTypeListId; newPageModalOpen = true }}
         onClose={() => activeTypeListId = null}
       />
     {:else}
@@ -117,7 +119,8 @@
   <Settings open={settingsOpen} onClose={() => settingsOpen = false} />
   <NewPageModal
     open={newPageModalOpen}
-    onClose={() => newPageModalOpen = false}
+    onClose={() => { newPageModalOpen = false; newPageInitialTypeId = null }}
+    initialTypeId={newPageInitialTypeId}
     onCreate={async (title, parentId, entityTypeId) => {
       newPageModalOpen = false
       await createPage(title, parentId, entityTypeId)
