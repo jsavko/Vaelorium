@@ -63,7 +63,7 @@ export interface ReorderFieldMove {
 }
 
 export async function listEntityTypeFields(entityTypeId: string): Promise<EntityTypeField[]> {
-  return callCommand('list_entity_type_fields', { entity_type_id: entityTypeId })
+  return callCommand('list_entity_type_fields', { entityTypeId })
 }
 
 export async function createEntityTypeField(
@@ -76,13 +76,13 @@ export async function createEntityTypeField(
   referenceTypeId?: string | null,
 ): Promise<EntityTypeField> {
   return callCommand('create_entity_type_field', {
-    entity_type_id: entityTypeId,
+    entityTypeId,
     name,
-    field_type: fieldType,
+    fieldType,
     options,
-    is_required: isRequired,
-    default_value: defaultValue,
-    reference_type_id: referenceTypeId,
+    isRequired,
+    defaultValue,
+    referenceTypeId,
   })
 }
 
@@ -90,11 +90,11 @@ export async function updateEntityTypeField(
   id: string,
   updates: {
     name?: string
-    field_type?: string
-    is_required?: boolean
-    default_value?: string
+    fieldType?: string
+    isRequired?: boolean
+    defaultValue?: string
     options?: string
-    reference_type_id?: string
+    referenceTypeId?: string
   },
 ): Promise<EntityTypeField> {
   return callCommand('update_entity_type_field', { id, ...updates })
@@ -125,7 +125,7 @@ export interface PageByFieldResult {
 }
 
 export async function getPageFieldValues(pageId: string): Promise<FieldValue[]> {
-  return callCommand('get_page_field_values', { page_id: pageId })
+  return callCommand('get_page_field_values', { pageId })
 }
 
 export async function setFieldValue(
@@ -133,16 +133,16 @@ export async function setFieldValue(
   fieldId: string,
   value: string | null,
 ): Promise<FieldValue> {
-  return callCommand('set_field_value', { page_id: pageId, field_id: fieldId, value })
+  return callCommand('set_field_value', { pageId, fieldId, value })
 }
 
 export async function deleteFieldValue(pageId: string, fieldId: string): Promise<void> {
-  return callCommand('delete_field_value', { page_id: pageId, field_id: fieldId })
+  return callCommand('delete_field_value', { pageId, fieldId })
 }
 
 export async function queryPagesByField(
   fieldId: string,
   value: string,
 ): Promise<PageByFieldResult[]> {
-  return callCommand('query_pages_by_field', { field_id: fieldId, value })
+  return callCommand('query_pages_by_field', { fieldId, value })
 }

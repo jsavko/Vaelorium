@@ -178,8 +178,9 @@ async function mockCommand(command: string, args?: any): Promise<any> {
     }
 
     case 'list_pages_by_type': {
+      const typeId = args.entityTypeId || args.entity_type_id
       return Array.from(mockDb.pages.values())
-        .filter((p) => p.entity_type_id === args.entity_type_id)
+        .filter((p) => p.entity_type_id === typeId)
         .sort((a: any, b: any) => a.title.localeCompare(b.title))
     }
 
@@ -395,27 +396,29 @@ async function mockCommand(command: string, args?: any): Promise<any> {
     // ── Entity Fields ──
 
     case 'list_entity_type_fields': {
+      const etId = args.entityTypeId || args.entity_type_id
       return Array.from(mockDb.entityTypeFields.values())
-        .filter((f: any) => f.entity_type_id === args.entity_type_id)
+        .filter((f: any) => f.entity_type_id === etId)
         .sort((a: any, b: any) => a.sort_order - b.sort_order)
     }
 
     case 'create_entity_type_field': {
       const id = uuid()
+      const etId = args.entityTypeId || args.entity_type_id
       const existing = Array.from(mockDb.entityTypeFields.values()).filter(
-        (f: any) => f.entity_type_id === args.entity_type_id,
+        (f: any) => f.entity_type_id === etId,
       )
       const maxSort = existing.reduce((max: number, f: any) => Math.max(max, f.sort_order), 0)
       const field = {
         id,
-        entity_type_id: args.entity_type_id,
+        entity_type_id: etId,
         name: args.name,
-        field_type: args.field_type,
+        field_type: args.fieldType || args.field_type,
         sort_order: maxSort + 1,
-        is_required: args.is_required || false,
-        default_value: args.default_value || null,
+        is_required: args.isRequired || args.is_required || false,
+        default_value: args.defaultValue || args.default_value || null,
         options: args.options || null,
-        reference_type_id: args.reference_type_id || null,
+        reference_type_id: args.referenceTypeId || args.reference_type_id || null,
         created_at: now(),
       }
       mockDb.entityTypeFields.set(id, field)
@@ -425,12 +428,12 @@ async function mockCommand(command: string, args?: any): Promise<any> {
     case 'update_entity_type_field': {
       const field = mockDb.entityTypeFields.get(args.id)
       if (!field) throw new Error('Field not found')
-      if (args.name !== undefined) field.name = args.name
-      if (args.field_type !== undefined) field.field_type = args.field_type
-      if (args.is_required !== undefined) field.is_required = args.is_required
-      if (args.default_value !== undefined) field.default_value = args.default_value
-      if (args.options !== undefined) field.options = args.options
-      if (args.reference_type_id !== undefined) field.reference_type_id = args.reference_type_id
+      if ((args.name) !== undefined) field.name = args.name
+      if ((args.fieldType || args.field_type) !== undefined) field.field_type = args.fieldType || args.field_type
+      if ((args.isRequired ?? args.is_required) !== undefined) field.is_required = args.isRequired ?? args.is_required
+      if ((args.defaultValue || args.default_value) !== undefined) field.default_value = args.defaultValue || args.default_value
+      if ((args.options) !== undefined) field.options = args.options
+      if ((args.referenceTypeId || args.reference_type_id) !== undefined) field.reference_type_id = args.referenceTypeId || args.reference_type_id
       return field
     }
 
@@ -454,18 +457,21 @@ async function mockCommand(command: string, args?: any): Promise<any> {
     // ── Field Values ──
 
     case 'get_page_field_values': {
+      const pgId = args.pageId || args.page_id
       return Array.from(mockDb.entityFieldValues.values()).filter(
-        (v: any) => v.page_id === args.page_id,
+        (v: any) => v.page_id === pgId,
       )
     }
 
     case 'set_field_value': {
-      const key = `${args.page_id}:${args.field_id}`
+      const sfPageId = args.pageId || args.page_id
+      const sfFieldId = args.fieldId || args.field_id
+      const key = `${sfPageId}:${sfFieldId}`
       const existing = mockDb.entityFieldValues.get(key)
       const fv = {
         id: existing?.id || uuid(),
-        page_id: args.page_id,
-        field_id: args.field_id,
+        page_id: sfPageId,
+        field_id: sfFieldId,
         value: args.value ?? null,
       }
       mockDb.entityFieldValues.set(key, fv)
@@ -473,14 +479,17 @@ async function mockCommand(command: string, args?: any): Promise<any> {
     }
 
     case 'delete_field_value': {
-      const key = `${args.page_id}:${args.field_id}`
+      const dfPageId = args.pageId || args.page_id
+      const dfFieldId = args.fieldId || args.field_id
+      const key = `${dfPageId}:${dfFieldId}`
       mockDb.entityFieldValues.delete(key)
       return null
     }
 
     case 'query_pages_by_field': {
+      const qFieldId = args.fieldId || args.field_id
       const matchingPageIds = Array.from(mockDb.entityFieldValues.values())
-        .filter((v: any) => v.field_id === args.field_id && v.value === args.value)
+        .filter((v: any) => v.field_id === qFieldId && v.value === args.value)
         .map((v: any) => v.page_id)
       return Array.from(mockDb.pages.values())
         .filter((p: any) => matchingPageIds.includes(p.id))
