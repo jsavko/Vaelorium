@@ -1,5 +1,5 @@
 ---
-status: created
+status: completed
 ---
 # Milestone 2: Entity Type System
 
@@ -60,10 +60,10 @@ Embed one page's content inline inside another (transclusion). TipTap node exten
 - [x] **1.** Create and execute Phase 1 plan: `m2-phase1-data-layer`
 - [x] **2.** Create and execute Phase 2 plan: `m2-phase2-type-selector`
 - [x] **3.** Create and execute Phase 3 plan: `m2-phase3-structured-fields`
-- [ ] **4.** Create and execute Phase 4 plan: `m2-phase4-entity-list`
-- [ ] **5.** Create and execute Phase 5 plan: `m2-phase5-page-embeds`
-- [ ] **6.** Update PROJECT_OUTLINE.md — mark all M2 deliverables complete
-- [ ] **7.** Final integration test: full E2E flow (create typed page, fill fields, view in list, create custom type, embed a page)
+- [x] **4.** Create and execute Phase 4 plan: `m2-phase4-entity-list`
+- [x] **5.** Create and execute Phase 5 plan: `m2-phase5-page-embeds`
+- [x] **6.** Update PROJECT_OUTLINE.md — mark all M2 deliverables complete
+- [x] **7.** Final integration test: full E2E flow (create typed page, fill fields, view in list, create custom type, embed a page)
 
 ## Notes
 

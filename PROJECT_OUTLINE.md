@@ -2,7 +2,7 @@
 
 > **Name:** Vaelorium
 > **Created:** 2026-04-10
-> **Status:** Pre-development — Design & Specification Phase
+> **Status:** Active Development — Milestones 0-2 complete, M2.5 next
 
 ---
 
@@ -267,26 +267,36 @@ Each milestone follows the same process:
 
 ---
 
-### Milestone 2: Entity Type System
+### Milestone 2: Entity Type System ✅
 > **Goal:** Optional structured fields on wiki pages — the hybrid model
 
 **Design phase deliverables:**
-- [ ] Mockups: Entity type selector when creating/editing a page
-- [ ] Mockups: Structured fields panel alongside wiki content
-- [ ] Mockups: Custom type builder UI
-- [ ] Mockups: Filtered entity list views ("all Characters", "all Locations in Region X")
-- [ ] Design spec: JSON schema format for entity type definitions
-- [ ] Design spec: Built-in type definitions (Character, Location, Organisation, Quest, Item, Creature, Event, Journal)
-- [ ] Design spec: How structured fields are stored in SQLite and queried
+- [x] Mockups: Entity type selector when creating/editing a page
+- [x] Mockups: Structured fields panel alongside wiki content
+- [x] Mockups: Custom type builder UI
+- [x] Mockups: Filtered entity list views ("all Characters", "all Locations in Region X")
+- [x] Design spec: JSON schema format for entity type definitions
+- [x] Design spec: Built-in type definitions (Character, Location, Organisation, Quest, Item, Creature, Event, Journal)
+- [x] Design spec: How structured fields are stored in SQLite and queried
 
 **Build phase deliverables:**
-- [ ] Entity type system with JSON schema definitions
-- [ ] Built-in entity types with default field sets
-- [ ] Custom entity type creation and editing
-- [ ] Structured fields rendered alongside wiki content
-- [ ] Filtered list views per entity type
-- [ ] Cross-entity queries ("all Characters at Location X")
-- [ ] Template sharing (export/import type definitions as JSON)
+- [x] Entity type system with SQLite schema (entity_types, entity_type_fields, entity_field_values)
+- [x] 8 built-in entity types with 35 default field definitions (seeded in migration)
+- [x] Custom entity type creation via Custom Type Builder modal (name, color, icon, fields)
+- [x] Structured fields rendered alongside wiki content in details panel (7 field types: text, number, select, multi_select, long_text, boolean, page_reference)
+- [x] Filtered list views per entity type (card grid with search, sidebar type navigation)
+- [x] Cross-entity queries ("all Characters at Location X") via query_pages_by_field command
+- [x] Page embed/transclusion via /embed slash command (read-only inline content)
+- [ ] Template sharing (export/import type definitions as JSON) — deferred to M10
+
+**Additional features delivered:**
+- New Page modal with entity type picker (replaces inline creation)
+- Entity type badges with colors in sidebar, editor header, search, mentions, backlinks
+- Change/remove page entity type via details panel dropdown
+- Debounced field value auto-save
+- Recursive embed protection
+- 14 Rust backend commands for entity types, fields, and field values
+- lucide-svelte icons for entity types
 
 ---
 
