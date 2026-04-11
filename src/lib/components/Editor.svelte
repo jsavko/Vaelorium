@@ -17,6 +17,40 @@
   let currentLoadedPageId: string | null = null
   let embedPickerOpen = $state(false)
   let embedPickerEditor: Editor | null = null
+  let imageToolbar = $state<{ x: number; y: number; alignment: string } | null>(null)
+
+  // Track image selection for toolbar
+  function updateImageToolbar() {
+    if (!editor) { imageToolbar = null; return }
+    const { from } = editor.state.selection
+    const node = editor.state.doc.nodeAt(from)
+    if (node?.type.name === 'image') {
+      const dom = editor.view.nodeDOM(from) as HTMLElement | null
+      if (dom) {
+        const rect = dom.getBoundingClientRect()
+        const containerRect = editorElement.getBoundingClientRect()
+        imageToolbar = {
+          x: rect.left + rect.width / 2 - containerRect.left,
+          y: rect.top - containerRect.top - 8,
+          alignment: node.attrs.alignment || 'center',
+        }
+        return
+      }
+    }
+    imageToolbar = null
+  }
+
+  function setImageAlignment(alignment: string) {
+    if (!editor) return
+    ;(editor.commands as any).setImageAlignment(alignment)
+    imageToolbar = imageToolbar ? { ...imageToolbar, alignment } : null
+  }
+
+  function deleteSelectedImage() {
+    if (!editor) return
+    editor.chain().focus().deleteSelection().run()
+    imageToolbar = null
+  }
 
   // React to page changes
   $effect(() => {
@@ -54,6 +88,10 @@
         },
       },
     })
+
+    // Track image selection for floating toolbar
+    editor.on('selectionUpdate', updateImageToolbar)
+    editor.on('blur', () => { imageToolbar = null })
 
     // Wire save callbacks for link extraction + search indexing
     provider.setCallbacks({
@@ -238,14 +276,72 @@
       </button>
     </div>
 
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div
-      class="editor-container"
-      bind:this={editorElement}
-      onclick={handleEditorClick}
-      ondrop={handleEditorDrop}
-      ondragover={(e) => e.preventDefault()}
-    ></div>
+    <div class="editor-container-wrapper">
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+      <div
+        class="editor-container"
+        bind:this={editorElement}
+        onclick={handleEditorClick}
+        ondrop={handleEditorDrop}
+        ondragover={(e) => e.preventDefault()}
+      ></div>
+
+      {#if imageToolbar}
+        <div
+          class="image-toolbar"
+          style:left="{imageToolbar.x}px"
+          style:top="{imageToolbar.y}px"
+        >
+          <button
+            class="img-tool-btn"
+            class:active={imageToolbar.alignment === 'left'}
+            onclick={() => setImageAlignment('left')}
+            title="Float left"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="8" height="8"></rect>
+              <line x1="15" y1="5" x2="21" y2="5"></line>
+              <line x1="15" y1="9" x2="21" y2="9"></line>
+              <line x1="3" y1="15" x2="21" y2="15"></line>
+              <line x1="3" y1="19" x2="21" y2="19"></line>
+            </svg>
+          </button>
+          <button
+            class="img-tool-btn"
+            class:active={imageToolbar.alignment === 'center'}
+            onclick={() => setImageAlignment('center')}
+            title="Center"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="6" y="3" width="12" height="8"></rect>
+              <line x1="3" y1="15" x2="21" y2="15"></line>
+              <line x1="3" y1="19" x2="21" y2="19"></line>
+            </svg>
+          </button>
+          <button
+            class="img-tool-btn"
+            class:active={imageToolbar.alignment === 'right'}
+            onclick={() => setImageAlignment('right')}
+            title="Float right"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="13" y="3" width="8" height="8"></rect>
+              <line x1="3" y1="5" x2="9" y2="5"></line>
+              <line x1="3" y1="9" x2="9" y2="9"></line>
+              <line x1="3" y1="15" x2="21" y2="15"></line>
+              <line x1="3" y1="19" x2="21" y2="19"></line>
+            </svg>
+          </button>
+          <span class="img-tool-sep"></span>
+          <button class="img-tool-btn danger" onclick={deleteSelectedImage} title="Delete">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      {/if}
+    </div>
   </div>
 {:else}
   <div class="welcome">
@@ -382,8 +478,7 @@
   }
 
   .editor-container {
-    flex: 1;
-    overflow-y: auto;
+    min-height: 100%;
   }
 
   /* TipTap editor styling */
@@ -470,6 +565,97 @@
   .editor-container :global(.editor-content th) {
     background: var(--color-surface-tertiary);
     font-weight: 600;
+  }
+
+  .editor-container-wrapper {
+    position: relative;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  /* Image toolbar */
+  .image-toolbar {
+    position: absolute;
+    transform: translate(-50%, -100%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 20;
+  }
+
+  .img-tool-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--color-fg-secondary);
+    cursor: pointer;
+  }
+
+  .img-tool-btn:hover {
+    background: var(--color-surface-tertiary);
+  }
+
+  .img-tool-btn.active {
+    background: var(--color-accent-gold-subtle);
+    color: var(--color-accent-gold);
+  }
+
+  .img-tool-btn.danger:hover {
+    background: rgba(184, 92, 92, 0.15);
+    color: var(--color-status-error);
+  }
+
+  .img-tool-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--color-border-default);
+    margin: 0 2px;
+  }
+
+  /* Image alignment */
+  .editor-container :global(.editor-content img) {
+    max-width: 100%;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+  }
+
+  .editor-container :global(.editor-content img.img-align-center) {
+    display: block;
+    margin: 16px auto;
+  }
+
+  .editor-container :global(.editor-content img.img-align-left) {
+    float: left;
+    margin: 4px 20px 12px 0;
+    max-width: 50%;
+  }
+
+  .editor-container :global(.editor-content img.img-align-right) {
+    float: right;
+    margin: 4px 0 12px 20px;
+    max-width: 50%;
+  }
+
+  .editor-container :global(.editor-content img.ProseMirror-selectednode) {
+    outline: 2px solid var(--color-accent-gold);
+    outline-offset: 2px;
+  }
+
+  /* Clear floats after paragraphs that follow floated images */
+  .editor-container :global(.editor-content p::after) {
+    content: '';
+    display: table;
+    clear: both;
   }
 
   .editor-container :global(.editor-content .is-empty::before) {

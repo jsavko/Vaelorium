@@ -3,7 +3,8 @@ import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
-import Image from '@tiptap/extension-image'
+import { FloatImage } from './FloatImage'
+import { ImagePastePlugin } from './ImagePastePlugin'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import Typography from '@tiptap/extension-typography'
@@ -25,7 +26,8 @@ export function createEditorExtensions(ydoc: YDoc) {
     TableRow,
     TableHeader,
     TableCell,
-    Image.configure({ inline: false }),
+    FloatImage.configure({ inline: false }),
+    ImagePastePlugin,
     Link.configure({
       openOnClick: false,
     }),
