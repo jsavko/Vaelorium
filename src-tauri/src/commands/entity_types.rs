@@ -175,18 +175,18 @@ pub async fn delete_entity_type(
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
-    // Prevent deleting built-in types
-    let is_builtin: bool = sqlx::query_scalar(
-        "SELECT is_builtin FROM entity_types WHERE id = ?",
+
+    // Verify type exists
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM entity_types WHERE id = ?)",
     )
     .bind(&id)
-    .fetch_optional(&pool)
+    .fetch_one(&pool)
     .await
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| "Entity type not found".to_string())?;
+    .map_err(|e| e.to_string())?;
 
-    if is_builtin {
-        return Err("Cannot delete built-in entity types".to_string());
+    if !exists {
+        return Err("Entity type not found".to_string());
     }
 
     // Clear entity_type_id from pages using this type

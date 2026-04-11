@@ -48,10 +48,10 @@ describe('entity types mock backend', () => {
     expect(updated.color).toBe('#444444')
   })
 
-  it('prevents deleting built-in types', async () => {
-    await expect(
-      callCommand('delete_entity_type', { id: 'builtin-character' }),
-    ).rejects.toThrow('Cannot delete built-in entity types')
+  it('allows deleting built-in types', async () => {
+    await callCommand('delete_entity_type', { id: 'builtin-journal' })
+    const types: any[] = await callCommand('list_entity_types')
+    expect(types.find((t) => t.id === 'builtin-journal')).toBeUndefined()
   })
 
   it('deletes a custom entity type', async () => {

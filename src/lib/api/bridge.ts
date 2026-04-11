@@ -393,7 +393,6 @@ async function mockCommand(command: string, args?: any): Promise<any> {
     case 'delete_entity_type': {
       const et = mockDb.entityTypes.get(args.id)
       if (!et) throw new Error('Entity type not found')
-      if (et.is_builtin) throw new Error('Cannot delete built-in entity types')
       // Clear entity_type_id from pages using this type
       for (const page of mockDb.pages.values()) {
         if (page.entity_type_id === args.id) page.entity_type_id = null
