@@ -3,7 +3,7 @@
   import PageTreeItem from './PageTreeItem.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
-  import { nestedTree, loadPageTree, createPage, pageTree, deleteCurrentPage, loadPage, currentPageId } from '../stores/pageStore'
+  import { nestedTree, loadPageTree, createPage, pageTree, reorderPages, deleteCurrentPage, loadPage, currentPageId } from '../stores/pageStore'
   import { builtinTypes, customTypes } from '../stores/entityTypeStore'
   import type { PageTreeNode } from '../api/pages'
   import { deletePage } from '../api/pages'
@@ -70,6 +70,31 @@
     const parentId = contextMenu.node.id
     closeContextMenu()
     await createPage('Untitled Page', parentId)
+  }
+
+  // Root-level drop zone for moving pages back to root
+  let rootDropActive = $state(false)
+
+  function handleRootDragOver(e: DragEvent) {
+    e.preventDefault()
+    e.dataTransfer!.dropEffect = 'move'
+    rootDropActive = true
+  }
+
+  function handleRootDragLeave() {
+    rootDropActive = false
+  }
+
+  async function handleRootDrop(e: DragEvent) {
+    e.preventDefault()
+    rootDropActive = false
+    const draggedId = e.dataTransfer?.getData('text/plain')
+    if (!draggedId) return
+    const rootSiblings = $nestedTree
+    const maxSort = rootSiblings.length > 0
+      ? Math.max(...rootSiblings.map((n) => n.sort_order)) + 1000
+      : 1000
+    await reorderPages([{ id: draggedId, parent_id: null, sort_order: maxSort }])
   }
 
   function handleDeletePage() {
@@ -171,6 +196,16 @@
           {#each $nestedTree as node (node.id)}
             <PageTreeItem {node} onContextMenu={handleContextMenu} />
           {/each}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="root-drop-zone"
+            class:active={rootDropActive}
+            ondragover={handleRootDragOver}
+            ondragleave={handleRootDragLeave}
+            ondrop={handleRootDrop}
+          >
+            Drop here to move to root
+          </div>
         </div>
       {:else}
         <div class="tree-placeholder">
@@ -310,6 +345,24 @@
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--color-fg-tertiary);
+  }
+
+  .root-drop-zone {
+    padding: 8px;
+    margin-top: 4px;
+    border: 1px dashed transparent;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: transparent;
+    text-align: center;
+    transition: all 0.15s;
+  }
+
+  .root-drop-zone.active {
+    border-color: var(--color-accent-gold);
+    color: var(--color-accent-gold);
+    background: var(--color-accent-gold-subtle);
   }
 
   .collapse-toggle {
