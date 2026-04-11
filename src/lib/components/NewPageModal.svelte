@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { Shield, Compass, Scroll, Users, Gem, Bug, Sparkles, BookOpen, FileText } from 'lucide-svelte'
-  import { entityTypes } from '../stores/entityTypeStore'
+  import { Shield, Compass, Scroll, Users, Gem, Bug, Sparkles, BookOpen, FileText, Plus } from 'lucide-svelte'
+  import CustomTypeBuilder from './CustomTypeBuilder.svelte'
+  import { entityTypes, loadEntityTypes } from '../stores/entityTypeStore'
   import { pageTree } from '../stores/pageStore'
   import type { EntityType } from '../api/entityTypes'
 
@@ -16,6 +17,7 @@
   let selectedTypeId = $state<string | null>(null)
   let parentId = $state<string | null>(null)
   let titleInput = $state<HTMLInputElement | null>(null)
+  let builderOpen = $state(false)
 
   const iconMap: Record<string, any> = {
     shield: Shield,
@@ -114,6 +116,15 @@
             <span class="type-name">{type.name}</span>
           </button>
         {/each}
+        <button
+          class="type-card custom-type-card"
+          onclick={() => builderOpen = true}
+        >
+          <span class="type-icon" style:color="var(--color-fg-tertiary)">
+            <Plus size={18} />
+          </span>
+          <span class="type-name">Custom Type</span>
+        </button>
       </div>
 
       <!-- Footer: title + parent + create -->
@@ -142,6 +153,12 @@
     </div>
   </div>
 {/if}
+
+<CustomTypeBuilder
+  open={builderOpen}
+  onClose={() => builderOpen = false}
+  onCreated={() => loadEntityTypes()}
+/>
 
 <style>
   .overlay {
@@ -263,6 +280,11 @@
     font-size: 13px;
     font-weight: 500;
     color: var(--color-fg-primary);
+  }
+
+  .custom-type-card {
+    border-style: dashed;
+    border-left-style: dashed;
   }
 
   .modal-footer {

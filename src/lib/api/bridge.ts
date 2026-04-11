@@ -177,6 +177,12 @@ async function mockCommand(command: string, args?: any): Promise<any> {
       return Array.from(mockDb.pages.values()).sort((a, b) => a.sort_order - b.sort_order)
     }
 
+    case 'list_pages_by_type': {
+      return Array.from(mockDb.pages.values())
+        .filter((p) => p.entity_type_id === args.entity_type_id)
+        .sort((a: any, b: any) => a.title.localeCompare(b.title))
+    }
+
     case 'get_page_tree': {
       const pages = Array.from(mockDb.pages.values())
       return pages.map((p) => {

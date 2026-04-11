@@ -51,14 +51,19 @@ Display entity fields in the details panel. Inline editing for each field type (
 Build the filtered entity list view (card grid + list table). Build the custom type builder (split-pane modal with live preview). Type tabs, sorting, filtering.
 **Depends on:** Phases 1-3
 
+### Phase 5: Page Embeds (`m2-phase5-page-embeds`)
+Embed one page's content inline inside another (transclusion). TipTap node extension with `/embed` slash command and `![[Page]]` syntax. Renders read-only, updates when source changes.
+**Depends on:** Phase 1 (wiki engine only, not entity types)
+
 ## Tasks (This Plan = Coordinator)
 
-- [ ] **1.** Create and execute Phase 1 plan: `m2-phase1-data-layer`
-- [ ] **2.** Create and execute Phase 2 plan: `m2-phase2-type-selector`
-- [ ] **3.** Create and execute Phase 3 plan: `m2-phase3-structured-fields`
+- [x] **1.** Create and execute Phase 1 plan: `m2-phase1-data-layer`
+- [x] **2.** Create and execute Phase 2 plan: `m2-phase2-type-selector`
+- [x] **3.** Create and execute Phase 3 plan: `m2-phase3-structured-fields`
 - [ ] **4.** Create and execute Phase 4 plan: `m2-phase4-entity-list`
-- [ ] **5.** Update PROJECT_OUTLINE.md — mark all M2 deliverables complete
-- [ ] **6.** Final integration test: full E2E flow (create typed page, fill fields, view in list, create custom type)
+- [ ] **5.** Create and execute Phase 5 plan: `m2-phase5-page-embeds`
+- [ ] **6.** Update PROJECT_OUTLINE.md — mark all M2 deliverables complete
+- [ ] **7.** Final integration test: full E2E flow (create typed page, fill fields, view in list, create custom type, embed a page)
 
 ## Notes
 

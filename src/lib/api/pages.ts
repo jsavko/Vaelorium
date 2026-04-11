@@ -68,6 +68,10 @@ export async function listPages(): Promise<Page[]> {
   return callCommand('list_pages')
 }
 
+export async function listPagesByType(entityTypeId: string): Promise<Page[]> {
+  return callCommand('list_pages_by_type', { entity_type_id: entityTypeId })
+}
+
 export async function getPageTree(): Promise<PageTreeNode[]> {
   return callCommand('get_page_tree')
 }

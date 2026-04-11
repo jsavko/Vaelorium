@@ -32,6 +32,7 @@ pub fn run() {
             commands::pages::update_page,
             commands::pages::delete_page,
             commands::pages::list_pages,
+            commands::pages::list_pages_by_type,
             commands::pages::get_page_tree,
             commands::pages::save_page_content,
             commands::pages::get_page_content,

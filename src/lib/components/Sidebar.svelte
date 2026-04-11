@@ -4,16 +4,18 @@
   import ContextMenu from './ContextMenu.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import { nestedTree, loadPageTree, createPage, pageTree, deleteCurrentPage, loadPage, currentPageId } from '../stores/pageStore'
-
+  import { builtinTypes, customTypes } from '../stores/entityTypeStore'
   import type { PageTreeNode } from '../api/pages'
   import { deletePage } from '../api/pages'
 
   interface Props {
     onOpenSettings?: () => void
     onNewPage?: () => void
+    onSelectType?: (typeId: string) => void
+    activeTypeId?: string | null
   }
 
-  let { onOpenSettings, onNewPage }: Props = $props()
+  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null }: Props = $props()
 
   const navItems = [
     { id: 'wiki', label: 'Wiki', active: true },
@@ -94,6 +96,36 @@
       </button>
     {/each}
   </nav>
+
+  <div class="divider"></div>
+
+  <div class="types-section">
+    <div class="section-header">
+      <span class="section-label">TYPES</span>
+    </div>
+    <div class="type-list">
+      {#each $builtinTypes as type (type.id)}
+        <button
+          class="type-item"
+          class:active={activeTypeId === type.id}
+          onclick={() => onSelectType?.(type.id)}
+        >
+          <span class="type-dot" style:background-color={type.color || 'var(--color-fg-tertiary)'}></span>
+          <span class="type-name">{type.name}s</span>
+        </button>
+      {/each}
+      {#each $customTypes as type (type.id)}
+        <button
+          class="type-item"
+          class:active={activeTypeId === type.id}
+          onclick={() => onSelectType?.(type.id)}
+        >
+          <span class="type-dot" style:background-color={type.color || 'var(--color-fg-tertiary)'}></span>
+          <span class="type-name">{type.name}s</span>
+        </button>
+      {/each}
+    </div>
+  </div>
 
   <div class="divider"></div>
 
@@ -246,6 +278,54 @@
     font-weight: 600;
     letter-spacing: 2px;
     color: var(--color-fg-tertiary);
+  }
+
+  .types-section {
+    padding: 8px 12px;
+  }
+
+  .type-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .type-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--color-fg-secondary);
+  }
+
+  .type-item:hover {
+    background: var(--color-surface-tertiary);
+  }
+
+  .type-item.active {
+    background: var(--color-accent-gold-subtle);
+    color: var(--color-accent-gold);
+  }
+
+  .type-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .type-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .add-btn {

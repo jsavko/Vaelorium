@@ -212,6 +212,38 @@ pub async fn list_pages(pool: State<'_, DbPool>) -> Result<Vec<Page>, String> {
 }
 
 #[tauri::command]
+pub async fn list_pages_by_type(
+    pool: State<'_, DbPool>,
+    entity_type_id: String,
+) -> Result<Vec<Page>, String> {
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, i64, Option<String>, String, String, String, Option<String>, Option<String>)>(
+        "SELECT id, title, icon, featured_image_path, parent_id, sort_order, entity_type_id, visibility, created_at, updated_at, created_by, updated_by FROM pages WHERE entity_type_id = ? ORDER BY title",
+    )
+    .bind(&entity_type_id)
+    .fetch_all(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| Page {
+            id: row.0,
+            title: row.1,
+            icon: row.2,
+            featured_image_path: row.3,
+            parent_id: row.4,
+            sort_order: row.5,
+            entity_type_id: row.6,
+            visibility: row.7,
+            created_at: row.8,
+            updated_at: row.9,
+            created_by: row.10,
+            updated_by: row.11,
+        })
+        .collect())
+}
+
+#[tauri::command]
 pub async fn get_page_tree(pool: State<'_, DbPool>) -> Result<Vec<PageTreeNode>, String> {
     let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, Option<String>, i64)>(
         "SELECT p.id, p.title, p.icon, p.entity_type_id, p.parent_id, p.sort_order FROM pages p ORDER BY p.sort_order",

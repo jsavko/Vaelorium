@@ -1,6 +1,7 @@
 <script lang="ts">
   import Sidebar from './lib/components/Sidebar.svelte'
   import MainContent from './lib/components/MainContent.svelte'
+  import EntityListView from './lib/components/EntityListView.svelte'
   import DetailsPanel from './lib/components/DetailsPanel.svelte'
   import SearchOverlay from './lib/components/SearchOverlay.svelte'
   import SlashMenu from './lib/components/SlashMenu.svelte'
@@ -9,7 +10,7 @@
   import NewPageModal from './lib/components/NewPageModal.svelte'
   import Settings from './lib/components/Settings.svelte'
   import { onMount } from 'svelte'
-  import { createPage } from './lib/stores/pageStore'
+  import { createPage, currentPageId } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
   import { loadEntityTypes } from './lib/stores/entityTypeStore'
   import { matchesKeybind } from './lib/utils/keybinds'
@@ -22,6 +23,14 @@
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
   let newPageModalOpen = $state(false)
+  let activeTypeListId = $state<string | null>(null)
+
+  // Clear entity list view when a page is selected
+  $effect(() => {
+    if ($currentPageId) {
+      activeTypeListId = null
+    }
+  })
 
   function getKeybindCombo(id: string): string {
     return $settings.keybinds.find((k) => k.id === id)?.keys || ''
@@ -53,9 +62,22 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="app-layout">
-  <Sidebar onOpenSettings={() => settingsOpen = true} onNewPage={() => newPageModalOpen = true} />
-  <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
-  <DetailsPanel open={detailsOpen} onClose={() => detailsOpen = false} />
+  <Sidebar
+    onOpenSettings={() => settingsOpen = true}
+    onNewPage={() => newPageModalOpen = true}
+    onSelectType={(typeId) => { activeTypeListId = typeId; detailsOpen = false }}
+    activeTypeId={activeTypeListId}
+  />
+  {#if activeTypeListId}
+    <EntityListView
+      entityTypeId={activeTypeListId}
+      onOpenNewPage={() => newPageModalOpen = true}
+      onClose={() => activeTypeListId = null}
+    />
+  {:else}
+    <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
+    <DetailsPanel open={detailsOpen} onClose={() => detailsOpen = false} />
+  {/if}
 </div>
 
 <style>
