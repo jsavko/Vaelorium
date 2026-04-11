@@ -166,6 +166,23 @@
     }
   }
 
+  // Prevent browser from opening dropped files — allow our handler to work
+  $effect(() => {
+    function preventDefaultDrag(e: DragEvent) {
+      e.preventDefault()
+    }
+    function handleWindowDrop(e: DragEvent) {
+      // Only prevent default — the editor's own handler will process the drop
+      e.preventDefault()
+    }
+    window.addEventListener('dragover', preventDefaultDrag)
+    window.addEventListener('drop', handleWindowDrop)
+    return () => {
+      window.removeEventListener('dragover', preventDefaultDrag)
+      window.removeEventListener('drop', handleWindowDrop)
+    }
+  })
+
   // Listen for embed request from slash command
   function handleEmbedRequest(e: Event) {
     const detail = (e as CustomEvent).detail
