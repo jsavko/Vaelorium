@@ -258,6 +258,7 @@
             e.stopPropagation()
             if (pin.page_id) {
               loadPage(pin.page_id)
+              window.dispatchEvent(new CustomEvent('vaelorium:page-selected'))
             } else {
               startEditPin(pin, e)
             }

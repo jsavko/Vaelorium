@@ -266,7 +266,7 @@
     const node = getNodeAt(e.offsetX, e.offsetY)
     if (node) {
       loadPage(node.id)
-      onClose()
+      window.dispatchEvent(new CustomEvent('vaelorium:page-selected'))
     }
   }
 

@@ -176,7 +176,7 @@
                 {#if evt.page_id}
                   {@const page = $pageTree.find((p) => p.id === evt.page_id)}
                   {#if page}
-                    <button class="event-link" onclick={() => loadPage(page.id)}>
+                    <button class="event-link" onclick={() => { loadPage(page.id); window.dispatchEvent(new CustomEvent('vaelorium:page-selected')) }}>
                       <span class="link-dot" style:background-color={getEntityColor(page.entity_type_id)}></span>
                       {page.title} →
                     </button>
