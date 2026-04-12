@@ -1,0 +1,31 @@
+name: Trigger Website Rebuild
+
+# Fires when a GitHub release is promoted from draft to published (the
+# moment users' auto-updater starts seeing it). Pings the Cloudflare Deploy
+# Hook so vaelorium.com rebuilds and the download page picks up the new
+# version automatically.
+#
+# Setup: store the Cloudflare Deploy Hook URL as a repo secret named
+# CF_DEPLOY_HOOK. See the website repo's SETUP-CLOUDFLARE.md for how to
+# generate the hook URL in the Cloudflare dashboard.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # allow a manual rebuild without touching releases
+
+jobs:
+  ping-cloudflare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Cloudflare deploy hook
+        env:
+          CF_DEPLOY_HOOK: ${{ secrets.CF_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$CF_DEPLOY_HOOK" ]; then
+            echo "::warning::CF_DEPLOY_HOOK secret not set — skipping website rebuild"
+            exit 0
+          fi
+          echo "Pinging Cloudflare deploy hook…"
+          curl -fsS -X POST "$CF_DEPLOY_HOOK" -o /dev/null -w "HTTP %{http_code}\n"
+          echo "Website rebuild triggered."
