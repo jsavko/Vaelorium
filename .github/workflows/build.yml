@@ -9,8 +9,19 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  version-guard:
+    name: Version Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify manifest versions agree (and match tag on tag push)
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: node scripts/check-versions.mjs
+
   test:
     name: Unit Tests
+    needs: version-guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -118,10 +129,12 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Find signature files and their matching archives
-          WIN_SIG=$(find artifacts -name "*.msi.zip.sig" -o -name "*.nsis.zip.sig" | head -1)
+          # Tauri v2 signs raw installers directly (no .zip/.tar.gz intermediates
+          # for Win/Linux). Match the actual artifact names the build produces.
+          WIN_SIG=$(find artifacts -name "*.msi.sig" | head -1)
+          [ -z "$WIN_SIG" ] && WIN_SIG=$(find artifacts -name "*-setup.exe.sig" | head -1)
           MAC_ARM_SIG=$(find artifacts/vaelorium-macos-arm -name "*.app.tar.gz.sig" 2>/dev/null | head -1)
-          LINUX_SIG=$(find artifacts -name "*.AppImage.tar.gz.sig" | head -1)
+          LINUX_SIG=$(find artifacts -name "*.AppImage.sig" | head -1)
 
           read_sig() { [ -f "$1" ] && cat "$1" || echo ""; }
           find_url() {
@@ -132,10 +145,10 @@ jobs:
             echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${name}"
           }
 
-          WIN_URL=$(find_url "*.msi.zip")
-          [ -z "$WIN_URL" ] && WIN_URL=$(find_url "*.nsis.zip")
+          WIN_URL=$(find_url "*.msi")
+          [ -z "$WIN_URL" ] && WIN_URL=$(find_url "*-setup.exe")
           MAC_URL=$(find_url "*.app.tar.gz")
-          LINUX_URL=$(find_url "*.AppImage.tar.gz")
+          LINUX_URL=$(find_url "*.AppImage")
 
           cat > latest.json <<EOF
           {
@@ -160,7 +173,12 @@ jobs:
           EOF
           cat latest.json
 
-      - name: Create GitHub Release
+      # Releases are created as drafts. You explicitly promote to a full
+      # release (which is what the updater sees) by running:
+      #   gh release edit v<version> --draft=false --repo <owner>/<repo>
+      # or via the GitHub UI ("Publish release"). This lets you QA builds
+      # before users' auto-updater picks them up.
+      - name: Create GitHub Release (draft)
         uses: softprops/action-gh-release@v2
         with:
           draft: true

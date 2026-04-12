@@ -44,3 +44,6 @@ install-deps.sh
 *.njsproj
 *.sln
 *.sw?
+
+# Claude Code workspace (local plans, skills, hooks)
+.claude/
