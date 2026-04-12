@@ -64,10 +64,13 @@
   let activeMapId = $state<string | null>(null)
 
   // When a page is selected (from sidebar tree, pin click, etc.), switch to wiki
+  let prevPageId: string | null = null
   $effect(() => {
-    if ($currentPageId) {
+    const pageId = $currentPageId
+    if (pageId && pageId !== prevPageId) {
       activeModule = 'wiki'
     }
+    prevPageId = pageId
   })
 
   function getKeybindCombo(id: string): string {
