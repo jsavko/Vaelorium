@@ -11,3 +11,4 @@ pub mod images;
 pub mod relations;
 pub mod maps;
 pub mod timelines;
+pub mod boards;

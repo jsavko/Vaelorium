@@ -23,9 +23,11 @@
     chronicleActive?: boolean
     onOpenWiki?: () => void
     wikiActive?: boolean
+    onOpenBoards?: () => void
+    boardsActive?: boolean
   }
 
-  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true }: Props = $props()
+  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
 
   // Collapsible sections with persisted state
   let typesCollapsed = $state(localStorage.getItem('vaelorium-types-collapsed') === 'true')
@@ -150,12 +152,13 @@
     {#each navItems as item}
       <button
         class="nav-item"
-        class:active={item.id === 'wiki' ? wikiActive : item.id === 'relations' ? graphActive : item.id === 'atlas' ? atlasActive : item.id === 'chronicle' ? chronicleActive : false}
+        class:active={item.id === 'wiki' ? wikiActive : item.id === 'relations' ? graphActive : item.id === 'atlas' ? atlasActive : item.id === 'chronicle' ? chronicleActive : item.id === 'boards' ? boardsActive : false}
         onclick={() => {
           if (item.id === 'wiki') onOpenWiki?.()
           if (item.id === 'relations') onOpenGraph?.()
           if (item.id === 'atlas') onOpenAtlas?.()
           if (item.id === 'chronicle') onOpenChronicle?.()
+          if (item.id === 'boards') onOpenBoards?.()
         }}
       >
         <span class="nav-label">{item.label}</span>

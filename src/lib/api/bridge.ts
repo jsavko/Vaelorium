@@ -43,6 +43,9 @@ const mockDb = {
   mapPins: new Map<string, any>(),
   timelines: new Map<string, any>(),
   timelineEvents: new Map<string, any>(),
+  boards: new Map<string, any>(),
+  boardCards: new Map<string, any>(),
+  boardConnectors: new Map<string, any>(),
   tomeOpen: true,
   tomeMeta: { name: 'Dev Tome', description: 'Browser development tome', created_at: '2026-01-01T00:00:00Z' } as any,
   recentTomes: [
@@ -543,6 +546,19 @@ async function mockCommand(command: string, args?: any): Promise<any> {
         }))
         .sort((a: any, b: any) => a.title.localeCompare(b.title))
     }
+
+    // ── Boards ──
+
+    case 'create_board': { const id = uuid(); const b = { id, name: args.name, sort_order: 0, created_at: now(), updated_at: now() }; mockDb.boards.set(id, b); return b }
+    case 'list_boards': { return Array.from(mockDb.boards.values()).sort((a: any, b: any) => a.name.localeCompare(b.name)) }
+    case 'delete_board': { mockDb.boards.delete(args.id); for (const [k, c] of mockDb.boardCards) { if (c.board_id === args.id) mockDb.boardCards.delete(k) } for (const [k, c] of mockDb.boardConnectors) { if (c.board_id === args.id) mockDb.boardConnectors.delete(k) } return null }
+    case 'create_card': { const id = uuid(); const c = { id, board_id: args.boardId, page_id: args.pageId || null, content: args.content || null, x: args.x, y: args.y, width: 200, height: 120, color: args.color || null, created_at: now() }; mockDb.boardCards.set(id, c); return c }
+    case 'update_card': { const c = mockDb.boardCards.get(args.id); if (!c) throw new Error('Card not found'); if (args.x !== undefined) c.x = args.x; if (args.y !== undefined) c.y = args.y; if (args.content !== undefined) c.content = args.content; if (args.pageId !== undefined) c.page_id = args.pageId; if (args.color !== undefined) c.color = args.color; if (args.width !== undefined) c.width = args.width; if (args.height !== undefined) c.height = args.height; return c }
+    case 'delete_card': { mockDb.boardCards.delete(args.id); for (const [k, c] of mockDb.boardConnectors) { if (c.source_card_id === args.id || c.target_card_id === args.id) mockDb.boardConnectors.delete(k) } return null }
+    case 'get_board_cards': { return Array.from(mockDb.boardCards.values()).filter((c: any) => c.board_id === args.boardId) }
+    case 'create_connector': { const id = uuid(); const c = { id, board_id: args.boardId, source_card_id: args.sourceCardId, target_card_id: args.targetCardId, label: args.label || null, color: args.color || null, created_at: now() }; mockDb.boardConnectors.set(id, c); return c }
+    case 'delete_connector': { mockDb.boardConnectors.delete(args.id); return null }
+    case 'get_board_connectors': { return Array.from(mockDb.boardConnectors.values()).filter((c: any) => c.board_id === args.boardId) }
 
     // ── Timelines ──
 

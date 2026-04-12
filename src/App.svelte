@@ -6,6 +6,8 @@
   import MapList from './lib/components/MapList.svelte'
   import MapViewer from './lib/components/MapViewer.svelte'
   import ChronicleView from './lib/components/ChronicleView.svelte'
+  import BoardList from './lib/components/BoardList.svelte'
+  import BoardView from './lib/components/BoardView.svelte'
   import DetailsPanel from './lib/components/DetailsPanel.svelte'
   import SearchOverlay from './lib/components/SearchOverlay.svelte'
   import SlashMenu from './lib/components/SlashMenu.svelte'
@@ -65,9 +67,10 @@
   let newPageInitialTypeId = $state<string | null>(null)
   let createTomeModalOpen = $state(false)
   // Active module — switching preserves each module's sub-state
-  let activeModule = $state<'wiki' | 'atlas' | 'chronicle' | 'relations' | 'entity-list'>('wiki')
+  let activeModule = $state<'wiki' | 'atlas' | 'chronicle' | 'relations' | 'entity-list' | 'boards'>('wiki')
   let activeTypeListId = $state<string | null>(null)
   let activeMapId = $state<string | null>(null)
+  let activeBoardId = $state<string | null>(null)
 
   function switchToWiki() {
     activeModule = 'wiki'
@@ -133,13 +136,19 @@
       onOpenAtlas={() => { activeModule = 'atlas' }}
       onOpenChronicle={() => { activeModule = 'chronicle' }}
       chronicleActive={activeModule === 'chronicle'}
+      onOpenBoards={() => { activeModule = 'boards' }}
+      boardsActive={activeModule === 'boards'}
       graphActive={activeModule === 'relations'}
       atlasActive={activeModule === 'atlas'}
       onOpenWiki={switchToWiki}
       wikiActive={activeModule === 'wiki'}
       onCloseTome={async () => { await closeTome(); await loadRecentTomes() }}
     />
-    {#if activeModule === 'chronicle'}
+    {#if activeModule === 'boards' && activeBoardId}
+      <BoardView boardId={activeBoardId} onClose={() => activeBoardId = null} />
+    {:else if activeModule === 'boards'}
+      <BoardList onOpenBoard={(id) => activeBoardId = id} onClose={() => activeModule = 'wiki'} />
+    {:else if activeModule === 'chronicle'}
       <ChronicleView onClose={() => activeModule = 'wiki'} />
     {:else if activeModule === 'atlas' && activeMapId}
       <MapViewer mapId={activeMapId} onClose={() => activeMapId = null} />

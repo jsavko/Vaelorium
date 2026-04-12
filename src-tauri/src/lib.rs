@@ -156,6 +156,17 @@ pub fn run() {
             commands::images::get_image,
             commands::images::delete_image,
             commands::images::list_images,
+            // Boards
+            commands::boards::create_board,
+            commands::boards::list_boards,
+            commands::boards::delete_board,
+            commands::boards::create_card,
+            commands::boards::update_card,
+            commands::boards::delete_card,
+            commands::boards::get_board_cards,
+            commands::boards::create_connector,
+            commands::boards::delete_connector,
+            commands::boards::get_board_connectors,
             // Maps
             commands::maps::create_map,
             commands::maps::list_maps,
