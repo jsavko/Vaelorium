@@ -47,3 +47,7 @@ install-deps.sh
 
 # Claude Code workspace (local plans, skills, hooks)
 .claude/
+
+# Playwright generated reports / results
+playwright-report/
+test-results/
