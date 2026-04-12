@@ -72,10 +72,25 @@ pub async fn search_pages(
         return Ok(vec![]);
     }
 
-    // Try FTS first, fall back to LIKE on pages table
-    let fts_query = format!("{}*", query.trim());
+    // Primary: simple LIKE search on page titles (always reliable)
+    let like_query = format!("%{}%", query.trim());
+    let rows = sqlx::query_as::<_, (String, String, Option<String>)>(
+        "SELECT id, title, entity_type_id FROM pages WHERE title LIKE ? ORDER BY title LIMIT 20",
+    )
+    .bind(&like_query)
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let mut rows = sqlx::query_as::<_, (String, String, Option<String>, String)>(
+    let mut seen: std::collections::HashSet<String> = rows.iter().map(|r| r.0.clone()).collect();
+    let mut results: Vec<(String, String, Option<String>, Option<String>)> = rows
+        .into_iter()
+        .map(|r| (r.0, r.1, r.2, None))
+        .collect();
+
+    // Secondary: FTS content search (finds matches in page body text)
+    let fts_query = format!("{}*", query.trim());
+    let fts_rows = sqlx::query_as::<_, (String, String, Option<String>, String)>(
         "SELECT fc.page_id, p.title, p.entity_type_id, snippet(pages_fts, 1, '<b>', '</b>', '...', 32) as snippet
          FROM pages_fts
          JOIN pages_fts_content fc ON fc.rowid = pages_fts.rowid
@@ -89,42 +104,20 @@ pub async fn search_pages(
     .await
     .unwrap_or_default();
 
-    // If FTS returned nothing, fall back to simple LIKE search on page titles
-    if rows.is_empty() {
-        let like_query = format!("%{}%", query.trim());
-        rows = sqlx::query_as::<_, (String, String, Option<String>, String)>(
-            "SELECT id, title, entity_type_id, '' as snippet FROM pages WHERE title LIKE ? ORDER BY title LIMIT 20",
-        )
-        .bind(&like_query)
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    }
-
-    // Also add any pages matching by title that FTS missed (e.g. FTS not yet indexed)
-    let seen: std::collections::HashSet<String> = rows.iter().map(|r| r.0.clone()).collect();
-    let like_query = format!("%{}%", query.trim());
-    let extra = sqlx::query_as::<_, (String, String, Option<String>, String)>(
-        "SELECT id, title, entity_type_id, '' as snippet FROM pages WHERE title LIKE ? AND id NOT IN (SELECT page_id FROM pages_fts_content) ORDER BY title LIMIT 10",
-    )
-    .bind(&like_query)
-    .fetch_all(&pool)
-    .await
-    .unwrap_or_default();
-
-    for r in extra {
+    for r in fts_rows {
         if !seen.contains(&r.0) {
-            rows.push(r);
+            seen.insert(r.0.clone());
+            results.push((r.0, r.1, r.2, Some(r.3)));
         }
     }
 
-    Ok(rows
+    Ok(results
         .into_iter()
         .map(|row| SearchResult {
             page_id: row.0,
             title: row.1,
             entity_type_id: row.2,
-            snippet: if row.3.is_empty() { None } else { Some(row.3) },
+            snippet: row.3,
         })
         .collect())
 }

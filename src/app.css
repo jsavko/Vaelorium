@@ -101,6 +101,7 @@ html, body {
   overflow: hidden;
   background-color: var(--color-surface-primary);
   color: var(--color-fg-primary);
+  color-scheme: dark;
   font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.5;

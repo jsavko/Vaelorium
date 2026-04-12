@@ -277,6 +277,7 @@
     font-family: var(--font-ui);
     font-size: 13px;
     color: var(--color-fg-primary);
+    color-scheme: dark;
     cursor: pointer;
   }
 
