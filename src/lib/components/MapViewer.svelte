@@ -168,7 +168,7 @@
 
   function selectPage(pageId: string, title: string) {
     if (pinForm) {
-      pinForm = { ...pinForm, pageId, label: pinForm.label || title }
+      pinForm = { ...pinForm, pageId }
       searchQuery = title
     }
   }
@@ -276,7 +276,7 @@
       {@const fy = transform.y + pinForm.y * imgHeight * transform.scale}
       <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
       <div class="pin-form" style:left="{fx + 16}px" style:top="{fy}px" onclick={(e) => e.stopPropagation()} onmousedown={(e) => e.stopPropagation()}>
-        <input class="pin-input" bind:value={pinForm.label} placeholder="Pin label..." />
+        <input class="pin-input" bind:value={pinForm.label} placeholder="Pin label (optional)..." />
         <div class="color-row">
           <label class="color-label">Color</label>
           <input type="color" class="color-picker" bind:value={pinForm.color} />
