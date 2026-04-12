@@ -249,9 +249,17 @@
           style:left="{px}px"
           style:top="{py}px"
           style:--pin-color={getPinColor(pin)}
-          onclick={(e) => startEditPin(pin, e)}
-          ondblclick={(e) => { e.stopPropagation(); if (pin.page_id) { loadPage(pin.page_id); onClose() } }}
-          title={pin.label || 'Click to edit, double-click to open page'}
+          onclick={(e) => {
+            e.stopPropagation()
+            if (pin.page_id) {
+              loadPage(pin.page_id)
+              onClose()
+            } else {
+              startEditPin(pin, e)
+            }
+          }}
+          oncontextmenu={(e) => { e.preventDefault(); startEditPin(pin, e) }}
+          title={pin.label || (pin.page_id ? 'Click to open, right-click to edit' : 'Click to edit')}
         >
           <MapPinIcon size={20} />
           {#if pin.label}
