@@ -32,6 +32,14 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["tome", "vaelorium"],
+        "name": "Vaelorium Tome",
+        "description": "Vaelorium worldbuilding Tome",
+        "role": "Editor"
+      }
     ]
   }
 }

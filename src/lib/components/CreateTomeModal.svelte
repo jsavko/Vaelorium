@@ -23,13 +23,13 @@
         // Use native save dialog for real file path
         const { save } = await import('@tauri-apps/plugin-dialog')
         path = await save({
-          defaultPath: `${name.trim().replace(/\s+/g, '-')}.vaelorium`,
-          filters: [{ name: 'Vaelorium Tome', extensions: ['vaelorium'] }],
+          defaultPath: `${name.trim().replace(/\s+/g, '-')}.tome`,
+          filters: [{ name: 'Vaelorium Tome', extensions: ['tome', 'vaelorium'] }],
         }) as string | null
         if (!path) { saving = false; return }
       } else {
         // Browser mock — synthetic path
-        path = `/tomes/${name.trim().toLowerCase().replace(/\s+/g, '-')}.vaelorium`
+        path = `/tomes/${name.trim().toLowerCase().replace(/\s+/g, '-')}.tome`
       }
 
       await createTome(path, name.trim(), description.trim() || undefined)

@@ -23,7 +23,7 @@
     if (isTauri) {
       const { open } = await import('@tauri-apps/plugin-dialog')
       const path = await open({
-        filters: [{ name: 'Vaelorium Tome', extensions: ['vaelorium'] }],
+        filters: [{ name: 'Vaelorium Tome', extensions: ['tome', 'vaelorium'] }],
         multiple: false,
       })
       if (path) {
@@ -93,7 +93,7 @@
         <FolderOpen size={16} />
         <span>Open Tome File</span>
       </button>
-      <span class="drag-hint">or drag a .vaelorium file here</span>
+      <span class="drag-hint">or drag a .tome file here</span>
     </div>
   </div>
 </div>

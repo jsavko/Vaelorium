@@ -49,7 +49,7 @@ const mockDb = {
   tomeOpen: true,
   tomeMeta: { name: 'Dev Tome', description: 'Browser development tome', created_at: '2026-01-01T00:00:00Z' } as any,
   recentTomes: [
-    { path: '/mock/dev-tome.vaelorium', name: 'Dev Tome', description: 'Browser development tome', last_opened: new Date().toISOString() },
+    { path: '/mock/dev-tome.tome', name: 'Dev Tome', description: 'Browser development tome', last_opened: new Date().toISOString() },
   ] as any[],
 }
 

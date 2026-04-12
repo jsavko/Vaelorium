@@ -34,7 +34,7 @@ async fn migrate_legacy_db(app: &tauri::AppHandle, managed: &ManagedDb) {
     let tome_dir = docs_dir.join("Vaelorium Tomes");
     std::fs::create_dir_all(&tome_dir).ok();
 
-    let tome_path = tome_dir.join("My Campaign.vaelorium");
+    let tome_path = tome_dir.join("My Campaign.tome");
     let tome_path_str = tome_path.to_string_lossy().to_string();
 
     if let Err(e) = std::fs::copy(&legacy_path, &tome_path) {
