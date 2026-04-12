@@ -43,4 +43,14 @@ test.describe('Settings', () => {
     await expect(page.locator('.theme-card').first()).toContainText('Dark Library')
     await expect(page.locator('.theme-card.active')).toBeVisible()
   })
+
+  test('account tab shows version and update controls', async ({ page }) => {
+    await page.locator('button[aria-label="Settings"]').click()
+    await page.locator('.settings-nav-item:has-text("Account")').click()
+    await expect(page.locator('.settings-panel')).toContainText('About')
+    await expect(page.locator('.settings-panel')).toContainText('Version')
+    await expect(page.locator('.settings-panel')).toContainText('Vaelorium')
+    // In browser (non-Tauri) build, updates are gated with a notice
+    await expect(page.locator('.settings-panel')).toContainText('Updates are only available in the desktop app.')
+  })
 })
