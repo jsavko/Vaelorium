@@ -5,7 +5,8 @@ Self-hosted, offline-first LegendKeeper alternative for worldbuilders. Cross-pla
 - **Domain:** vaelorium.com
 - **Theme:** arcane library; dark walnut palette is the default
 - **Tome file extension:** `.tome`
-- **Status:** v0.1.1 released; milestones M0–M6, M9, M10 complete; M7 + M8 remaining
+- **Status:** v0.1.1 released; milestones M0–M6, M9, M10 complete; M7 (sync) + M8 (collaboration) remaining
+- **Marketing site:** [vaelorium-website](https://github.com/jsavko/vaelorium-website) (private repo, sibling directory; see Marketing Website section below)
 
 ## Stack
 
@@ -37,6 +38,23 @@ Self-hosted, offline-first LegendKeeper alternative for worldbuilders. Cross-pla
 - Signing keys: `~/.tauri/vaelorium.key`
 - GitHub release workflow publishes `latest.json` endpoint
 - Runtime check in `src/lib/components/UpdateNotification.svelte` (6-hour passive auto-check)
+
+## Releases
+
+- All three manifests must agree on version: `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
+- Bump them together: `npm run bump <semver>` (writes all three atomically)
+- CI's `version-guard` job fails the build if manifests disagree or the git tag doesn't match
+- Tag push → CI builds → creates a **draft** release. Promote to public with `gh release edit vX.Y.Z --draft=false` when ready to ship
+- Promoting a release fires `release.published` → triggers website rebuild (see below)
+
+## Marketing Website
+
+- **Repo:** `jsavko/vaelorium-website` (private), separate sibling at `~/Projects/vaelorium-website/`
+- **Stack:** Astro 5, hosted on Cloudflare Workers + Static Assets
+- **Domain:** vaelorium.com (DNS on Cloudflare)
+- **Auto-rebuild:** `.github/workflows/website-rebuild.yml` in this repo fires on `release.published` and pings the `CF_DEPLOY_HOOK` secret. The site re-fetches the GitHub Releases API at build time and updates download links automatically
+- **Per-release upkeep:** add a Markdown file at `src/content/changelog/<version>.md` in the website repo. **Do not** bump version constants — the API fetch handles that
+- The `website/` directory in this repo is gitignored as a safety net; never commit website code here
 
 ## System Dependencies
 
