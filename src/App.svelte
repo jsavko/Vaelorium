@@ -19,6 +19,8 @@
   import { createPage, currentPageId } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
   import { loadEntityTypes } from './lib/stores/entityTypeStore'
+  import { loadMaps } from './lib/stores/mapStore'
+  import { loadTimelines } from './lib/stores/timelineStore'
   import { isTomeOpen, currentTome, currentTomeMetadata, loadRecentTomes, closeTome } from './lib/stores/tomeStore'
   import { getTomeMetadata } from './lib/api/tomes'
   import { isTauri } from './lib/api/bridge'
@@ -42,6 +44,8 @@
       // In browser mock, a Tome is always "open"
       isTomeOpen.set(true)
       await loadEntityTypes()
+      await loadMaps()
+      await loadTimelines()
     }
   })
 
@@ -49,6 +53,8 @@
   $effect(() => {
     if ($isTomeOpen) {
       loadEntityTypes()
+      loadMaps()
+      loadTimelines()
     }
   })
 
