@@ -258,7 +258,6 @@
             e.stopPropagation()
             if (pin.page_id) {
               loadPage(pin.page_id)
-              onClose()
             } else {
               startEditPin(pin, e)
             }

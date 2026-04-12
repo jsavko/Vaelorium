@@ -27,6 +27,7 @@
 
   function select() {
     loadPage(node.id)
+    window.dispatchEvent(new CustomEvent('vaelorium:page-selected'))
   }
 
   function handleDragStart(e: DragEvent) {

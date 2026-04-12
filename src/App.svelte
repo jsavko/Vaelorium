@@ -63,14 +63,14 @@
   let activeTypeListId = $state<string | null>(null)
   let activeMapId = $state<string | null>(null)
 
-  // When a page is selected (from sidebar tree, pin click, etc.), switch to wiki
-  let prevPageId: string | null = null
+  function switchToWiki() {
+    activeModule = 'wiki'
+  }
+
+  // Listen for page selection from sidebar tree
   $effect(() => {
-    const pageId = $currentPageId
-    if (pageId && pageId !== prevPageId) {
-      activeModule = 'wiki'
-    }
-    prevPageId = pageId
+    window.addEventListener('vaelorium:page-selected', switchToWiki)
+    return () => window.removeEventListener('vaelorium:page-selected', switchToWiki)
   })
 
   function getKeybindCombo(id: string): string {
@@ -115,6 +115,8 @@
       chronicleActive={activeModule === 'chronicle'}
       graphActive={activeModule === 'relations'}
       atlasActive={activeModule === 'atlas'}
+      onOpenWiki={switchToWiki}
+      wikiActive={activeModule === 'wiki'}
       onCloseTome={async () => { await closeTome(); await loadRecentTomes() }}
     />
     {#if activeModule === 'chronicle'}
