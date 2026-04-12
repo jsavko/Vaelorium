@@ -40,7 +40,7 @@ test.describe('Settings', () => {
   test('appearance tab shows dark library theme', async ({ page }) => {
     await page.locator('button[aria-label="Settings"]').click()
     await page.locator('.settings-nav-item:has-text("Appearance")').click()
-    await expect(page.locator('.theme-card')).toContainText('Dark Library')
+    await expect(page.locator('.theme-card').first()).toContainText('Dark Library')
     await expect(page.locator('.theme-card.active')).toBeVisible()
   })
 })

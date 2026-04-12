@@ -74,8 +74,27 @@ export function updateAppearance(updates: Partial<AppSettings['appearance']>) {
   settings.update((s) => {
     const newSettings = { ...s, appearance: { ...s.appearance, ...updates } }
     saveSettings(newSettings)
+    if (updates.theme !== undefined) {
+      applyTheme(updates.theme)
+    }
     return newSettings
   })
+}
+
+export function applyTheme(themeId: string) {
+  if (typeof document !== 'undefined') {
+    if (themeId === 'dark-library') {
+      document.documentElement.removeAttribute('data-theme')
+    } else {
+      document.documentElement.setAttribute('data-theme', themeId)
+    }
+  }
+}
+
+// Apply the saved theme on startup
+if (typeof document !== 'undefined') {
+  const s = get(settings)
+  applyTheme(s.appearance.theme)
 }
 
 export function getKeybind(id: string): string {

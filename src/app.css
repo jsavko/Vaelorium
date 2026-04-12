@@ -138,6 +138,157 @@ html, body {
   background: var(--color-border-strong);
 }
 
+/* ═══════════════════════════════════════════════════════
+   ALTERNATE THEMES
+   Applied via <html data-theme="theme-name">
+   ═══════════════════════════════════════════════════════ */
+
+/* Midnight Ink — deep blue-black, silver/ice-blue accents */
+[data-theme="midnight-ink"] {
+  --color-surface-primary: #0E1420;
+  --color-surface-secondary: #141B29;
+  --color-surface-tertiary: #1B2434;
+  --color-surface-card: #17202F;
+  --color-fg-primary: #E0E6F0;
+  --color-fg-secondary: #B8C2D4;
+  --color-fg-tertiary: #8A96AC;
+  --color-accent-gold: #7EB3E0;
+  --color-accent-gold-subtle: #7EB3E020;
+  --color-accent-gold-hover: #9BCAE8;
+  --color-border-subtle: #1F2A3A;
+  --color-border-default: #2A3648;
+  --color-border-strong: #3A4558;
+}
+
+/* Obsidian — pure dark, neon green accents (cyberpunk) */
+[data-theme="obsidian"] {
+  --color-surface-primary: #0A0A0A;
+  --color-surface-secondary: #121212;
+  --color-surface-tertiary: #1A1A1A;
+  --color-surface-card: #161616;
+  --color-fg-primary: #E8E8E8;
+  --color-fg-secondary: #B8B8B8;
+  --color-fg-tertiary: #888888;
+  --color-accent-gold: #39FF88;
+  --color-accent-gold-subtle: #39FF8820;
+  --color-accent-gold-hover: #5BFFA0;
+  --color-border-subtle: #1F1F1F;
+  --color-border-default: #2A2A2A;
+  --color-border-strong: #3A3A3A;
+}
+
+/* Ember Hearth — dark charcoal, warm orange/red accents */
+[data-theme="ember-hearth"] {
+  --color-surface-primary: #1A1513;
+  --color-surface-secondary: #22191A;
+  --color-surface-tertiary: #2A1F20;
+  --color-surface-card: #25191A;
+  --color-fg-primary: #F0E6DC;
+  --color-fg-secondary: #D4C0B0;
+  --color-fg-tertiary: #A89082;
+  --color-accent-gold: #E87840;
+  --color-accent-gold-subtle: #E8784020;
+  --color-accent-gold-hover: #F59058;
+  --color-border-subtle: #2A1F1D;
+  --color-border-default: #3A2A26;
+  --color-border-strong: #4A3832;
+}
+
+/* Moonstone — light mode, cream/off-white with slate blue accents */
+[data-theme="moonstone"] {
+  --color-surface-primary: #F5F2ED;
+  --color-surface-secondary: #EDE8E0;
+  --color-surface-tertiary: #E0D9CE;
+  --color-surface-card: #FFFFFF;
+  --color-surface-inverse: #2C2520;
+  --color-fg-primary: #1C2230;
+  --color-fg-secondary: #3A4255;
+  --color-fg-tertiary: #6A7180;
+  --color-fg-inverse: #F5F2ED;
+  --color-accent-gold: #4A6B9E;
+  --color-accent-gold-subtle: #4A6B9E25;
+  --color-accent-gold-hover: #5F7FB3;
+  --color-border-subtle: #E0D9CE;
+  --color-border-default: #C9C0B3;
+  --color-border-strong: #A89E90;
+}
+
+/* Parchment — warm ivory, sepia/brown accents */
+[data-theme="parchment"] {
+  --color-surface-primary: #F5EDDE;
+  --color-surface-secondary: #EDE2CA;
+  --color-surface-tertiary: #E0D4B8;
+  --color-surface-card: #FCF5E5;
+  --color-surface-inverse: #2C2520;
+  --color-fg-primary: #3A2820;
+  --color-fg-secondary: #5A4230;
+  --color-fg-tertiary: #8A6E50;
+  --color-fg-inverse: #F5EDDE;
+  --color-accent-gold: #8B4513;
+  --color-accent-gold-subtle: #8B451325;
+  --color-accent-gold-hover: #A0552D;
+  --color-border-subtle: #E0D4B8;
+  --color-border-default: #C8B89A;
+  --color-border-strong: #A89578;
+}
+
+/* Dusk — purple-gray, lavender accents */
+[data-theme="dusk"] {
+  --color-surface-primary: #1F1A26;
+  --color-surface-secondary: #27202F;
+  --color-surface-tertiary: #2F2638;
+  --color-surface-card: #2A2332;
+  --color-fg-primary: #E6DEF0;
+  --color-fg-secondary: #C4B8D4;
+  --color-fg-tertiary: #968AA8;
+  --color-accent-gold: #C39EF5;
+  --color-accent-gold-subtle: #C39EF520;
+  --color-accent-gold-hover: #D4B3F8;
+  --color-border-subtle: #2A2232;
+  --color-border-default: #3A2F45;
+  --color-border-strong: #4A3E58;
+}
+
+/* Forest — dark green-black, emerald/moss accents */
+[data-theme="forest"] {
+  --color-surface-primary: #0F1814;
+  --color-surface-secondary: #15201B;
+  --color-surface-tertiary: #1B2822;
+  --color-surface-card: #18241F;
+  --color-fg-primary: #E0E8DE;
+  --color-fg-secondary: #BCCAB8;
+  --color-fg-tertiary: #8AA088;
+  --color-accent-gold: #5FB370;
+  --color-accent-gold-subtle: #5FB37020;
+  --color-accent-gold-hover: #75C985;
+  --color-border-subtle: #1B2822;
+  --color-border-default: #2A3B32;
+  --color-border-strong: #3A4F44;
+}
+
+/* Storm — dark slate, electric blue accents */
+[data-theme="storm"] {
+  --color-surface-primary: #1A1D24;
+  --color-surface-secondary: #22262F;
+  --color-surface-tertiary: #2B3039;
+  --color-surface-card: #262B34;
+  --color-fg-primary: #E8ECF0;
+  --color-fg-secondary: #B8C0CC;
+  --color-fg-tertiary: #8A94A3;
+  --color-accent-gold: #4FC3F7;
+  --color-accent-gold-subtle: #4FC3F720;
+  --color-accent-gold-hover: #6FD1FA;
+  --color-border-subtle: #2B3039;
+  --color-border-default: #3A404D;
+  --color-border-strong: #4D5362;
+}
+
+/* Light theme color-scheme override */
+[data-theme="moonstone"],
+[data-theme="parchment"] {
+  color-scheme: light;
+}
+
 /* Selection */
 ::selection {
   background: var(--color-accent-gold-subtle);
