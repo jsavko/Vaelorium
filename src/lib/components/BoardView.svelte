@@ -74,6 +74,10 @@
 
   function startDragCard(cardId: string, e: MouseEvent) {
     e.stopPropagation()
+    if (e.shiftKey) {
+      connecting = cardId
+      return
+    }
     const card = $currentCards.find((c) => c.id === cardId)
     if (!card) return
     const pos = screenToWorld(e.clientX, e.clientY)
@@ -176,6 +180,7 @@
         style:width="{card.width * transform.scale}px"
         style:--card-color={getCardColor(card)}
         onmousedown={(e) => startDragCard(card.id, e)}
+        onmouseup={(e) => { if (connecting && connecting !== card.id) { e.stopPropagation(); finishConnect(card.id, e) } }}
         onclick={(e) => e.stopPropagation()}
         ondblclick={(e) => {
           e.stopPropagation()
