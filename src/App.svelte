@@ -58,20 +58,15 @@
   let newPageModalOpen = $state(false)
   let newPageInitialTypeId = $state<string | null>(null)
   let createTomeModalOpen = $state(false)
+  // Active module — switching preserves each module's sub-state
+  let activeModule = $state<'wiki' | 'atlas' | 'chronicle' | 'relations' | 'entity-list'>('wiki')
   let activeTypeListId = $state<string | null>(null)
-  let graphViewOpen = $state(false)
-  let atlasOpen = $state(false)
   let activeMapId = $state<string | null>(null)
-  let chronicleOpen = $state(false)
 
-  // Clear entity list view when a page is selected
+  // When a page is selected (from sidebar tree, pin click, etc.), switch to wiki
   $effect(() => {
     if ($currentPageId) {
-      activeTypeListId = null
-      graphViewOpen = false
-      atlasOpen = false
-      activeMapId = null
-      chronicleOpen = false
+      activeModule = 'wiki'
     }
   })
 
@@ -109,32 +104,32 @@
     <Sidebar
       onOpenSettings={() => settingsOpen = true}
       onNewPage={() => { newPageInitialTypeId = null; newPageModalOpen = true }}
-      onSelectType={(typeId) => { activeTypeListId = typeId; graphViewOpen = false; detailsOpen = false }}
-      activeTypeId={activeTypeListId}
-      onOpenGraph={() => { graphViewOpen = true; activeTypeListId = null; atlasOpen = false; activeMapId = null; detailsOpen = false }}
-      onOpenAtlas={() => { atlasOpen = true; activeMapId = null; graphViewOpen = false; chronicleOpen = false; activeTypeListId = null; detailsOpen = false }}
-      onOpenChronicle={() => { chronicleOpen = true; graphViewOpen = false; atlasOpen = false; activeMapId = null; activeTypeListId = null; detailsOpen = false }}
-      chronicleActive={chronicleOpen}
-      graphActive={graphViewOpen}
-      atlasActive={atlasOpen || !!activeMapId}
+      onSelectType={(typeId) => { activeTypeListId = typeId; activeModule = 'entity-list' }}
+      activeTypeId={activeModule === 'entity-list' ? activeTypeListId : null}
+      onOpenGraph={() => { activeModule = 'relations' }}
+      onOpenAtlas={() => { activeModule = 'atlas' }}
+      onOpenChronicle={() => { activeModule = 'chronicle' }}
+      chronicleActive={activeModule === 'chronicle'}
+      graphActive={activeModule === 'relations'}
+      atlasActive={activeModule === 'atlas'}
       onCloseTome={async () => { await closeTome(); await loadRecentTomes() }}
     />
-    {#if chronicleOpen}
-      <ChronicleView onClose={() => chronicleOpen = false} />
-    {:else if activeMapId}
-      <MapViewer mapId={activeMapId} onClose={() => { activeMapId = null; atlasOpen = true }} />
-    {:else if atlasOpen}
+    {#if activeModule === 'chronicle'}
+      <ChronicleView onClose={() => activeModule = 'wiki'} />
+    {:else if activeModule === 'atlas' && activeMapId}
+      <MapViewer mapId={activeMapId} onClose={() => activeMapId = null} />
+    {:else if activeModule === 'atlas'}
       <MapList
-        onOpenMap={(id) => { activeMapId = id; atlasOpen = false }}
-        onClose={() => atlasOpen = false}
+        onOpenMap={(id) => activeMapId = id}
+        onClose={() => activeModule = 'wiki'}
       />
-    {:else if graphViewOpen}
-      <GraphView onClose={() => graphViewOpen = false} />
-    {:else if activeTypeListId}
+    {:else if activeModule === 'relations'}
+      <GraphView onClose={() => activeModule = 'wiki'} />
+    {:else if activeModule === 'entity-list' && activeTypeListId}
       <EntityListView
         entityTypeId={activeTypeListId}
         onOpenNewPage={() => { newPageInitialTypeId = activeTypeListId; newPageModalOpen = true }}
-        onClose={() => activeTypeListId = null}
+        onClose={() => { activeTypeListId = null; activeModule = 'wiki' }}
       />
     {:else}
       <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
