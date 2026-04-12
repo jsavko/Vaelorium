@@ -152,16 +152,20 @@
   function selectEditPage(pageId: string, title: string) {
     editPageId = pageId
     editSearchQuery = title
+    showEditSearchResults = false
   }
 
+  let showSearchResults = $state(false)
+  let showEditSearchResults = $state(false)
+
   let filteredPages = $derived(
-    searchQuery.length > 0
+    showSearchResults && searchQuery.length > 0
       ? $pageTree.filter((p) => p.title.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 6)
       : [],
   )
 
   let editFilteredPages = $derived(
-    editSearchQuery.length > 0
+    showEditSearchResults && editSearchQuery.length > 0
       ? $pageTree.filter((p) => p.title.toLowerCase().includes(editSearchQuery.toLowerCase())).slice(0, 6)
       : [],
   )
@@ -170,6 +174,7 @@
     if (pinForm) {
       pinForm = { ...pinForm, pageId }
       searchQuery = title
+      showSearchResults = false
     }
   }
 
@@ -282,7 +287,7 @@
           <input type="color" class="color-picker" bind:value={pinForm.color} />
         </div>
         <div class="pin-search-wrapper">
-          <input class="pin-input" bind:value={searchQuery} placeholder="Link to page..." />
+          <input class="pin-input" bind:value={searchQuery} placeholder="Link to page..." onfocus={() => showSearchResults = true} oninput={() => showSearchResults = true} />
           {#if filteredPages.length > 0}
             <div class="pin-search-results">
               {#each filteredPages as page (page.id)}
@@ -315,7 +320,7 @@
           <input type="color" class="color-picker" bind:value={editColor} />
         </div>
         <div class="pin-search-wrapper">
-          <input class="pin-input" bind:value={editSearchQuery} placeholder="Link to page..." />
+          <input class="pin-input" bind:value={editSearchQuery} placeholder="Link to page..." onfocus={() => showEditSearchResults = true} oninput={() => showEditSearchResults = true} />
           {#if editFilteredPages.length > 0}
             <div class="pin-search-results">
               {#each editFilteredPages as page (page.id)}
