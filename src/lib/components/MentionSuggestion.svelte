@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { setMentionMenuRenderer } from '../editor/MentionExtension'
+  import type { MentionItem } from '../editor/MentionExtension'
   import { entityTypeMap } from '../stores/entityTypeStore'
-  import type { PageTreeNode } from '../api/pages'
 
   let visible = $state(false)
-  let items = $state<PageTreeNode[]>([])
+  let items = $state<MentionItem[]>([])
   let selectedIndex = $state(0)
-  let commandFn: ((item: PageTreeNode) => void) | null = null
+  let commandFn: ((item: MentionItem) => void) | null = null
   let menuX = $state(0)
   let menuY = $state(0)
 
@@ -81,8 +81,8 @@
 
 {#if visible && items.length > 0}
   <div class="mention-dropdown" style:left="{menuX}px" style:top="{menuY}px" data-testid="mention-menu">
-    <div class="mention-header">LINK TO PAGE</div>
-    {#each items as item, index (item.id)}
+    <div class="mention-header">LINK TO</div>
+    {#each items as item, index (item.id + item.category)}
       <button
         class="mention-item"
         class:selected={index === selectedIndex}
@@ -91,13 +91,13 @@
       >
         <span
           class="mention-dot"
-          style:background-color={getEntityColor(item.entity_type_id)}
+          style:background-color={item.category === 'page' ? getEntityColor(item.entity_type_id || null) : item.color || 'var(--color-fg-tertiary)'}
         ></span>
         <span class="mention-title">{item.title}</span>
         <span class="mention-spacer"></span>
-        {#if item.entity_type_id}
-          <span class="mention-type">{item.entity_type_id}</span>
-        {/if}
+        <span class="mention-type">
+          {item.category === 'map' ? '📍 Map' : item.category === 'timeline' ? '📅 Timeline' : ''}
+        </span>
       </button>
     {/each}
   </div>

@@ -120,13 +120,21 @@
 
   function handleEditorClick(e: MouseEvent) {
     const target = e.target as HTMLElement
-    const link = target.closest('a[href^="#page:"]')
+    const link = target.closest('a[href^="#page:"], a[href^="#map:"], a[href^="#timeline:"]')
     if (link) {
       e.preventDefault()
       const href = link.getAttribute('href')
-      if (href) {
+      if (!href) return
+      if (href.startsWith('#page:')) {
         const pageId = href.replace('#page:', '')
         loadPage(pageId)
+        window.dispatchEvent(new CustomEvent('vaelorium:page-selected'))
+      } else if (href.startsWith('#map:')) {
+        const mapId = href.replace('#map:', '')
+        window.dispatchEvent(new CustomEvent('vaelorium:open-map', { detail: { mapId } }))
+      } else if (href.startsWith('#timeline:')) {
+        const timelineId = href.replace('#timeline:', '')
+        window.dispatchEvent(new CustomEvent('vaelorium:open-timeline', { detail: { timelineId } }))
       }
     }
   }

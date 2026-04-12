@@ -15,7 +15,7 @@ test.describe('@Mention Linking', () => {
     await editor.click()
     await page.keyboard.type('@')
     await expect(page.locator('[data-testid="mention-menu"]')).toBeVisible()
-    await expect(page.locator('[data-testid="mention-menu"]')).toContainText('LINK TO PAGE')
+    await expect(page.locator('[data-testid="mention-menu"]')).toContainText('LINK TO')
   })
 
   test('mention dropdown shows available pages', async ({ page }) => {

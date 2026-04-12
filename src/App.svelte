@@ -67,10 +67,24 @@
     activeModule = 'wiki'
   }
 
-  // Listen for page selection from sidebar tree
+  // Listen for cross-module navigation events
   $effect(() => {
+    function handleOpenMap(e: Event) {
+      const { mapId } = (e as CustomEvent).detail
+      activeMapId = mapId
+      activeModule = 'atlas'
+    }
+    function handleOpenTimeline(e: Event) {
+      activeModule = 'chronicle'
+    }
     window.addEventListener('vaelorium:page-selected', switchToWiki)
-    return () => window.removeEventListener('vaelorium:page-selected', switchToWiki)
+    window.addEventListener('vaelorium:open-map', handleOpenMap)
+    window.addEventListener('vaelorium:open-timeline', handleOpenTimeline)
+    return () => {
+      window.removeEventListener('vaelorium:page-selected', switchToWiki)
+      window.removeEventListener('vaelorium:open-map', handleOpenMap)
+      window.removeEventListener('vaelorium:open-timeline', handleOpenTimeline)
+    }
   })
 
   function getKeybindCombo(id: string): string {
