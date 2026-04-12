@@ -51,3 +51,7 @@ install-deps.sh
 # Playwright generated reports / results
 playwright-report/
 test-results/
+
+# Marketing website lives in a separate sibling repo (~/Projects/vaelorium-website)
+# This is a safety net in case any website work ends up here.
+website/
