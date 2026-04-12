@@ -14,6 +14,7 @@ import { SlashCommands } from './SlashCommands'
 import { MentionExtension } from './MentionExtension'
 import { WikiLinkSyntax } from './WikiLinkSyntax'
 import { PageEmbedNode } from './PageEmbedExtension'
+import { CalloutBlock } from './CalloutExtension'
 import type { Doc as YDoc } from 'yjs'
 
 export function createEditorExtensions(ydoc: YDoc) {
@@ -44,5 +45,6 @@ export function createEditorExtensions(ydoc: YDoc) {
     MentionExtension,
     WikiLinkSyntax,
     PageEmbedNode,
+    CalloutBlock,
   ]
 }

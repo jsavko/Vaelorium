@@ -19,7 +19,7 @@ test.describe('Slash Commands', () => {
     await page.keyboard.type('/')
     const menu = page.locator('[data-testid="slash-menu"]')
     await expect(menu).toBeVisible()
-    await expect(menu.locator('.slash-item')).toHaveCount(10)
+    await expect(menu.locator('.slash-item')).toHaveCount(13)
     await expect(menu).toContainText('Heading 1')
     await expect(menu).toContainText('Bullet List')
     await expect(menu).toContainText('Table')

@@ -106,7 +106,7 @@
           oninput={handleInput}
           onkeydown={handleKeydown}
         />
-        <span class="shortcut-badge">Esc</span>
+        <span class="shortcut-badge">⌘K</span>
       </div>
 
       <div class="search-divider"></div>

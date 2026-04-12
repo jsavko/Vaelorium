@@ -5,6 +5,7 @@
   import { LocalYjsProvider } from '../editor/YjsProvider'
   import { currentPage, updateCurrentPage, loadPage, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
+  import { currentPageRelations } from '../stores/relationStore'
   import IconPicker from './IconPicker.svelte'
   import InputModal from './InputModal.svelte'
   import { get } from 'svelte/store'
@@ -259,6 +260,10 @@
 
       <div class="page-meta">
         <span class="meta-text">Last edited {new Date($currentPage.updated_at).toLocaleDateString()}</span>
+        {#if $currentPageRelations.length > 0}
+          <span class="meta-sep">·</span>
+          <span class="meta-text">{$currentPageRelations.length} connection{$currentPageRelations.length !== 1 ? 's' : ''}</span>
+        {/if}
       </div>
     </div>
 
@@ -477,6 +482,11 @@
     color: var(--color-fg-tertiary);
   }
 
+  .meta-sep {
+    color: var(--color-fg-tertiary);
+    opacity: 0.5;
+  }
+
   .editor-toolbar {
     display: flex;
     align-items: center;
@@ -657,6 +667,16 @@
     background: var(--color-border-default);
     margin: 0 2px;
   }
+
+  /* Callout blocks */
+  .editor-container :global(.callout) {
+    border-left: 3px solid; padding: 12px 16px; margin: 12px 0;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: var(--color-surface-tertiary);
+  }
+  .editor-container :global(.callout-info) { border-color: var(--color-status-info); }
+  .editor-container :global(.callout-warning) { border-color: var(--color-status-warning); }
+  .editor-container :global(.callout-note) { border-color: var(--color-accent-gold); }
 
   /* Image alignment */
   .editor-container :global(.editor-content img) {
