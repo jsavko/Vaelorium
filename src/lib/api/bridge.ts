@@ -547,6 +547,37 @@ async function mockCommand(command: string, args?: any): Promise<any> {
         .sort((a: any, b: any) => a.title.localeCompare(b.title))
     }
 
+    // ── Export/Import ──
+
+    case 'export_tome_json': {
+      const exp = {
+        version: '1.0',
+        pages: Array.from(mockDb.pages.values()).map((p: any) => ({ ...p, content_base64: null })),
+        entity_types: Array.from(mockDb.entityTypes.values()),
+        tags: Array.from(mockDb.tags.values()),
+      }
+      return JSON.stringify(exp, null, 2)
+    }
+
+    case 'export_tome_markdown': { return null }
+    case 'import_markdown_folder': { return { pages_imported: 0, errors: ['Not supported in browser mock'] } }
+    case 'import_json': {
+      try {
+        const data = JSON.parse(args.json)
+        let count = 0
+        if (data.pages) {
+          for (const p of data.pages) {
+            const id = uuid()
+            mockDb.pages.set(id, { ...p, id, sort_order: mockDb.nextSortOrder++ })
+            count++
+          }
+        }
+        return { pages_imported: count, errors: [] }
+      } catch (e: any) {
+        return { pages_imported: 0, errors: [e.message] }
+      }
+    }
+
     // ── Boards ──
 
     case 'create_board': { const id = uuid(); const b = { id, name: args.name, sort_order: 0, created_at: now(), updated_at: now() }; mockDb.boards.set(id, b); return b }

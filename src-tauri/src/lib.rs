@@ -156,6 +156,11 @@ pub fn run() {
             commands::images::get_image,
             commands::images::delete_image,
             commands::images::list_images,
+            // Export/Import
+            commands::export::export_tome_json,
+            commands::export::export_tome_markdown,
+            commands::import_data::import_markdown_folder,
+            commands::import_data::import_json,
             // Boards
             commands::boards::create_board,
             commands::boards::list_boards,
