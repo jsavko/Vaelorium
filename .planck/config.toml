@@ -35,5 +35,5 @@
   backend = "auto"
 
 [markdown_style]
-  theme = "neo-brutalist"
+  theme = "terminal-classic"
   [markdown_style.overrides]

@@ -88,6 +88,7 @@ pub fn run() {
 
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.handle().plugin(tauri_plugin_fs::init())?;
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
 
             // Manage a ManagedDb with no active connection — Tome Picker will open a Tome
             let managed_db = db::create_managed_db();

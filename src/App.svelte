@@ -17,6 +17,7 @@
   import TomePicker from './lib/components/TomePicker.svelte'
   import CreateTomeModal from './lib/components/CreateTomeModal.svelte'
   import Settings from './lib/components/Settings.svelte'
+  import UpdateNotification from './lib/components/UpdateNotification.svelte'
   import { onMount } from 'svelte'
   import { createPage, currentPageId } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
@@ -193,6 +194,9 @@
 {/if}
 
 <ToastContainer />
+{#if $isTomeOpen}
+  <UpdateNotification />
+{/if}
 
 <style>
   .app-layout {
