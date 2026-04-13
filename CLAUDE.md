@@ -58,6 +58,13 @@ Self-hosted, offline-first LegendKeeper alternative for worldbuilders. Cross-pla
 - **Intentionally NOT synced:** wiki_links (derived from page content), versions (large; local-only), images (binary blob deferred), relation_types (built-ins dominate). Don't relitigate without strong reason.
 - **S3 testing:** `docs/sync-s3-testing.md` has a Minio-in-Docker recipe; the S3 backend has unit tests but no automated integration tests (thin translation layer on top of aws-sdk-s3 that would need a real bucket to exercise meaningfully).
 
+## Vaelorium Cloud (hosted backend)
+
+- **Repo:** sibling at `~/Projects/vaelorium-cloud/` — **private**, never push to the public Vaelorium repo
+- **Relationship:** the cloud is a third `SyncBackend` implementation (future `BackendKind::Hosted`) that serves the existing protocol. No app-side changes needed for a v1 that uses the S3 backend with Vaelorium-issued credentials.
+- **Protocol is frozen:** bucket layout (`tomes/<tome_uuid>/`), encryption (client-side Argon2id + ChaCha20-Poly1305), CAS on sync-meta.json, snapshot+journal format. See `project_m7_sync.md` in auto-memory for the locked decisions. The cloud must conform; don't relitigate in cloud sessions.
+- **Design state:** bootstrap. Brainstorm → research → plan before writing any code.
+
 ## Marketing Website
 
 - **Repo:** `jsavko/vaelorium-website` (private), separate sibling at `~/Projects/vaelorium-website/`
