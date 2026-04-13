@@ -11,7 +11,7 @@
   import { syncIndicator, syncStatus } from '../stores/syncStore'
 
   interface Props {
-    onOpenSettings?: () => void
+    onOpenSettings?: (initialTab?: string) => void
     onOpenUnlock?: () => void
     onNewPage?: () => void
     onSelectType?: (typeId: string) => void
@@ -31,12 +31,14 @@
 
   let { onOpenSettings, onOpenUnlock, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
 
-  // Clicking the sync pill: if locked, open unlock modal directly; else Settings.
+  // Clicking the sync pill:
+  //  - locked → open the inline unlock modal (no Settings detour)
+  //  - any other state → open Settings on the Sync tab specifically
   function handlePillClick() {
     if ($syncIndicator === 'locked') {
       onOpenUnlock?.()
     } else {
-      onOpenSettings?.()
+      onOpenSettings?.('sync')
     }
   }
 

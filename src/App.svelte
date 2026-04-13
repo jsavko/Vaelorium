@@ -69,18 +69,13 @@
   let searchOpen = $state(false)
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
+  let settingsInitialTab = $state<string | undefined>(undefined)
   let syncUnlockOpen = $state(false)
 
-  // Auto-open the unlock modal once per session when the app lands in a
-  // locked state (e.g. fresh launch with sync configured but no keychain
-  // auto-unlock available). Fires once per status transition into 'locked'.
-  let hasPromptedForUnlock = $state(false)
-  $effect(() => {
-    if ($syncStatus.enabled && $syncStatus.locked && !hasPromptedForUnlock) {
-      syncUnlockOpen = true
-      hasPromptedForUnlock = true
-    }
-  })
+  // Don't auto-open the unlock modal on launch — it covered the locked
+  // pill (its z-index is higher than the sidebar's), defeating the
+  // visibility the pill was added to provide. The pill stays visible;
+  // user clicks it to open the unlock dialog.
   let newPageModalOpen = $state(false)
   let newPageInitialTypeId = $state<string | null>(null)
   let createTomeModalOpen = $state(false)
@@ -146,7 +141,7 @@
 {#if $isTomeOpen}
   <div class="app-layout">
     <Sidebar
-      onOpenSettings={() => settingsOpen = true}
+      onOpenSettings={(tab?: string) => { settingsInitialTab = tab; settingsOpen = true }}
       onOpenUnlock={() => syncUnlockOpen = true}
       onNewPage={() => { newPageInitialTypeId = null; newPageModalOpen = true }}
       onSelectType={(typeId) => { activeTypeListId = typeId; activeModule = 'entity-list' }}
@@ -196,7 +191,7 @@
   <SearchOverlay open={searchOpen} onClose={() => searchOpen = false} />
   <SlashMenu />
   <MentionSuggestion />
-  <Settings open={settingsOpen} onClose={() => settingsOpen = false} />
+  <Settings open={settingsOpen} initialTab={settingsInitialTab} onClose={() => settingsOpen = false} />
   <SyncUnlockModal open={syncUnlockOpen} onClose={() => syncUnlockOpen = false} />
   <NewPageModal
     open={newPageModalOpen}

@@ -12,12 +12,19 @@
 
   interface Props {
     open: boolean
+    initialTab?: string
     onClose: () => void
   }
 
-  let { open, onClose }: Props = $props()
+  let { open, initialTab, onClose }: Props = $props()
 
   let activeTab = $state('keybinds')
+
+  // Each time the modal opens, jump to the requested tab if specified.
+  // Without this, the tab the user last visited would persist across opens.
+  $effect(() => {
+    if (open && initialTab) activeTab = initialTab
+  })
   let editingKeybind = $state<string | null>(null)
   let listeningForKey = $state(false)
 
