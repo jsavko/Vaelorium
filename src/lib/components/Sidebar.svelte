@@ -8,7 +8,8 @@
   import { currentTome } from '../stores/tomeStore'
   import type { PageTreeNode } from '../api/pages'
   import { deletePage } from '../api/pages'
-  import { syncIndicator, syncStatus } from '../stores/syncStore'
+  import { syncIndicator, syncStatus, syncConflicts, refreshSyncStatus } from '../stores/syncStore'
+  import { get } from 'svelte/store'
 
   interface Props {
     onOpenSettings?: (initialTab?: string) => void
@@ -30,9 +31,18 @@
 
   let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
 
-  // Clicking the sync pill always opens Settings → Sync tab. When locked,
-  // the Sync tab shows the passphrase prompt inline.
-  function handlePillClick() {
+  // Pill routing:
+  // - conflicts → navigate to the first conflicted page so ConflictResolver
+  //   auto-renders its banner. The resolver is per-page, so we have to land
+  //   on the right page first.
+  // - anything else → open Settings → Sync (locked state handled inline there).
+  async function handlePillClick() {
+    await refreshSyncStatus()
+    const conflicts = get(syncConflicts).filter((c) => c.tableName === 'pages')
+    if (conflicts.length > 0) {
+      await loadPage(conflicts[0].rowId)
+      return
+    }
     onOpenSettings?.('sync')
   }
 
@@ -165,7 +175,7 @@
       class:sync-error={$syncIndicator === 'error'}
       class:sync-locked={$syncIndicator === 'locked'}
       onclick={handlePillClick}
-      title={$syncIndicator === 'locked' ? 'Click to unlock' : 'Open sync settings'}
+      title={$syncIndicator === 'locked' ? 'Click to unlock' : $syncIndicator === 'conflicts' ? 'Go to first conflicted page' : 'Open sync settings'}
       data-testid="sync-pill"
     >
       <span class="sync-dot"></span>

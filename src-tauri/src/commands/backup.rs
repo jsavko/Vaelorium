@@ -530,6 +530,38 @@ pub async fn backup_restore_tome(
         .map_err(|e| format!("moving restored tome into place: {e}"))?;
 
     let path_str = final_path.to_string_lossy().to_string();
+
+    // Auto-enable sync on the restored Tome. A restored snapshot carries
+    // no sync_config row (snapshots strip sync state intentionally) — but
+    // the user explicitly chose to restore from backup, so they clearly
+    // want this Tome to resume syncing. Seed a sync_config row with this
+    // device's identity so the runner picks it up on next tick.
+    let app_data_dir_for_cfg = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app data dir: {e}"))?;
+    let app_cfg = app_backend::load(&app_data_dir_for_cfg)
+        .await?
+        .ok_or_else(|| "no backup destination configured".to_string())?;
+    {
+        use sqlx::sqlite::SqlitePoolOptions;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite:{}", final_path.display()))
+            .await
+            .map_err(|e| format!("opening restored tome to enable sync: {e}"))?;
+        let now = chrono::Utc::now();
+        let cfg = crate::sync::state::SyncConfig {
+            tome_id: path_str.clone(),
+            enabled: true,
+            device_id: app_cfg.device_id,
+            created_at: now,
+            updated_at: now,
+        };
+        cfg.save(&pool).await.map_err(|e| e.to_string())?;
+        pool.close().await;
+    }
+
     crate::app_state::add_recent_tome(&app, &path_str, &name, description.as_deref());
 
     Ok(RestoredTome {
