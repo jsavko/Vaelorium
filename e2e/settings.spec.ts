@@ -53,4 +53,11 @@ test.describe('Settings', () => {
     // In browser (non-Tauri) build, updates are gated with a notice
     await expect(page.locator('.settings-panel')).toContainText('Updates are only available in the desktop app.')
   })
+
+  test('sync tab shows desktop-only notice in browser', async ({ page }) => {
+    await page.locator('button[aria-label="Settings"]').click()
+    await page.locator('.settings-nav-item:has-text("Sync")').click()
+    await expect(page.locator('.settings-panel')).toContainText('Sync')
+    await expect(page.locator('.settings-panel')).toContainText('Sync is only available in the desktop app.')
+  })
 })

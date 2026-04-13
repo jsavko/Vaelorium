@@ -16,10 +16,13 @@ pub mod conflict;
 pub mod crypto;
 pub mod engine;
 pub mod journal;
+pub mod runner;
+pub mod session;
 pub mod snapshot;
 pub mod state;
 
 pub use engine::{sync_tome_once, SyncOutcome};
+pub use session::SessionState;
 
 use thiserror::Error;
 

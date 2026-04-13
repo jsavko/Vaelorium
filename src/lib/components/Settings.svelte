@@ -6,6 +6,9 @@
   import { showToast } from '../stores/toastStore'
   import { loadPageTree } from '../stores/pageStore'
   import ConfirmDialog from './ConfirmDialog.svelte'
+  import { syncStatus, refreshSyncStatus } from '../stores/syncStore'
+  import { enableSync, disableSync, syncNow, takeSnapshot } from '../api/sync'
+  import { currentTome } from '../stores/tomeStore'
 
   interface Props {
     open: boolean
@@ -22,8 +25,93 @@
     { id: 'keybinds', label: 'Keybinds' },
     { id: 'appearance', label: 'Appearance' },
     { id: 'data', label: 'Data' },
+    { id: 'sync', label: 'Sync' },
     { id: 'account', label: 'Account' },
   ]
+
+  // --- Sync tab state ---
+
+  let syncSetupOpen = $state(false)
+  let syncBackendKind = $state<'filesystem' | 's3'>('filesystem')
+  let syncBackendPath = $state('')
+  let syncPassphrase = $state('')
+  let syncPassphraseConfirm = $state('')
+  let syncDeviceName = $state('')
+  let syncBusy = $state(false)
+  let syncSetupError = $state<string | null>(null)
+
+  async function pickBackendDir() {
+    if (!isTauri) { syncSetupError = 'Sync requires the desktop app'; return }
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const path = await open({ directory: true })
+    if (path) syncBackendPath = path as string
+  }
+
+  async function submitEnableSync() {
+    syncSetupError = null
+    if (syncPassphrase.length < 8) { syncSetupError = 'Passphrase must be at least 8 characters'; return }
+    if (syncPassphrase !== syncPassphraseConfirm) { syncSetupError = 'Passphrases do not match'; return }
+    if (!syncBackendPath) { syncSetupError = 'Backend path is required'; return }
+    const tome = $currentTome
+    if (!tome) { syncSetupError = 'No Tome is open'; return }
+    syncBusy = true
+    try {
+      await enableSync({
+        tomeId: tome.path,
+        backendKind: syncBackendKind,
+        backendConfig: { path: syncBackendPath },
+        passphrase: syncPassphrase,
+        deviceName: syncDeviceName || undefined,
+      })
+      syncSetupOpen = false
+      syncPassphrase = ''
+      syncPassphraseConfirm = ''
+      await refreshSyncStatus()
+      showToast('Sync enabled', 'success')
+    } catch (e: any) {
+      syncSetupError = e.message || String(e)
+    } finally {
+      syncBusy = false
+    }
+  }
+
+  async function handleDisableSync() {
+    if ($syncStatus.tomeId) {
+      syncBusy = true
+      try {
+        await disableSync($syncStatus.tomeId)
+        await refreshSyncStatus()
+        showToast('Sync disabled', 'success')
+      } finally { syncBusy = false }
+    }
+  }
+
+  async function handleSyncNow() {
+    syncBusy = true
+    try {
+      const out = await syncNow()
+      await refreshSyncStatus()
+      const msg = `Synced — ${out.ops_uploaded} up, ${out.ops_applied} down`
+      showToast(out.error ? `Sync error: ${out.error}` : msg, out.error ? 'error' : 'success')
+    } catch (e: any) {
+      showToast(`Sync failed: ${e.message || e}`, 'error')
+    } finally { syncBusy = false }
+  }
+
+  async function handleTakeSnapshot() {
+    syncBusy = true
+    try {
+      await takeSnapshot()
+      await refreshSyncStatus()
+      showToast('Snapshot taken', 'success')
+    } catch (e: any) {
+      showToast(`Snapshot failed: ${e.message || e}`, 'error')
+    } finally { syncBusy = false }
+  }
+
+  $effect(() => {
+    if (open) refreshSyncStatus()
+  })
 
   let appVersion = $state<string>('')
   let checkingUpdate = $state(false)
@@ -327,6 +415,102 @@
               <button class="data-btn" onclick={handleImportMarkdown}>Import Markdown Folder</button>
             </div>
             <p class="data-desc">Import adds pages to the current Tome without replacing existing data.</p>
+          </div>
+        {:else if activeTab === 'sync'}
+          <div class="settings-section">
+            <h3 class="settings-section-title">Sync</h3>
+            {#if !isTauri}
+              <p class="data-desc">Sync is only available in the desktop app.</p>
+            {:else if !$syncStatus.enabled && !syncSetupOpen}
+              <p class="data-desc">
+                Sync is off. Enable it to keep this Tome synchronized across devices.
+                Bring your own backend (filesystem / S3-compatible) — your data is end-to-end encrypted.
+              </p>
+              <button class="data-btn" onclick={() => syncSetupOpen = true}>Enable sync</button>
+            {:else if syncSetupOpen}
+              <p class="data-desc">Configure sync for the active Tome.</p>
+              <div class="sync-form">
+                <label class="sync-field">
+                  <span class="sync-label">Backend</span>
+                  <select bind:value={syncBackendKind} class="sync-input">
+                    <option value="filesystem">Filesystem (local folder, Syncthing-friendly)</option>
+                    <option value="s3" disabled>S3-compatible (coming next)</option>
+                  </select>
+                </label>
+                {#if syncBackendKind === 'filesystem'}
+                  <label class="sync-field">
+                    <span class="sync-label">Folder</span>
+                    <div class="sync-row">
+                      <input type="text" bind:value={syncBackendPath} placeholder="/path/to/sync/folder" class="sync-input" />
+                      <button type="button" class="data-btn" onclick={pickBackendDir}>Pick…</button>
+                    </div>
+                  </label>
+                {/if}
+                <label class="sync-field">
+                  <span class="sync-label">Passphrase</span>
+                  <input type="password" bind:value={syncPassphrase} class="sync-input" autocomplete="new-password" />
+                </label>
+                <label class="sync-field">
+                  <span class="sync-label">Confirm passphrase</span>
+                  <input type="password" bind:value={syncPassphraseConfirm} class="sync-input" autocomplete="new-password" />
+                </label>
+                <p class="sync-warning">
+                  ⚠ Lose this passphrase and your data is unrecoverable. There is no recovery.
+                </p>
+                <label class="sync-field">
+                  <span class="sync-label">Device name</span>
+                  <input type="text" bind:value={syncDeviceName} placeholder="Laptop" class="sync-input" />
+                </label>
+                {#if syncSetupError}
+                  <p class="sync-error">{syncSetupError}</p>
+                {/if}
+                <div class="sync-actions">
+                  <button class="data-btn" onclick={() => syncSetupOpen = false}>Cancel</button>
+                  <button class="data-btn primary" onclick={submitEnableSync} disabled={syncBusy}>
+                    {syncBusy ? 'Enabling…' : 'Enable sync for this Tome'}
+                  </button>
+                </div>
+              </div>
+            {:else}
+              <div class="sync-status-card">
+                <div class="sync-status-row">
+                  <span class="sync-status-label">Status</span>
+                  <span class="sync-status-value">Enabled</span>
+                </div>
+                <div class="sync-status-row">
+                  <span class="sync-status-label">Backend</span>
+                  <span class="sync-status-value">{$syncStatus.backendKind} — {$syncStatus.backendSummary}</span>
+                </div>
+                <div class="sync-status-row">
+                  <span class="sync-status-label">Device</span>
+                  <span class="sync-status-value">{$syncStatus.deviceName}</span>
+                </div>
+                <div class="sync-status-row">
+                  <span class="sync-status-label">Last sync</span>
+                  <span class="sync-status-value">
+                    {$syncStatus.lastSyncAt ? new Date($syncStatus.lastSyncAt).toLocaleString() : 'never'}
+                  </span>
+                </div>
+                <div class="sync-status-row">
+                  <span class="sync-status-label">Pending uploads</span>
+                  <span class="sync-status-value">{$syncStatus.queueSize}</span>
+                </div>
+                <div class="sync-status-row">
+                  <span class="sync-status-label">Unresolved conflicts</span>
+                  <span class="sync-status-value" class:warn={$syncStatus.pendingConflicts > 0}>
+                    {$syncStatus.pendingConflicts}
+                  </span>
+                </div>
+                {#if $syncStatus.lastError}
+                  <p class="sync-error">Last error: {$syncStatus.lastError}</p>
+                {/if}
+              </div>
+              <div class="sync-actions">
+                <button class="data-btn" onclick={handleSyncNow} disabled={syncBusy}>Sync now</button>
+                <button class="data-btn" onclick={handleTakeSnapshot} disabled={syncBusy}>Take snapshot</button>
+                <button class="data-btn danger" onclick={handleDisableSync} disabled={syncBusy}>Disable sync</button>
+              </div>
+            {/if}
           </div>
         {:else if activeTab === 'account'}
           <div class="settings-section">
@@ -693,4 +877,57 @@
     background: var(--color-surface-tertiary); padding: 10px 12px; border-radius: var(--radius-sm);
     white-space: pre-wrap; margin: 6px 0 0; max-height: 160px; overflow-y: auto;
   }
+
+  /* Sync tab */
+  .sync-form { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+  .sync-field { display: flex; flex-direction: column; gap: 6px; }
+  .sync-label {
+    font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-fg-tertiary);
+  }
+  .sync-input {
+    padding: 8px 12px; background: var(--color-surface-tertiary);
+    border: 1px solid var(--color-border-default); border-radius: var(--radius-sm);
+    color: var(--color-fg-primary); font-family: var(--font-ui); font-size: 14px;
+  }
+  .sync-input:focus { outline: 1px solid var(--color-accent-gold); }
+  .sync-row { display: flex; gap: 8px; }
+  .sync-row .sync-input { flex: 1; }
+  .sync-warning {
+    margin: 4px 0 0; padding: 10px 12px;
+    background: rgba(184, 92, 92, 0.12);
+    border: 1px solid var(--color-status-error);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui); font-size: 13px; color: var(--color-fg-primary);
+  }
+  .sync-error {
+    color: var(--color-status-error); font-family: var(--font-ui); font-size: 13px;
+    margin: 0;
+  }
+  .sync-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .data-btn.primary {
+    background: var(--color-accent-gold);
+    color: var(--color-fg-inverse);
+    border-color: var(--color-accent-gold);
+    font-weight: 600;
+  }
+  .data-btn.danger {
+    color: var(--color-status-error);
+    border-color: var(--color-status-error);
+  }
+  .sync-status-card {
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    margin: 12px 0;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .sync-status-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: var(--font-ui); font-size: 13px;
+  }
+  .sync-status-label { color: var(--color-fg-tertiary); }
+  .sync-status-value { color: var(--color-fg-primary); font-weight: 500; }
+  .sync-status-value.warn { color: var(--color-status-warning); }
 </style>

@@ -18,6 +18,8 @@
   import CreateTomeModal from './lib/components/CreateTomeModal.svelte'
   import Settings from './lib/components/Settings.svelte'
   import UpdateNotification from './lib/components/UpdateNotification.svelte'
+  import ConflictResolver from './lib/components/ConflictResolver.svelte'
+  import { initSyncStore } from './lib/stores/syncStore'
   import { onMount } from 'svelte'
   import { createPage, currentPageId } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
@@ -43,6 +45,8 @@
       } catch {
         // No Tome open — stay on Tome Picker
       }
+      // Initialize sync store + event subscription (no-op in browser mock).
+      initSyncStore().catch(() => {})
     } else {
       // In browser mock, a Tome is always "open"
       isTomeOpen.set(true)
@@ -167,7 +171,10 @@
         onClose={() => { activeTypeListId = null; activeModule = 'wiki' }}
       />
     {:else}
-      <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
+      <div class="main-with-resolver">
+        <ConflictResolver />
+        <MainContent onToggleDetails={() => detailsOpen = !detailsOpen} {detailsOpen} />
+      </div>
       <DetailsPanel open={detailsOpen} onClose={() => detailsOpen = false} />
     {/if}
   </div>

@@ -8,6 +8,7 @@
   import { currentTome } from '../stores/tomeStore'
   import type { PageTreeNode } from '../api/pages'
   import { deletePage } from '../api/pages'
+  import { syncIndicator, syncStatus } from '../stores/syncStore'
 
   interface Props {
     onOpenSettings?: () => void
@@ -146,6 +147,29 @@
     </div>
   </header>
 
+  {#if $syncStatus.enabled || $syncStatus.tomeId}
+    <button
+      class="sync-pill"
+      class:sync-idle={$syncIndicator === 'idle'}
+      class:sync-syncing={$syncIndicator === 'syncing'}
+      class:sync-conflicts={$syncIndicator === 'conflicts'}
+      class:sync-offline={$syncIndicator === 'offline'}
+      class:sync-error={$syncIndicator === 'error'}
+      onclick={() => onOpenSettings?.()}
+      title="Open sync settings"
+      data-testid="sync-pill"
+    >
+      <span class="sync-dot"></span>
+      <span class="sync-pill-label">
+        {#if $syncIndicator === 'syncing'}Syncing…
+        {:else if $syncIndicator === 'conflicts'}{$syncStatus.pendingConflicts} conflict{$syncStatus.pendingConflicts === 1 ? '' : 's'}
+        {:else if $syncIndicator === 'error'}Sync error
+        {:else if $syncIndicator === 'offline'}Sync off
+        {:else}Synced{/if}
+      </span>
+    </button>
+  {/if}
+
   <div class="divider"></div>
 
   <nav class="nav-section">
@@ -273,6 +297,39 @@
 {/if}
 
 <style>
+  .sync-pill {
+    margin: 8px 16px 0;
+    padding: 6px 10px;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui); font-size: 11px;
+    color: var(--color-fg-secondary);
+    cursor: pointer;
+    transition: border-color 120ms ease;
+  }
+  .sync-pill:hover { border-color: var(--color-accent-gold); color: var(--color-fg-primary); }
+  .sync-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .sync-pill.sync-idle .sync-dot { background: var(--color-status-success); }
+  .sync-pill.sync-syncing .sync-dot {
+    background: var(--color-accent-gold);
+    animation: sync-pulse 1s ease-in-out infinite;
+  }
+  .sync-pill.sync-conflicts .sync-dot { background: var(--color-status-warning); }
+  .sync-pill.sync-conflicts { color: var(--color-status-warning); border-color: var(--color-status-warning); }
+  .sync-pill.sync-error .sync-dot { background: var(--color-status-error); }
+  .sync-pill.sync-error { color: var(--color-status-error); }
+  .sync-pill.sync-offline .sync-dot { background: var(--color-fg-tertiary); }
+  @keyframes sync-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+  }
+  .sync-pill-label { font-weight: 500; }
+
   .sidebar {
     width: 280px;
     min-width: 280px;

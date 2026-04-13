@@ -2,6 +2,7 @@ use crate::db::{self, DbPool, ManagedDb};
 use crate::sync::journal::{
     self, active_sync_session, delete_op, insert_op, record_op, update_op,
 };
+use crate::sync::SessionState;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use sqlx::Row;
@@ -93,6 +94,7 @@ pub struct ReorderMove {
 #[tauri::command]
 pub async fn create_page(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     input: CreatePageInput,
 ) -> Result<Page, String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -155,6 +157,7 @@ pub async fn create_page(
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
 
     get_page_by_pool(&pool, &id).await
 }
@@ -194,6 +197,7 @@ pub async fn get_page(managed: State<'_, ManagedDb>, id: String) -> Result<Page,
 #[tauri::command]
 pub async fn update_page(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     id: String,
     input: UpdatePageInput,
 ) -> Result<Page, String> {
@@ -216,11 +220,11 @@ pub async fn update_page(
         return get_page_by_pool(&pool, &id).await;
     }
 
-    let session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     // Capture before-state when sync is on (for op generation).
-    let before = if session.is_some() {
+    let before = if sync_session.is_some() {
         Some(load_page_fields_for_op(&mut *tx, &id).await?)
     } else {
         None
@@ -239,7 +243,7 @@ pub async fn update_page(
 
     query.bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
-    if let (Some((tome_id, device_id)), Some(before)) = (session, before) {
+    if let (Some((tome_id, device_id)), Some(before)) = (sync_session, before) {
         let after = load_page_fields_for_op(&mut *tx, &id).await?;
         if let Some(op) = update_op(device_id, Ulid::new(), "pages", &id, &before, &after) {
             record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
@@ -247,16 +251,21 @@ pub async fn update_page(
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     get_page_by_pool(&pool, &id).await
 }
 
 #[tauri::command]
-pub async fn delete_page(managed: State<'_, ManagedDb>, id: String) -> Result<(), String> {
+pub async fn delete_page(
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+    id: String,
+) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
-    let session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
-    let before = if session.is_some() {
+    let before = if sync_session.is_some() {
         Some(load_page_fields_for_op(&mut *tx, &id).await?)
     } else {
         None
@@ -268,12 +277,13 @@ pub async fn delete_page(managed: State<'_, ManagedDb>, id: String) -> Result<()
         .await
         .map_err(|e| e.to_string())?;
 
-    if let (Some((tome_id, device_id)), Some(before)) = (session, before) {
+    if let (Some((tome_id, device_id)), Some(before)) = (sync_session, before) {
         let op = delete_op(device_id, Ulid::new(), "pages", &id, before);
         record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }
 
@@ -376,13 +386,14 @@ pub async fn get_page_tree(managed: State<'_, ManagedDb>) -> Result<Vec<PageTree
 #[tauri::command]
 pub async fn save_page_content(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     page_id: String,
     yjs_state: Vec<u8>,
 ) -> Result<(), String> {
     use base64::{engine::general_purpose, Engine as _};
 
     let pool = db::get_pool(managed.inner()).await?;
-    let session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     // Check page exists first to avoid FK violation
@@ -416,7 +427,7 @@ pub async fn save_page_content(
         .await
         .map_err(|e| e.to_string())?;
 
-    if let Some((tome_id, device_id)) = session {
+    if let Some((tome_id, device_id)) = sync_session {
         let tx_id = Ulid::new();
         let yjs_b64 = general_purpose::STANDARD.encode(&yjs_state);
         let mut fields = BTreeMap::new();
@@ -427,6 +438,7 @@ pub async fn save_page_content(
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }
 
@@ -450,15 +462,16 @@ pub async fn get_page_content(
 #[tauri::command]
 pub async fn reorder_pages(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     moves: Vec<ReorderMove>,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
-    let session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let tx_id = Ulid::new(); // all moves share one transaction id
 
     for m in moves {
-        let before = if session.is_some() {
+        let before = if sync_session.is_some() {
             Some(load_page_fields_for_op(&mut *tx, &m.id).await?)
         } else {
             None
@@ -472,7 +485,7 @@ pub async fn reorder_pages(
             .await
             .map_err(|e| e.to_string())?;
 
-        if let (Some((ref tome_id, device_id)), Some(before)) = (&session, before) {
+        if let (Some((ref tome_id, device_id)), Some(before)) = (&sync_session, before) {
             let after = load_page_fields_for_op(&mut *tx, &m.id).await?;
             if let Some(op) = update_op(*device_id, tx_id, "pages", &m.id, &before, &after) {
                 record_op(&mut *tx, &op, tome_id).await.map_err(|e| e.to_string())?;
@@ -481,5 +494,6 @@ pub async fn reorder_pages(
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }

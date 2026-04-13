@@ -101,7 +101,12 @@ pub fn run() {
                 migrate_legacy_db(&handle, &managed_clone).await;
             });
 
-            app.manage(managed_db);
+            app.manage(managed_db.clone());
+
+            // Sync session state + background runner.
+            let session = sync::SessionState::new();
+            app.manage(session.clone());
+            sync::runner::start(app.handle().clone(), managed_db, session);
 
             Ok(())
         })
@@ -163,8 +168,15 @@ pub fn run() {
             commands::export::export_tome_markdown,
             commands::import_data::import_markdown_folder,
             commands::import_data::import_json,
-            // Sync (DEV — phase 2; replaced by Settings UI in phase 3)
-            commands::sync_dev::sync_dev_filesystem,
+            // Sync (M7 Phase 3)
+            commands::sync::sync_enable,
+            commands::sync::sync_disable,
+            commands::sync::sync_now,
+            commands::sync::sync_status,
+            commands::sync::sync_take_snapshot,
+            commands::sync::sync_list_conflicts,
+            commands::sync::sync_resolve_conflict,
+            commands::sync::sync_unlock,
             // Boards
             commands::boards::create_board,
             commands::boards::list_boards,
