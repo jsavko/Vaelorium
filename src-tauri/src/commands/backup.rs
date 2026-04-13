@@ -102,17 +102,19 @@ pub async fn backup_configure(
     .await
     .ok()
     .flatten();
-    let device_name = input.device_name.unwrap_or_else(|| {
+    let raw_name = input.device_name.unwrap_or_else(|| {
         existing
             .as_ref()
             .map(|c| c.device_name.clone())
             .unwrap_or_else(|| std::env::var("HOSTNAME").unwrap_or_else(|_| "Vaelorium Device".into()))
     });
+    let device_id = existing.as_ref().map(|c| c.device_id).unwrap_or_else(uuid::Uuid::new_v4);
+    let device_name = ensure_device_name_stub(&raw_name, device_id);
     let cfg = AppBackendConfig {
         backend_kind,
         backend_config: input.backend_config.clone(),
         salt_b64: B64.encode(&salt),
-        device_id: existing.as_ref().map(|c| c.device_id).unwrap_or_else(uuid::Uuid::new_v4),
+        device_id,
         device_name,
         created_at: existing.as_ref().map(|c| c.created_at).unwrap_or_else(chrono::Utc::now),
     };
@@ -221,7 +223,7 @@ pub async fn backup_set_device_name(
     let mut cfg = app_backend::load(&app_data_dir)
         .await?
         .ok_or_else(|| "no backup destination configured".to_string())?;
-    cfg.device_name = input.device_name;
+    cfg.device_name = ensure_device_name_stub(&input.device_name, cfg.device_id);
     app_backend::save(&app_data_dir, &cfg).await?;
     backup_status(app, session).await
 }
@@ -357,6 +359,65 @@ fn parse_s3_config(config: &serde_json::Value) -> Result<S3Config, String> {
 #[allow(dead_code)]
 fn _unused_json_marker() -> serde_json::Value {
     json!({})
+}
+
+/// Append a 4-char hex stub derived from `device_id` to `name` when the
+/// name doesn't already end with a parenthesized 4-hex disambiguator.
+/// Prevents two devices named "My Laptop" from being indistinguishable
+/// in conflict logs or activity views while keeping display names short.
+fn ensure_device_name_stub(name: &str, device_id: uuid::Uuid) -> String {
+    let trimmed = name.trim();
+    // Already has a "(xxxx)" stub at the tail? Leave alone so renames
+    // don't accumulate stubs like "Laptop (a3f2) (b7c1)".
+    let has_stub = trimmed
+        .rsplit_once('(')
+        .and_then(|(_, rest)| rest.strip_suffix(')'))
+        .map(|inner| inner.len() == 4 && inner.chars().all(|c| c.is_ascii_hexdigit()))
+        .unwrap_or(false);
+    if has_stub {
+        return trimmed.to_string();
+    }
+    let hex = device_id.simple().to_string();
+    let stub: String = hex.chars().take(4).collect();
+    format!("{trimmed} ({stub})")
+}
+
+#[cfg(test)]
+mod stub_tests {
+    use super::ensure_device_name_stub;
+    use uuid::Uuid;
+
+    fn uuid_from_hex(hex: &str) -> Uuid {
+        Uuid::parse_str(hex).unwrap()
+    }
+
+    #[test]
+    fn appends_stub_when_missing() {
+        let id = uuid_from_hex("a3f2b7c1-0000-0000-0000-000000000000");
+        let out = ensure_device_name_stub("My Laptop", id);
+        assert_eq!(out, "My Laptop (a3f2)");
+    }
+
+    #[test]
+    fn preserves_existing_stub() {
+        let id = uuid_from_hex("deadbeef-0000-0000-0000-000000000000");
+        let out = ensure_device_name_stub("Laptop (a3f2)", id);
+        assert_eq!(out, "Laptop (a3f2)");
+    }
+
+    #[test]
+    fn rejects_non_hex_suffix_as_stub() {
+        let id = uuid_from_hex("a3f2b7c1-0000-0000-0000-000000000000");
+        let out = ensure_device_name_stub("Thing (home)", id);
+        assert_eq!(out, "Thing (home) (a3f2)");
+    }
+
+    #[test]
+    fn trims_whitespace() {
+        let id = uuid_from_hex("a3f2b7c1-0000-0000-0000-000000000000");
+        let out = ensure_device_name_stub("  Laptop  ", id);
+        assert_eq!(out, "Laptop (a3f2)");
+    }
 }
 
 #[derive(Debug, Serialize)]
