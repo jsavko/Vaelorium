@@ -3,7 +3,7 @@
   import { Editor } from '@tiptap/core'
   import { createEditorExtensions } from '../editor/EditorConfig'
   import { LocalYjsProvider } from '../editor/YjsProvider'
-  import { currentPage, updateCurrentPage, loadPage, pageTree } from '../stores/pageStore'
+  import { currentPage, updateCurrentPage, loadPage, pageTree, pageReloadSignal } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
   import { currentPageRelations } from '../stores/relationStore'
   import IconPicker from './IconPicker.svelte'
@@ -55,10 +55,19 @@
     imageToolbar = null
   }
 
-  // React to page changes
+  // React to page changes (new page) or explicit reload signals (version
+  // restore). Tracking pageReloadSignal here means restore-current-page
+  // triggers a full editor re-init — otherwise the in-memory Y.Doc keeps
+  // its pre-restore state and autosaves it back over the restored DB row.
+  let lastReloadSignal = -1
   $effect(() => {
     const page = $currentPage
-    if (page && page.id !== currentLoadedPageId) {
+    const signal = $pageReloadSignal
+    if (!page) return
+    const signalChanged = signal !== lastReloadSignal
+    const pageChanged = page.id !== currentLoadedPageId
+    if (pageChanged || signalChanged) {
+      lastReloadSignal = signal
       loadEditor(page)
     }
   })
@@ -75,6 +84,7 @@
       editor = null
     }
 
+    currentLoadedPageId = null // force next page-effect to accept this as fresh
     currentLoadedPageId = page.id
 
     // Create new Yjs provider and load content

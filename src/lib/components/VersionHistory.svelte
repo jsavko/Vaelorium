@@ -1,6 +1,6 @@
 <script lang="ts">
   import { callCommand } from '../api/bridge'
-  import { currentPageId, loadPage } from '../stores/pageStore'
+  import { currentPageId, loadPage, triggerPageReload } from '../stores/pageStore'
   import { savePageContent } from '../api/pages'
   import { showToast } from '../stores/toastStore'
 
@@ -22,13 +22,14 @@
 
   let versions = $state<Version[]>([])
   let selectedVersion = $state<Version | null>(null)
-  let snapshotPreview = $state<string>('')
+  let previewHTML = $state<string>('')
+  let previewLoading = $state(false)
 
   $effect(() => {
     if (open && $currentPageId) {
       loadVersions($currentPageId)
       selectedVersion = null
-      snapshotPreview = ''
+      previewHTML = ''
     }
   })
 
@@ -42,52 +43,78 @@
 
   async function viewVersion(version: Version) {
     selectedVersion = version
+    previewLoading = true
+    previewHTML = ''
     try {
       const snapshot: number[] = await callCommand('get_version_snapshot', { versionId: version.id })
-      if (snapshot && snapshot.length > 0) {
-        // Decode Yjs snapshot to get text preview
-        const Y = await import('yjs')
-        const doc = new Y.Doc()
-        Y.applyUpdate(doc, new Uint8Array(snapshot))
-        const fragment = doc.getXmlFragment('content')
-        snapshotPreview = extractText(fragment)
-        doc.destroy()
-      } else {
-        snapshotPreview = '(empty snapshot)'
+      if (!snapshot || snapshot.length === 0) {
+        previewHTML = '<p class="preview-empty">(empty snapshot)</p>'
+        return
       }
-    } catch {
-      snapshotPreview = '(unable to load snapshot)'
+      // Render via a throwaway read-only Tiptap instance sharing the live
+      // editor's extensions — guarantees the preview formatting exactly
+      // matches what the editor displays.
+      const [{ Editor }, Y, { createEditorExtensions }] = await Promise.all([
+        import('@tiptap/core'),
+        import('yjs'),
+        import('../editor/EditorConfig'),
+      ])
+      const doc = new Y.Doc()
+      Y.applyUpdate(doc, new Uint8Array(snapshot))
+      const tmpEl = document.createElement('div')
+      const editor = new Editor({
+        element: tmpEl,
+        editable: false,
+        extensions: createEditorExtensions(doc),
+      })
+      previewHTML = editor.getHTML()
+      editor.destroy()
+      doc.destroy()
+    } catch (e) {
+      console.warn('version preview failed', e)
+      previewHTML = '<p class="preview-empty">(unable to load snapshot)</p>'
+    } finally {
+      previewLoading = false
     }
-  }
-
-  function extractText(node: any): string {
-    const parts: string[] = []
-    try {
-      const items = node.toArray ? node.toArray() : []
-      for (const item of items) {
-        if (item.toString) {
-          const str = item.toString()
-          if (str && !str.startsWith('[object')) {
-            parts.push(str)
-          }
-        }
-        if (item.toArray) {
-          parts.push(extractText(item))
-        }
-      }
-    } catch {}
-    return parts.join('\n') || '(no text content)'
   }
 
   async function restoreVersion() {
     if (!selectedVersion || !$currentPageId) return
     try {
+      // Take a "before restore" snapshot so the current content is never
+      // lost silently. The live editor's YjsProvider will eventually
+      // autosave too, but being explicit here means a Restore always has
+      // an undo path even if the user restores immediately.
+      try {
+        // Save current content as a named version before replacing it.
+        // We approximate by making a normal snapshot via the editor's
+        // autosave cycle on the next tick — but we can also ask the
+        // backend to create one directly from the current page content.
+        const currentBytes: number[] = await callCommand('get_page_content', {
+          pageId: $currentPageId,
+        })
+        if (currentBytes && currentBytes.length > 0) {
+          await callCommand('create_version', {
+            pageId: $currentPageId,
+            yjsSnapshot: currentBytes,
+            summary: `Before restore to v${selectedVersion.version_number}`,
+          })
+        }
+      } catch (e) {
+        console.warn('pre-restore snapshot failed; continuing', e)
+      }
+
       const snapshot: number[] = await callCommand('get_version_snapshot', { versionId: selectedVersion.id })
       if (snapshot && snapshot.length > 0) {
         await savePageContent($currentPageId, snapshot)
-        showToast(`Restored to v${selectedVersion.version_number}`, 'success')
-        // Reload the page to reflect restored content
+        // Re-fetch metadata in case title etc. was part of the restore
+        // (today page metadata is separate from yjs_state, so this is a no-op
+        // for content but future-proofs). More importantly: signal the
+        // Editor to destroy its in-memory Y.Doc and reload from DB —
+        // otherwise the old content autosaves over the restore.
         await loadPage($currentPageId)
+        triggerPageReload()
+        showToast(`Restored to v${selectedVersion.version_number}`, 'success')
         onClose()
       }
     } catch {
@@ -114,10 +141,10 @@
 
     <div class="panel-divider"></div>
 
-    <div class="panel-body">
+    <div class="panel-body" class:has-selection={!!selectedVersion}>
       <div class="version-list">
         {#if versions.length === 0}
-          <p class="empty">No versions yet. Versions are created automatically every 5 minutes.</p>
+          <p class="empty">No versions yet. Versions are created automatically every 5 minutes when the page has changed.</p>
         {:else}
           {#each versions as v (v.id)}
             <button
@@ -140,14 +167,23 @@
       {#if selectedVersion}
         <div class="version-preview">
           <div class="preview-header">
-            <span class="preview-title">v{selectedVersion.version_number} Preview</span>
-            <button class="restore-btn" onclick={restoreVersion}>
+            <span class="preview-title">v{selectedVersion.version_number} — {formatDate(selectedVersion.created_at)}</span>
+            <button class="restore-btn" onclick={restoreVersion} title="Restore this version. A 'Before restore' snapshot of the current content is created first.">
               Restore this version
             </button>
           </div>
           <div class="preview-content">
-            <pre>{snapshotPreview}</pre>
+            {#if previewLoading}
+              <p class="preview-empty">Loading…</p>
+            {:else}
+              <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+              {@html previewHTML}
+            {/if}
           </div>
+        </div>
+      {:else if versions.length > 0}
+        <div class="version-preview placeholder">
+          <p class="preview-empty">Select a version to preview it here.</p>
         </div>
       {/if}
     </div>
@@ -159,7 +195,8 @@
     position: fixed;
     right: 0;
     top: 0;
-    width: 400px;
+    width: 720px;
+    max-width: 80vw;
     height: 100%;
     background: var(--color-surface-secondary);
     border-left: 1px solid var(--color-border-subtle);
@@ -197,9 +234,13 @@
 
   .panel-body {
     flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .panel-body.has-selection {
+    grid-template-columns: 240px 1fr;
   }
 
   .version-list {
@@ -207,6 +248,11 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    overflow-y: auto;
+    border-right: 1px solid var(--color-border-subtle);
+  }
+  .panel-body:not(.has-selection) .version-list {
+    border-right: none;
   }
 
   .empty {
@@ -254,7 +300,7 @@
 
   .version-date {
     font-family: var(--font-ui);
-    font-size: 12px;
+    font-size: 11px;
     color: var(--color-fg-tertiary);
   }
 
@@ -265,18 +311,24 @@
   }
 
   .version-preview {
-    border-top: 1px solid var(--color-border-subtle);
-    padding: 12px;
-    flex: 1;
+    padding: 12px 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .version-preview.placeholder {
+    align-items: center;
+    justify-content: center;
   }
 
   .preview-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
   }
 
   .preview-title {
@@ -297,7 +349,6 @@
     color: var(--color-fg-inverse);
     cursor: pointer;
   }
-
   .restore-btn:hover {
     background: var(--color-accent-gold-hover);
   }
@@ -307,15 +358,80 @@
     overflow-y: auto;
     background: var(--color-surface-primary);
     border-radius: var(--radius-sm);
-    padding: 12px;
+    border: 1px solid var(--color-border-subtle);
+    padding: 16px 20px;
+    min-height: 0;
   }
 
-  .preview-content pre {
-    font-family: var(--font-body);
+  .preview-empty {
+    font-family: var(--font-ui);
     font-size: 13px;
-    color: var(--color-fg-secondary);
-    white-space: pre-wrap;
-    word-break: break-word;
+    color: var(--color-fg-tertiary);
+    text-align: center;
     margin: 0;
+  }
+
+  /* Typography for the rendered HTML preview — approximates the editor's
+     own styles. Keep selectors narrow so we don't bleed into other UI. */
+  .preview-content :global(h1),
+  .preview-content :global(h2),
+  .preview-content :global(h3) {
+    font-family: var(--font-heading);
+    color: var(--color-fg-primary);
+    margin: 16px 0 8px;
+    line-height: 1.25;
+  }
+  .preview-content :global(h1) { font-size: 1.6rem; }
+  .preview-content :global(h2) { font-size: 1.35rem; }
+  .preview-content :global(h3) { font-size: 1.15rem; }
+  .preview-content :global(p) {
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--color-fg-primary);
+    line-height: 1.55;
+    margin: 8px 0;
+  }
+  .preview-content :global(a) {
+    color: var(--color-accent-gold);
+    text-decoration: none;
+  }
+  .preview-content :global(a:hover) {
+    text-decoration: underline;
+  }
+  .preview-content :global(ul),
+  .preview-content :global(ol) {
+    margin: 8px 0;
+    padding-left: 22px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--color-fg-primary);
+  }
+  .preview-content :global(blockquote) {
+    border-left: 3px solid var(--color-accent-gold);
+    padding: 2px 14px;
+    margin: 10px 0;
+    color: var(--color-fg-secondary);
+    font-style: italic;
+  }
+  .preview-content :global(code) {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.9em;
+    background: var(--color-surface-tertiary);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+  .preview-content :global(pre) {
+    background: var(--color-surface-tertiary);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 13px;
+  }
+  .preview-content :global(img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-sm);
   }
 </style>

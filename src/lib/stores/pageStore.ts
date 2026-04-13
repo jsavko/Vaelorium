@@ -11,6 +11,16 @@ export const currentPage = writable<Page | null>(null)
 export const isLoading = writable(false)
 export const recentPageIds = writable<string[]>([])
 
+/** Increments whenever the page's Yjs content was replaced externally
+ *  (e.g. by a version restore). The Editor subscribes to this in
+ *  addition to currentPage.id and force-reloads its Y.Doc when the
+ *  signal changes. Without this the editor keeps its in-memory Y.Doc
+ *  and autosaves it back over the restored DB row. */
+export const pageReloadSignal = writable(0)
+export function triggerPageReload() {
+  pageReloadSignal.update((n) => n + 1)
+}
+
 // Derived: build nested tree structure
 export const nestedTree = derived(pageTree, ($pageTree) => {
   const roots = $pageTree.filter((n) => n.parent_id === null)

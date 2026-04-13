@@ -14,6 +14,7 @@ export class LocalYjsProvider {
   private versionInterval: ReturnType<typeof setInterval> | null = null
   private saving = false
   private lastVersionTime = 0
+  private dirtySinceLastVersion = false
   private callbacks: SaveCallbacks = {}
 
   constructor(pageId: string) {
@@ -33,6 +34,7 @@ export class LocalYjsProvider {
     }
 
     this.doc.on('update', () => {
+      this.dirtySinceLastVersion = true
       this.scheduleSave()
     })
 
@@ -103,9 +105,11 @@ export class LocalYjsProvider {
       summary: summary || null,
     })
     this.lastVersionTime = Date.now()
+    this.dirtySinceLastVersion = false
   }
 
   private async maybeCreateVersion() {
+    if (!this.dirtySinceLastVersion) return // nothing changed since last snapshot
     const elapsed = Date.now() - this.lastVersionTime
     if (elapsed >= 5 * 60 * 1000) {
       await this.createSnapshot('Auto-save')
