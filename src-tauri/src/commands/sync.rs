@@ -69,34 +69,53 @@ pub async fn sync_enable(
     let backend_kind = BackendKind::from_str(&input.backend_kind)
         .ok_or_else(|| format!("unknown backend_kind: {}", input.backend_kind))?;
 
-    // Validate backend config can be opened (catches bad paths / bad creds early).
-    let _backend: Box<dyn SyncBackend + Send + Sync> =
-        build_backend(backend_kind, &input.backend_config)
-            .await
-            .map_err(|e| format!("backend init failed: {e}"))?;
+    // Open the backend once and reuse for meta check + probe.
+    let backend = build_backend(backend_kind, &input.backend_config)
+        .await
+        .map_err(|e| format!("backend init failed: {e}"))?;
 
-    // Find or create sync_config (idempotent re-enable).
+    // Look for a remote sync-meta.json at the bucket root. This is the
+    // authoritative salt source when a bucket already hosts a sync session,
+    // so a second device / freshly-configured Tome can join without
+    // generating a new salt and failing to decrypt existing data.
+    let remote_meta = crate::sync::remote_meta::fetch(backend.as_ref()).await?;
+
     let existing = SyncConfig::load(&pool, &input.tome_id)
         .await
         .map_err(|e| e.to_string())?;
-    let (salt, device_id) = match existing {
-        Some(cfg) => (cfg.passphrase_salt, cfg.device_id),
-        None => (generate_salt().to_vec(), Uuid::new_v4()),
+
+    // Decide the salt precedence:
+    //   1. Remote meta exists → always use remote salt (authoritative).
+    //      Refuse if the meta's tome_id disagrees with this Tome: a single
+    //      bucket can only host one Tome's snapshot/journal namespace.
+    //   2. No remote meta but local sync_config exists → reuse local salt
+    //      (idempotent re-enable on the original device).
+    //   3. Neither → fresh enable, generate a new salt.
+    let (salt, device_id, wrote_new_meta) = match (&remote_meta, &existing) {
+        (Some(meta), _) => {
+            if meta.tome_id != input.tome_id {
+                return Err(format!(
+                    "this bucket is already syncing a different Tome \
+                     (id '{}'). Use a different bucket for this Tome, \
+                     or open the other Tome instead.",
+                    meta.tome_id
+                ));
+            }
+            let salt = meta.salt()?;
+            let device_id = existing.as_ref().map(|c| c.device_id).unwrap_or_else(Uuid::new_v4);
+            (salt, device_id, false)
+        }
+        (None, Some(cfg)) => (cfg.passphrase_salt.clone(), cfg.device_id, false),
+        (None, None) => (generate_salt().to_vec(), Uuid::new_v4(), true),
     };
 
     let key = KeyMaterial::derive(&input.passphrase, &salt).map_err(|e| e.to_string())?;
 
     // Validate the passphrase against existing backend data. If the bucket
-    // already has snapshots or journal entries from a previous sync session,
-    // try to decrypt one with the derived key. A decrypt failure means the
-    // user typed the wrong passphrase (or pointed at the wrong bucket).
-    // Without this check, a wrong-passphrase re-enable silently accepts and
-    // produces "wrong passphrase or tampered ciphertext" errors at sync time
-    // — confusing UX.
+    // already has snapshots or journal entries, try to decrypt one with the
+    // derived key. A decrypt failure means the user typed the wrong
+    // passphrase.
     {
-        let backend = build_backend(backend_kind, &input.backend_config)
-            .await
-            .map_err(|e| format!("backend init failed: {e}"))?;
         let existing_snaps = backend
             .list_prefix("snapshots")
             .await
@@ -113,11 +132,17 @@ pub async fn sync_enable(
                 .map_err(|e| e.to_string())?;
             crate::sync::crypto::decrypt(&key, &ciphertext).map_err(|_| {
                 "passphrase does not match the existing backend data — \
-                 either the passphrase is wrong, or this bucket/folder \
-                 already contains data from a different sync session"
+                 the passphrase is wrong."
                     .to_string()
             })?;
         }
+    }
+
+    // First-ever enable against this bucket → publish sync-meta.json so
+    // future devices/Tomes can derive the same key from this salt.
+    if wrote_new_meta {
+        let meta = crate::sync::remote_meta::RemoteMeta::new(&salt, &input.tome_id);
+        crate::sync::remote_meta::put(backend.as_ref(), &meta).await?;
     }
 
     let device_name = input

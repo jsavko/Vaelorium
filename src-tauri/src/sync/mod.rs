@@ -18,6 +18,7 @@ pub mod engine;
 pub mod journal;
 pub mod keychain;
 pub mod registry;
+pub mod remote_meta;
 pub mod runner;
 pub mod session;
 pub mod snapshot;
