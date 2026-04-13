@@ -4,7 +4,7 @@
   import StarterKit from '@tiptap/starter-kit'
   import Link from '@tiptap/extension-link'
   import Placeholder from '@tiptap/extension-placeholder'
-  import { Bold, Italic, Strikethrough, Code as CodeIcon, List, ListOrdered, Link as LinkIcon, AtSign } from 'lucide-svelte'
+  import { Bold, Italic, Strikethrough, Code as CodeIcon, List, ListOrdered, Link as LinkIcon, AtSign, Heading1, Heading2, Heading3 } from 'lucide-svelte'
   import { MentionExtension } from '../editor/MentionExtension'
 
   interface Props {
@@ -33,7 +33,7 @@
         // hard breaks, history. Deliberately drops headings, code blocks,
         // blockquotes, horizontal rules, tables — overkill for sticky notes.
         StarterKit.configure({
-          heading: false,
+          heading: { levels: [1, 2, 3] },
           codeBlock: false,
           blockquote: false,
           horizontalRule: false,
@@ -115,6 +115,10 @@
     <button class="tbtn" class:active={isActive('strike')} onmousedown={toolbarBtn} onclick={() => editor?.chain().focus().toggleStrike().run()} title="Strikethrough"><Strikethrough size={13} /></button>
     <button class="tbtn" class:active={isActive('code')} onmousedown={toolbarBtn} onclick={() => editor?.chain().focus().toggleCode().run()} title="Inline code"><CodeIcon size={13} /></button>
     <div class="sep"></div>
+    <button class="tbtn" class:active={isActive('heading', { level: 1 })} onmousedown={toolbarBtn} onclick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} title="Heading 1"><Heading1 size={13} /></button>
+    <button class="tbtn" class:active={isActive('heading', { level: 2 })} onmousedown={toolbarBtn} onclick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading 2"><Heading2 size={13} /></button>
+    <button class="tbtn" class:active={isActive('heading', { level: 3 })} onmousedown={toolbarBtn} onclick={() => editor?.chain().focus().toggleHeading({ level: 3 }).run()} title="Heading 3"><Heading3 size={13} /></button>
+    <div class="sep"></div>
     <button class="tbtn" class:active={isActive('bulletList')} onmousedown={toolbarBtn} onclick={() => editor?.chain().focus().toggleBulletList().run()} title="Bulleted list"><List size={13} /></button>
     <button class="tbtn" class:active={isActive('orderedList')} onmousedown={toolbarBtn} onclick={() => editor?.chain().focus().toggleOrderedList().run()} title="Numbered list"><ListOrdered size={13} /></button>
     <div class="sep"></div>
@@ -171,6 +175,9 @@
   .card-editor :global(.ProseMirror) { outline: none; min-height: 50px; }
   .card-editor :global(.ProseMirror p) { margin: 0 0 4px; }
   .card-editor :global(.ProseMirror p:last-child) { margin-bottom: 0; }
+  .card-editor :global(.ProseMirror h1) { font-family: var(--font-heading); font-size: 17px; font-weight: 700; margin: 4px 0 4px; color: var(--color-fg-primary); }
+  .card-editor :global(.ProseMirror h2) { font-family: var(--font-heading); font-size: 15px; font-weight: 700; margin: 4px 0 4px; color: var(--color-fg-primary); }
+  .card-editor :global(.ProseMirror h3) { font-family: var(--font-heading); font-size: 13px; font-weight: 700; margin: 4px 0 4px; color: var(--color-fg-primary); text-transform: uppercase; letter-spacing: 0.5px; }
   .card-editor :global(.ProseMirror ul),
   .card-editor :global(.ProseMirror ol) { margin: 0 0 4px; padding-left: 18px; }
   .card-editor :global(.ProseMirror code) {

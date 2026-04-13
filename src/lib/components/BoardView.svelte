@@ -349,6 +349,9 @@
   }
   .card-content :global(p) { margin: 0 0 4px; }
   .card-content :global(p:last-child) { margin-bottom: 0; }
+  .card-content :global(h1) { font-family: var(--font-heading); font-size: 17px; font-weight: 700; margin: 4px 0 4px; color: var(--color-fg-primary); }
+  .card-content :global(h2) { font-family: var(--font-heading); font-size: 15px; font-weight: 700; margin: 4px 0 4px; color: var(--color-fg-primary); }
+  .card-content :global(h3) { font-family: var(--font-heading); font-size: 13px; font-weight: 700; margin: 4px 0 4px; color: var(--color-fg-primary); text-transform: uppercase; letter-spacing: 0.5px; }
   .card-content :global(ul),
   .card-content :global(ol) { margin: 0 0 4px; padding-left: 18px; }
   .card-content :global(a) { color: var(--color-accent-gold); text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
