@@ -226,4 +226,17 @@
     width: 100%;
     height: 100%;
   }
+
+  /* Wrapper so ConflictResolver can sit above MainContent. Takes over
+     MainContent's former role as the flex-1 child of app-layout; the
+     flex-column + min-width:0 lets MainContent's own flex: 1 continue
+     to fill vertical space and prevents content from blowing out width. */
+  .main-with-resolver {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+  }
 </style>
