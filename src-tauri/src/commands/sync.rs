@@ -81,6 +81,40 @@ pub async fn sync_enable(
 
     let key = KeyMaterial::derive(&input.passphrase, &salt).map_err(|e| e.to_string())?;
 
+    // Validate the passphrase against existing backend data. If the bucket
+    // already has snapshots or journal entries from a previous sync session,
+    // try to decrypt one with the derived key. A decrypt failure means the
+    // user typed the wrong passphrase (or pointed at the wrong bucket).
+    // Without this check, a wrong-passphrase re-enable silently accepts and
+    // produces "wrong passphrase or tampered ciphertext" errors at sync time
+    // — confusing UX.
+    {
+        let backend = build_backend(backend_kind, &input.backend_config)
+            .await
+            .map_err(|e| format!("backend init failed: {e}"))?;
+        let existing_snaps = backend
+            .list_prefix("snapshots")
+            .await
+            .map_err(|e| e.to_string())?;
+        let existing_ops = backend
+            .list_prefix("journal")
+            .await
+            .map_err(|e| e.to_string())?;
+        let probe = existing_snaps.first().or(existing_ops.first());
+        if let Some(obj) = probe {
+            let (ciphertext, _etag) = backend
+                .get_object(&obj.key)
+                .await
+                .map_err(|e| e.to_string())?;
+            crate::sync::crypto::decrypt(&key, &ciphertext).map_err(|_| {
+                "passphrase does not match the existing backend data — \
+                 either the passphrase is wrong, or this bucket/folder \
+                 already contains data from a different sync session"
+                    .to_string()
+            })?;
+        }
+    }
+
     let device_name = input
         .device_name
         .unwrap_or_else(|| std::env::var("HOSTNAME").unwrap_or_else(|_| "Vaelorium Device".into()));

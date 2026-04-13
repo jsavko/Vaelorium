@@ -15,13 +15,17 @@
 <style>
   .toast-container {
     position: fixed;
-    bottom: 24px;
-    right: 24px;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 400;
+    z-index: 9999;
+    pointer-events: none;
+    max-width: 90vw;
   }
+  .toast { pointer-events: auto; }
 
   .toast {
     padding: 12px 20px;
@@ -44,7 +48,7 @@
   }
 
   @keyframes slideIn {
-    from { transform: translateX(20px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
   }
 </style>
