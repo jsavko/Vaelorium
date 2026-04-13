@@ -41,6 +41,16 @@ export async function moveCard(id: string, x: number, y: number) {
   currentCards.update((cards) => cards.map((c) => c.id === id ? { ...c, x, y } : c))
 }
 
+export async function updateCardContent(id: string, content: string) {
+  await api.updateCard(id, { content })
+  currentCards.update((cards) => cards.map((c) => c.id === id ? { ...c, content } : c))
+}
+
+export async function resizeCard(id: string, width: number, height: number) {
+  await api.updateCard(id, { width, height })
+  currentCards.update((cards) => cards.map((c) => c.id === id ? { ...c, width, height } : c))
+}
+
 export async function removeCard(id: string) {
   await api.deleteCard(id)
   currentCards.update((c) => c.filter((card) => card.id !== id))
