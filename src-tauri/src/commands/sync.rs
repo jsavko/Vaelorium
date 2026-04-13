@@ -82,19 +82,89 @@ fn humanize_table(table: &str) -> &'static str {
 /// else falls back to a truncated row_id. Safe against SQL injection
 /// because both `table` and `col` are selected from a fixed match.
 async fn resolve_row_label(pool: &sqlx::SqlitePool, table: &str, row_id: &str) -> String {
-    let (lookup_col, name_col): (&str, Option<&str>) = match table {
-        "pages" => ("id", Some("title")),
-        "entity_types" => ("id", Some("name")),
-        "entity_type_fields" => ("id", Some("label")),
-        "tags" => ("id", Some("name")),
-        "maps" => ("id", Some("name")),
-        "timelines" => ("id", Some("name")),
-        "boards" => ("id", Some("name")),
-        "relation_types" => ("id", Some("name")),
-        _ => ("id", None),
+    // Special cases: pivot / child tables benefit from joining to their
+    // parent to produce something meaningful like "Page title · Field label".
+    match table {
+        "entity_field_values" => {
+            let joined: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+                "SELECT p.title, f.label
+                 FROM entity_field_values v
+                 LEFT JOIN pages p ON p.id = v.page_id
+                 LEFT JOIN entity_type_fields f ON f.id = v.field_id
+                 WHERE v.id = ? LIMIT 1",
+            )
+            .bind(row_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+            if let Some((title, label)) = joined {
+                let t = title.unwrap_or_else(|| "(unknown page)".into());
+                let l = label.unwrap_or_else(|| "(unknown field)".into());
+                return format!("{t} · {l}");
+            }
+        }
+        "map_pins" => {
+            if let Ok(Some(name)) = sqlx::query_scalar::<_, Option<String>>(
+                "SELECT m.name FROM map_pins p LEFT JOIN maps m ON m.id = p.map_id WHERE p.id = ? LIMIT 1",
+            )
+            .bind(row_id)
+            .fetch_optional(pool)
+            .await
+            {
+                if let Some(n) = name.filter(|s| !s.is_empty()) {
+                    return format!("{n} · pin");
+                }
+            }
+        }
+        "timeline_events" => {
+            let joined: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+                "SELECT t.name, e.title FROM timeline_events e LEFT JOIN timelines t ON t.id = e.timeline_id WHERE e.id = ? LIMIT 1",
+            )
+            .bind(row_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+            if let Some((tname, ename)) = joined {
+                let t = tname.unwrap_or_else(|| "(unknown timeline)".into());
+                let e = ename.unwrap_or_else(|| "(unknown event)".into());
+                return format!("{t} · {e}");
+            }
+        }
+        "board_cards" | "board_connectors" => {
+            let parent_col = if table == "board_cards" { "board_id" } else { "board_id" };
+            let sql = format!(
+                "SELECT b.name FROM {table} c LEFT JOIN boards b ON b.id = c.{parent_col} WHERE c.id = ? LIMIT 1"
+            );
+            if let Ok(Some(name)) = sqlx::query_scalar::<_, Option<String>>(&sql)
+                .bind(row_id)
+                .fetch_optional(pool)
+                .await
+            {
+                if let Some(n) = name.filter(|s| !s.is_empty()) {
+                    let kind = if table == "board_cards" { "card" } else { "connector" };
+                    return format!("{n} · {kind}");
+                }
+            }
+        }
+        _ => {}
+    }
+
+    // Generic: tables with a simple name column.
+    let name_col: Option<&str> = match table {
+        "pages" => Some("title"),
+        "entity_types" => Some("name"),
+        "entity_type_fields" => Some("label"),
+        "tags" => Some("name"),
+        "maps" => Some("name"),
+        "timelines" => Some("name"),
+        "boards" => Some("name"),
+        "relation_types" => Some("name"),
+        _ => None,
     };
     if let Some(col) = name_col {
-        let sql = format!("SELECT {col} FROM {table} WHERE {lookup_col} = ? LIMIT 1");
+        let sql = format!("SELECT {col} FROM {table} WHERE id = ? LIMIT 1");
         if let Ok(Some(name)) = sqlx::query_scalar::<_, Option<String>>(&sql)
             .bind(row_id)
             .fetch_optional(pool)
@@ -105,7 +175,6 @@ async fn resolve_row_label(pool: &sqlx::SqlitePool, table: &str, row_id: &str) -
             }
         }
     }
-    // Fallback: short prefix so the user has *something* to distinguish rows.
     let short: String = row_id.chars().take(8).collect();
     format!("({short}…)")
 }

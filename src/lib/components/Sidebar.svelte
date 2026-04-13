@@ -42,13 +42,18 @@
   // - anything else → open Settings → Sync (locked state handled inline there).
   async function handlePillClick() {
     await refreshSyncStatus()
+    const indicator = get(syncIndicator)
+    // Locked / backup-missing always goes to Settings — conflicts can't be
+    // resolved without an active session, and the state prompt belongs there.
+    if (indicator === 'locked' || indicator === 'backup-missing') {
+      onOpenSettings?.(indicator === 'backup-missing' ? 'backup' : 'sync')
+      return
+    }
     const all = get(syncConflicts)
     if (all.length > 0) {
-      // Any conflicts → open the global conflicts modal.
       onOpenConflicts?.()
       return
     }
-    // No conflicts: route to Settings → Sync for locked/error/idle states.
     onOpenSettings?.('sync')
   }
 
