@@ -43,17 +43,20 @@ export async function refreshSyncStatus() {
     } else {
       syncConflicts.set([])
     }
-  } catch {
-    // silent — sync may not be configured yet
+  } catch (e) {
+    // Don't break UI if backend errors, but surface so the locked pill
+    // not appearing isn't invisible.
+    console.warn('[sync] refreshSyncStatus failed:', e)
   }
 }
 
 export async function initSyncStore() {
   await refreshSyncStatus()
-  // If sync is configured but locked, try the OS keychain — most users will
-  // have stored their passphrase and never see the manual unlock UI.
   let current: SyncStatus | undefined
   syncStatus.subscribe((s) => { current = s })()
+  console.info('[sync] initSyncStore → enabled=%s locked=%s tomeId=%s', current?.enabled, current?.locked, current?.tomeId)
+  // If sync is configured but locked, try the OS keychain — most users will
+  // have stored their passphrase and never see the manual unlock UI.
   if (current?.enabled && current.locked) {
     const ok = await tryAutoUnlock()
     if (ok) await refreshSyncStatus()
