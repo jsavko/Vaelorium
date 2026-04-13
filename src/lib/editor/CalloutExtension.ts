@@ -1,6 +1,14 @@
-import { Node, mergeAttributes } from '@tiptap/core'
+import { Node, mergeAttributes, type RawCommands } from '@tiptap/core'
 
 export type CalloutType = 'info' | 'warning' | 'note'
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    callout: {
+      setCallout: (type?: CalloutType) => ReturnType
+    }
+  }
+}
 
 export const CalloutBlock = Node.create({
   name: 'callout',
@@ -33,11 +41,11 @@ export const CalloutBlock = Node.create({
     ]
   },
 
-  addCommands() {
+  addCommands(): Partial<RawCommands> {
     return {
       setCallout:
         (type: CalloutType = 'info') =>
-        ({ commands }) => {
+        ({ commands }: { commands: any }) => {
           return commands.wrapIn(this.name, { type })
         },
     }

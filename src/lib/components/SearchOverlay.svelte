@@ -21,6 +21,7 @@
   let query = $state('')
   let results = $state<SearchResult[]>([])
   let selectedIndex = $state(0)
+  // svelte-ignore non_reactive_update -- assigned by bind:this at mount only
   let inputEl: HTMLInputElement
   let isSearching = $state(false)
 
@@ -91,7 +92,9 @@
 </script>
 
 {#if open}
-  <div class="overlay" onclick={onClose} onkeydown={handleKeydown} role="dialog" aria-modal="true">
+  <div class="overlay" onclick={onClose} onkeydown={handleKeydown} role="dialog" aria-modal="true" tabindex="-1">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="search-modal" onclick={(e) => e.stopPropagation()}>
       <div class="search-header">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-fg-tertiary)" stroke-width="2">

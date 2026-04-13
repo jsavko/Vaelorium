@@ -24,7 +24,7 @@ export const FloatImage = Image.extend({
       ...this.parent?.(),
       setImageAlignment:
         (alignment: ImageAlignment) =>
-        ({ commands }) => {
+        ({ commands }: { commands: any }) => {
           return commands.updateAttributes(this.name, { alignment })
         },
     }

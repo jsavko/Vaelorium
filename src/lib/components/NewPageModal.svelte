@@ -85,7 +85,8 @@
 
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="overlay" onclick={resetAndClose} onkeydown={handleKeydown} role="dialog" aria-modal="true">
+  <div class="overlay" onclick={resetAndClose} onkeydown={handleKeydown} role="dialog" aria-modal="true" tabindex="-1">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal" onclick={(e) => e.stopPropagation()}>
       <h2 class="modal-title">New Page</h2>
 
@@ -106,6 +107,7 @@
       <div class="section-label">ENTITY TYPES</div>
       <div class="type-grid">
         {#each $entityTypes as type (type.id)}
+          {@const TypeIcon = getIcon(type.icon)}
           <button
             class="type-card"
             class:selected={selectedTypeId === type.id}
@@ -113,7 +115,7 @@
             onclick={() => selectType(type.id)}
           >
             <span class="type-icon">
-              <svelte:component this={getIcon(type.icon)} size={18} />
+              <TypeIcon size={18} />
             </span>
             <span class="type-name">{type.name}</span>
           </button>

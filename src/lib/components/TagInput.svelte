@@ -46,11 +46,12 @@
 
     let tag = allTags.find((t) => t.name.toLowerCase() === name.toLowerCase())
     if (!tag) {
-      tag = await callCommand('create_tag', { name, color: null })
+      tag = await callCommand<typeof allTags[number]>('create_tag', { name, color: null })
+      if (!tag) return
       allTags = [...allTags, tag]
     }
 
-    if (!pageTags.some((t) => t.id === tag!.id)) {
+    if (!pageTags.some((t) => t.id === tag.id)) {
       await callCommand('add_tag_to_page', { page_id: $currentPageId, tag_id: tag.id, pageId: $currentPageId, tagId: tag.id })
       pageTags = [...pageTags, tag]
     }

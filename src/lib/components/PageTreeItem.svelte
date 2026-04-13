@@ -126,7 +126,12 @@
 </script>
 
 <div class="tree-item">
-  <button
+  <!-- div (not button) so the inner chevron <button> isn't nested in another
+       <button> which is invalid HTML. role + tabindex + onkeydown keep it
+       keyboard-accessible. -->
+  <div
+    role="button"
+    tabindex="0"
     class="tree-row"
     class:active={isActive}
     class:drop-before={dropPosition === 'before'}
@@ -135,6 +140,7 @@
     style:padding-left="{8 + depth * 20}px"
     ondblclick={toggle}
     onclick={select}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); } }}
     oncontextmenu={handleContextMenu}
     draggable="true"
     ondragstart={handleDragStart}
@@ -161,7 +167,7 @@
     {/if}
 
     <span class="page-title">{node.title}</span>
-  </button>
+  </div>
 
   {#if expanded && node.children_count > 0}
     {#each children as child (child.id)}

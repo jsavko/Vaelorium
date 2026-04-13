@@ -95,8 +95,9 @@
         </svg>
       </button>
       {#if entityType}
+        {@const HeaderIcon = getIcon(entityType.icon)}
         <span class="header-icon" style:color={entityType.color || 'var(--color-fg-tertiary)'}>
-          <svelte:component this={getIcon(entityType.icon)} size={22} />
+          <HeaderIcon size={22} />
         </span>
         <h2 class="header-title">{entityType.name}s</h2>
         <span class="header-count">{pages.length}</span>
@@ -132,8 +133,9 @@
             {#if page.featured_image_path}
               <img src={page.featured_image_path} alt="" class="card-img" />
             {:else}
+              {@const CardIcon = getIcon(entityType?.icon || null)}
               <span class="card-placeholder" style:color={entityType?.color || 'var(--color-fg-tertiary)'}>
-                <svelte:component this={getIcon(entityType?.icon || null)} size={32} />
+                <CardIcon size={32} />
               </span>
             {/if}
           </div>

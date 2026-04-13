@@ -56,7 +56,8 @@
 
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="overlay" onclick={resetAndClose} role="dialog" aria-modal="true">
+  <div class="overlay" onclick={resetAndClose} role="dialog" aria-modal="true" tabindex="-1">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal" onclick={(e) => e.stopPropagation()}>
       <h2 class="modal-title">Create New Tome</h2>
       <p class="modal-desc">A Tome is a self-contained world — all your pages, maps, and settings in one file.</p>

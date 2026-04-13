@@ -1,6 +1,7 @@
 <script lang="ts">
   import { MapPin as MapPinIcon } from 'lucide-svelte'
   import { currentMap, currentMapPins, loadMap, addPin, removePin } from '../stores/mapStore'
+  import type { MapPin } from '../api/maps'
   import { loadPage, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
   import { getImageUrl } from '../api/images'
@@ -19,7 +20,7 @@
   let panning = $state(false)
   let panStart = { x: 0, y: 0 }
   let addingPin = $state(false)
-  let pinForm = $state<{ x: number; y: number; label: string; pageId: string } | null>(null)
+  let pinForm = $state<{ x: number; y: number; label: string; pageId: string; color: string } | null>(null)
   let searchQuery = $state('')
 
   let imgWidth = $state(800)
@@ -223,7 +224,8 @@
     </div>
   </header>
 
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="map-canvas"
     bind:this={container}
@@ -283,8 +285,8 @@
       <div class="pin-form" style:left="{fx + 16}px" style:top="{fy}px" onclick={(e) => e.stopPropagation()} onmousedown={(e) => e.stopPropagation()}>
         <input class="pin-input" bind:value={pinForm.label} placeholder="Pin label (optional)..." />
         <div class="color-row">
-          <label class="color-label">Color</label>
-          <input type="color" class="color-picker" bind:value={pinForm.color} />
+          <label class="color-label" for="pin-form-color">Color</label>
+          <input id="pin-form-color" type="color" class="color-picker" bind:value={pinForm.color} />
         </div>
         <div class="pin-search-wrapper">
           <input class="pin-input" bind:value={searchQuery} placeholder="Link to page..." onfocus={() => showSearchResults = true} oninput={() => showSearchResults = true} />
@@ -316,8 +318,8 @@
         </div>
         <input class="pin-input" bind:value={editLabel} placeholder="Pin label..." />
         <div class="color-row">
-          <label class="color-label">Color</label>
-          <input type="color" class="color-picker" bind:value={editColor} />
+          <label class="color-label" for="pin-edit-color">Color</label>
+          <input id="pin-edit-color" type="color" class="color-picker" bind:value={editColor} />
         </div>
         <div class="pin-search-wrapper">
           <input class="pin-input" bind:value={editSearchQuery} placeholder="Link to page..." onfocus={() => showEditSearchResults = true} oninput={() => showEditSearchResults = true} />

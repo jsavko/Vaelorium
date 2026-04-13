@@ -319,7 +319,7 @@ async function mockCommand(command: string, args?: any): Promise<any> {
           // In the mock, content is stored as Yjs binary — we can't easily modify it
           // But we can mark it as needing update. For the mock, we'll store
           // a mapping of pending title updates that the editor checks on load.
-          if (!mockDb.pendingTitleUpdates) (mockDb as any).pendingTitleUpdates = new Map()
+          if (!(mockDb as any).pendingTitleUpdates) (mockDb as any).pendingTitleUpdates = new Map()
           const updates = (mockDb as any).pendingTitleUpdates.get(sourceId) || []
           updates.push({ pageId, oldTitle, newTitle })
           ;(mockDb as any).pendingTitleUpdates.set(sourceId, updates)

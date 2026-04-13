@@ -21,7 +21,7 @@ export function createEditorExtensions(ydoc: YDoc) {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
-      history: false,
+      undoRedo: false, // Yjs Collaboration has its own undo
     }),
     Table.configure({ resizable: true }),
     TableRow,

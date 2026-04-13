@@ -1,4 +1,12 @@
-import { Node, mergeAttributes, Editor } from '@tiptap/core'
+import { Node, mergeAttributes, Editor, type RawCommands } from '@tiptap/core'
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    pageEmbed: {
+      insertPageEmbed: (attrs: { pageId: string; pageTitle: string }) => ReturnType
+    }
+  }
+}
 import StarterKit from '@tiptap/starter-kit'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -29,7 +37,7 @@ async function getPageHtml(pageId: string): Promise<{ title: string; html: strin
 
       const tempEditor = new Editor({
         extensions: [
-          StarterKit.configure({ heading: { levels: [1, 2, 3] }, history: false }),
+          StarterKit.configure({ heading: { levels: [1, 2, 3] }, undoRedo: false }),
           Table, TableRow, TableHeader, TableCell,
           ImageExt.configure({ inline: false }),
           Link.configure({ openOnClick: false }),
@@ -145,11 +153,11 @@ export const PageEmbedNode = Node.create({
     }
   },
 
-  addCommands() {
+  addCommands(): Partial<RawCommands> {
     return {
       insertPageEmbed:
         (attrs: { pageId: string; pageTitle: string }) =>
-        ({ commands }) => {
+        ({ commands }: { commands: any }) => {
           return commands.insertContent({
             type: this.name,
             attrs,

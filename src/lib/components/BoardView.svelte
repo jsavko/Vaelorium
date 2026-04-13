@@ -131,7 +131,8 @@
     <div class="header-hint">Double-click to add card · Shift+drag card edge to connect</div>
   </header>
 
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="board-canvas"
     bind:this={container}

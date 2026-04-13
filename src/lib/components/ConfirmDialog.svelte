@@ -18,7 +18,9 @@
 </script>
 
 {#if open}
-  <div class="overlay" onclick={onCancel} onkeydown={handleKeydown} role="dialog" aria-modal="true">
+  <div class="overlay" onclick={onCancel} onkeydown={handleKeydown} role="dialog" aria-modal="true" tabindex="-1">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="dialog" onclick={(e) => e.stopPropagation()}>
       <h2 class="dialog-title">{title}</h2>
       <p class="dialog-message">{message}</p>

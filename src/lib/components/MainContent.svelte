@@ -86,6 +86,8 @@
             &#x22EF;
           </button>
           {#if moreMenuOpen}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="more-dropdown" onclick={(e) => e.stopPropagation()}>
               <button class="more-item" onclick={handleVersionHistory}>Version History</button>
               <button class="more-item danger" onclick={handleDelete}>Delete Page</button>

@@ -50,14 +50,14 @@ export const WikiLinkSyntax = Extension.create({
             onStart(props: any) {
               getMentionMenuRenderer()?.onStart({
                 items: props.items,
-                command: (item: PageTreeNode) => props.command(item),
+                command: (item) => props.command(item as unknown as PageTreeNode),
                 clientRect: props.clientRect,
               })
             },
             onUpdate(props: any) {
               getMentionMenuRenderer()?.onUpdate({
                 items: props.items,
-                command: (item: PageTreeNode) => props.command(item),
+                command: (item) => props.command(item as unknown as PageTreeNode),
                 clientRect: props.clientRect,
               })
             },

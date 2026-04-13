@@ -96,21 +96,24 @@
 
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="overlay" onclick={resetAndClose} role="dialog" aria-modal="true">
+  <div class="overlay" onclick={resetAndClose} role="dialog" aria-modal="true" tabindex="-1">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="builder" onclick={(e) => e.stopPropagation()}>
       <h2 class="builder-title">Create Custom Type</h2>
 
       <div class="form-row">
-        <label class="form-label">Name</label>
+        <label class="form-label" for="type-name-input">Name</label>
         <input
+          id="type-name-input"
           class="form-input"
           bind:value={typeName}
           placeholder="e.g. Spell, Vehicle, Language..."
         />
       </div>
 
-      <div class="form-row">
-        <label class="form-label">Color</label>
+      <div class="form-row" role="group" aria-labelledby="color-grid-label">
+        <!-- svelte-ignore a11y_label_has_associated_control -- labels a button-grid, not a single input -->
+        <label class="form-label" id="color-grid-label">Color</label>
         <div class="color-grid">
           {#each colorPresets as color}
             <button
@@ -124,8 +127,9 @@
         </div>
       </div>
 
-      <div class="form-row">
-        <label class="form-label">Icon</label>
+      <div class="form-row" role="group" aria-labelledby="icon-grid-label">
+        <!-- svelte-ignore a11y_label_has_associated_control -- labels a button-grid, not a single input -->
+        <label class="form-label" id="icon-grid-label">Icon</label>
         <div class="icon-grid">
           {#each iconPresets as icon}
             <button
@@ -139,9 +143,10 @@
         </div>
       </div>
 
-      <div class="form-row">
+      <div class="form-row" role="group" aria-labelledby="fields-list-label">
         <div class="fields-header">
-          <label class="form-label">Fields</label>
+          <!-- svelte-ignore a11y_label_has_associated_control -- labels a list, not a single input -->
+          <label class="form-label" id="fields-list-label">Fields</label>
           <button class="add-field-btn" onclick={addField}>+ Add field</button>
         </div>
         {#if fields.length === 0}

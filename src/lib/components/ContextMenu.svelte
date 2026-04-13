@@ -22,6 +22,8 @@
 
 <svelte:window onclick={onClose} />
 
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="context-menu" style:left="{x}px" style:top="{y}px" onclick={(e) => e.stopPropagation()}>
   {#each items as item}
     <button

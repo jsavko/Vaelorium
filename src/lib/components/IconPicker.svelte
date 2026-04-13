@@ -42,7 +42,8 @@
   </button>
 
   {#if open}
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="icon-dropdown" data-testid="icon-picker" onclick={(e) => e.stopPropagation()}>
       <div class="icon-header">
         <span class="icon-title">Choose icon</span>

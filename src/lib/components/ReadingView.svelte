@@ -10,6 +10,7 @@
   import { currentPage } from '../stores/pageStore'
   import type { Page } from '../api/pages'
 
+  // svelte-ignore non_reactive_update -- assigned by bind:this at mount only
   let viewerElement: HTMLDivElement
   let editor: Editor | null = null
   let currentLoadedId: string | null = null
@@ -40,7 +41,7 @@
     editor = new Editor({
       element: viewerElement,
       extensions: [
-        StarterKit.configure({ history: false }),
+        StarterKit.configure({ undoRedo: false }),
         Table.configure({ resizable: false }),
         Image,
         Link.configure({ openOnClick: true }),

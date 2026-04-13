@@ -12,9 +12,11 @@
   import { pickAndUploadImage, getImageUrl } from '../api/images'
   import type { Page } from '../api/pages'
 
+  // svelte-ignore non_reactive_update -- assigned by bind:this at mount only
   let editorElement: HTMLDivElement
   let editor: Editor | null = null
   let provider: LocalYjsProvider | null = null
+  // svelte-ignore non_reactive_update -- assigned by bind:this at mount only
   let titleInput: HTMLInputElement
   let currentLoadedPageId: string | null = null
   let embedPickerOpen = $state(false)
@@ -329,7 +331,8 @@
     </div>
 
     <div class="editor-container-wrapper">
-      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="editor-container"
         bind:this={editorElement}
@@ -403,8 +406,10 @@
 {/if}
 
 {#if embedPickerOpen}
-  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-  <div class="embed-overlay" onclick={() => { embedPickerOpen = false; embedPickerEditor = null }} role="dialog" aria-modal="true">
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="embed-overlay" onclick={() => { embedPickerOpen = false; embedPickerEditor = null }} role="dialog" aria-modal="true" tabindex="-1">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="embed-picker" onclick={(e) => e.stopPropagation()}>
       <h3 class="embed-picker-title">Embed a Page</h3>
       <div class="embed-page-list">
