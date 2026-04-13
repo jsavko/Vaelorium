@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store'
-import { getSyncStatus, listConflicts, subscribeSyncStatus, type SyncStatus, type SyncConflict } from '../api/sync'
+import { getSyncStatus, listConflicts, listActivity, subscribeSyncStatus, type SyncStatus, type SyncConflict, type ActivityRow } from '../api/sync'
 import { getBackupStatus, tryAutoUnlockBackup, type BackupStatus } from '../api/backup'
 
 const initialSync: SyncStatus = {
@@ -27,6 +27,7 @@ const initialBackup: BackupStatus = {
 export const syncStatus = writable<SyncStatus>(initialSync)
 export const backupStatus = writable<BackupStatus>(initialBackup)
 export const syncConflicts = writable<SyncConflict[]>([])
+export const syncActivity = writable<ActivityRow[]>([])
 export const syncRunning = writable(false)
 
 /** "idle" | "syncing" | "conflicts" | "offline" | "error" | "locked" | "backup-missing" */
@@ -51,6 +52,14 @@ export async function refreshBackupStatus() {
     backupStatus.set(await getBackupStatus())
   } catch (e) {
     console.warn('[sync] refreshBackupStatus failed:', e)
+  }
+}
+
+export async function refreshActivity() {
+  try {
+    syncActivity.set(await listActivity(100))
+  } catch (e) {
+    console.warn('[sync] refreshActivity failed:', e)
   }
 }
 
@@ -91,6 +100,8 @@ export async function initSyncStore() {
     unsubscribed = await subscribeSyncStatus((e) => {
       syncRunning.set(e.state === 'syncing')
       refreshSyncStatus()
+      refreshActivity()
     })
   }
+  await refreshActivity()
 }

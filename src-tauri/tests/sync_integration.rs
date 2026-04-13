@@ -210,6 +210,7 @@ async fn apply_all_migrations(pool: &SqlitePool) {
         ("009_sync", include_str!("../migrations/009_sync.sql")),
         ("010_sync_app_global", include_str!("../migrations/010_sync_app_global.sql")),
         ("011_device_name_app_global", include_str!("../migrations/011_device_name_app_global.sql")),
+        ("012_sync_activity", include_str!("../migrations/012_sync_activity.sql")),
     ];
     for (_name, sql) in migrations {
         for stmt in split_sql(sql) {
@@ -808,4 +809,35 @@ async fn scenario_g_multi_tome_recovery_discovery() {
             .await
             .unwrap();
     assert_eq!(titles, vec!["Alpha One".to_string(), "Alpha Two".to_string()]);
+}
+
+/// Scenario H — sync_activity log accrues + retains last 100.
+#[tokio::test]
+async fn scenario_h_activity_log_accrues_and_retains() {
+    use vaelorium_lib::sync::activity;
+    use vaelorium_lib::sync::SyncOutcome;
+
+    let d = Device::new("d_act").await;
+
+    // Three diverse outcomes.
+    let ok_outcome = SyncOutcome { ops_uploaded: 2, ops_applied: 1, conflicts_created: 0, snapshot_taken: None, error: None };
+    activity::record(&d.pool, TOME_ID, chrono::Utc::now(), 30, "success", Some(&ok_outcome), None).await;
+    activity::record(&d.pool, TOME_ID, chrono::Utc::now(), 12, "error", None, Some("simulated network down")).await;
+    let snap_outcome = SyncOutcome { ops_uploaded: 0, ops_applied: 0, conflicts_created: 0, snapshot_taken: Some("01ABCDEFG".into()), error: None };
+    activity::record(&d.pool, TOME_ID, chrono::Utc::now(), 200, "success", Some(&snap_outcome), None).await;
+
+    let rows = activity::list(&d.pool, 100).await.unwrap();
+    assert_eq!(rows.len(), 3);
+    let outcomes: Vec<&str> = rows.iter().map(|r| r.outcome.as_str()).collect();
+    assert!(outcomes.contains(&"error"));
+    assert!(outcomes.iter().filter(|o| **o == "success").count() == 2);
+    let snap_row = rows.iter().find(|r| r.snapshot_taken.is_some()).expect("snapshot row");
+    assert_eq!(snap_row.snapshot_taken.as_deref(), Some("01ABCDEFG"));
+
+    // Retention: push 102 more, total cap should be 100.
+    for _ in 0..102 {
+        activity::record(&d.pool, TOME_ID, chrono::Utc::now(), 1, "success", Some(&ok_outcome), None).await;
+    }
+    let rows = activity::list(&d.pool, 200).await.unwrap();
+    assert_eq!(rows.len(), 100, "retention must cap at 100 per tome");
 }

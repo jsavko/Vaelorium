@@ -267,9 +267,21 @@ pub async fn sync_now(
         .ok_or_else(|| "sync is not enabled for any Tome".to_string())?;
 
     let backend = build_tome_backend(&app, &pool).await?;
-    sync_tome_once(&pool, &tome.tome_id, &active.key, backend.as_ref())
-        .await
-        .map_err(|e| e.to_string())
+    let started = chrono::Utc::now();
+    let t0 = std::time::Instant::now();
+    let result = sync_tome_once(&pool, &tome.tome_id, &active.key, backend.as_ref()).await;
+    let dur = t0.elapsed().as_millis() as i64;
+    match &result {
+        Ok(outcome) => {
+            let kind = if outcome.error.is_some() { "error" } else { "success" };
+            crate::sync::activity::record(&pool, &tome.tome_id, started, dur, kind, Some(outcome), outcome.error.as_deref()).await;
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            crate::sync::activity::record(&pool, &tome.tome_id, started, dur, "error", None, Some(&msg)).await;
+        }
+    }
+    result.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -363,9 +375,27 @@ pub async fn sync_take_snapshot(
         .find(|c| c.enabled)
         .ok_or_else(|| "sync is not enabled for any Tome".to_string())?;
     let backend = build_tome_backend(&app, &pool).await?;
-    let info = crate::sync::snapshot::take_snapshot(&pool, &active.key, backend.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
+    let started = chrono::Utc::now();
+    let t0 = std::time::Instant::now();
+    let snap = crate::sync::snapshot::take_snapshot(&pool, &active.key, backend.as_ref()).await;
+    let dur = t0.elapsed().as_millis() as i64;
+    match &snap {
+        Ok(info) => {
+            let outcome = crate::sync::SyncOutcome {
+                ops_uploaded: 0,
+                ops_applied: 0,
+                conflicts_created: 0,
+                snapshot_taken: Some(info.snapshot_id.to_string()),
+                error: None,
+            };
+            crate::sync::activity::record(&pool, &tome.tome_id, started, dur, "success", Some(&outcome), None).await;
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            crate::sync::activity::record(&pool, &tome.tome_id, started, dur, "error", None, Some(&msg)).await;
+        }
+    }
+    let info = snap.map_err(|e| e.to_string())?;
 
     let mut state = SyncRuntimeState::load(&pool, &tome.tome_id)
         .await
@@ -486,6 +516,17 @@ pub async fn sync_resolve_conflict(
     tx.commit().await.map_err(|e| e.to_string())?;
     session.nudge();
     Ok(())
+}
+
+#[tauri::command]
+pub async fn sync_activity_list(
+    managed: State<'_, ManagedDb>,
+    limit: Option<u32>,
+) -> Result<Vec<crate::sync::activity::ActivityRow>, String> {
+    let pool = db::get_pool(managed.inner()).await?;
+    crate::sync::activity::list(&pool, limit.unwrap_or(100) as i64)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Build a Tome-prefixed backend by loading the app-global config and

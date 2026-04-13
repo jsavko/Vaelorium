@@ -89,8 +89,22 @@ async fn run_loop(app: AppHandle, managed: ManagedDb, session: SessionState) {
                 },
             );
 
+            let started = chrono::Utc::now();
+            let t0 = std::time::Instant::now();
             match sync_tome_once(&pool, &cfg.tome_id, &active.key, backend.as_ref()).await {
                 Ok(outcome) => {
+                    let dur = t0.elapsed().as_millis() as i64;
+                    let outcome_kind = if outcome.error.is_some() { "error" } else { "success" };
+                    super::activity::record(
+                        &pool,
+                        &cfg.tome_id,
+                        started,
+                        dur,
+                        outcome_kind,
+                        Some(&outcome),
+                        outcome.error.as_deref(),
+                    )
+                    .await;
                     let _ = app.emit(
                         "sync:status",
                         SyncStatusEvent {
@@ -104,7 +118,18 @@ async fn run_loop(app: AppHandle, managed: ManagedDb, session: SessionState) {
                     );
                 }
                 Err(e) => {
+                    let dur = t0.elapsed().as_millis() as i64;
                     let msg = e.to_string();
+                    super::activity::record(
+                        &pool,
+                        &cfg.tome_id,
+                        started,
+                        dur,
+                        "error",
+                        None,
+                        Some(&msg),
+                    )
+                    .await;
                     if let Ok(mut state) = SyncRuntimeState::load(&pool, &cfg.tome_id).await {
                         state.last_error = Some(msg.clone());
                         let _ = state.save(&pool).await;

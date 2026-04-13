@@ -99,6 +99,49 @@ const fromRawConflict = (r: RawConflict): SyncConflict => ({
   tableLabel: r.table_label,
 })
 
+export interface ActivityRow {
+  id: number
+  tomeId: string
+  startedAt: string
+  durationMs: number
+  opsUploaded: number
+  opsApplied: number
+  conflictsCreated: number
+  snapshotTaken: string | null
+  outcome: 'success' | 'error' | string
+  error: string | null
+}
+
+interface RawActivityRow {
+  id: number
+  tome_id: string
+  started_at: string
+  duration_ms: number
+  ops_uploaded: number
+  ops_applied: number
+  conflicts_created: number
+  snapshot_taken: string | null
+  outcome: string
+  error: string | null
+}
+
+export async function listActivity(limit: number = 100): Promise<ActivityRow[]> {
+  if (!isTauri) return []
+  const raw = await callCommand<RawActivityRow[]>('sync_activity_list', { limit })
+  return raw.map((r) => ({
+    id: r.id,
+    tomeId: r.tome_id,
+    startedAt: r.started_at,
+    durationMs: r.duration_ms,
+    opsUploaded: r.ops_uploaded,
+    opsApplied: r.ops_applied,
+    conflictsCreated: r.conflicts_created,
+    snapshotTaken: r.snapshot_taken,
+    outcome: r.outcome,
+    error: r.error,
+  }))
+}
+
 export interface EnableSyncInput {
   tomeId: string
   deviceName?: string

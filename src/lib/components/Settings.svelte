@@ -6,7 +6,7 @@
   import { showToast } from '../stores/toastStore'
   import { loadPageTree } from '../stores/pageStore'
   import ConfirmDialog from './ConfirmDialog.svelte'
-  import { syncStatus, backupStatus, refreshSyncStatus, refreshBackupStatus } from '../stores/syncStore'
+  import { syncStatus, backupStatus, syncActivity, refreshSyncStatus, refreshBackupStatus, refreshActivity } from '../stores/syncStore'
   import { enableSync, disableSync, syncNow, takeSnapshot } from '../api/sync'
   import { configureBackup, disconnectBackup, unlockBackup } from '../api/backup'
   import { currentTome } from '../stores/tomeStore'
@@ -39,6 +39,35 @@
   ]
 
   // --- Sync tab state ---
+
+  let activityCollapsed = $state(localStorage.getItem('vaelorium-sync-activity-collapsed') === 'true')
+  function toggleActivityCollapsed() {
+    activityCollapsed = !activityCollapsed
+    localStorage.setItem('vaelorium-sync-activity-collapsed', String(activityCollapsed))
+  }
+
+  function relativeAge(iso: string): string {
+    const d = new Date(iso)
+    const diffSec = Math.floor((Date.now() - d.getTime()) / 1000)
+    if (diffSec < 5) return 'just now'
+    if (diffSec < 60) return `${diffSec}s ago`
+    const min = Math.floor(diffSec / 60)
+    if (min < 60) return `${min} min ago`
+    const hr = Math.floor(min / 60)
+    if (hr < 24) return `${hr} hr ago`
+    const days = Math.floor(hr / 24)
+    if (days < 7) return `${days}d ago`
+    return d.toLocaleDateString()
+  }
+
+  function activitySummary(r: { opsUploaded: number; opsApplied: number; conflictsCreated: number; durationMs: number; snapshotTaken: string | null }): string {
+    const parts: string[] = []
+    if (r.opsUploaded || r.opsApplied) parts.push(`⇡${r.opsUploaded} ⇣${r.opsApplied}`)
+    if (r.conflictsCreated) parts.push(`${r.conflictsCreated}c`)
+    if (r.snapshotTaken) parts.push('📸 snapshot')
+    parts.push(`${r.durationMs}ms`)
+    return parts.join(' · ')
+  }
 
   let syncSetupOpen = $state(false)
   let syncUnlockPassphrase = $state('')
@@ -679,6 +708,32 @@
                 <button class="data-btn" onclick={handleTakeSnapshot} disabled={syncBusy}>Take snapshot</button>
                 <button class="data-btn danger" onclick={handleDisableSync} disabled={syncBusy}>Stop syncing this Tome</button>
               </div>
+
+              <div class="activity-section">
+                <button class="activity-header" type="button" onclick={() => { toggleActivityCollapsed(); if (!activityCollapsed) refreshActivity() }}>
+                  <span class="activity-title">Recent activity</span>
+                  <span class="activity-count">{$syncActivity.length}</span>
+                  <span class="activity-chevron" class:collapsed={activityCollapsed}>▾</span>
+                </button>
+                {#if !activityCollapsed}
+                  {#if $syncActivity.length === 0}
+                    <p class="activity-empty">No sync activity recorded yet.</p>
+                  {:else}
+                    <ul class="activity-list">
+                      {#each $syncActivity as r (r.id)}
+                        <li class="activity-row" class:error={r.outcome === 'error'}>
+                          <span class="activity-icon">{r.outcome === 'error' ? '✗' : '✓'}</span>
+                          <span class="activity-time" title={r.startedAt}>{relativeAge(r.startedAt)}</span>
+                          <span class="activity-summary">{activitySummary(r)}</span>
+                          {#if r.error}
+                            <span class="activity-err" title={r.error}>{r.error}</span>
+                          {/if}
+                        </li>
+                      {/each}
+                    </ul>
+                  {/if}
+                {/if}
+              </div>
             {/if}
           </div>
         {:else if activeTab === 'account'}
@@ -1101,4 +1156,50 @@
   .sync-status-label { color: var(--color-fg-tertiary); }
   .sync-status-value { color: var(--color-fg-primary); font-weight: 500; }
   .sync-status-value.warn { color: var(--color-status-warning); }
+
+  .activity-section { margin-top: 16px; }
+  .activity-header {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    background: none; border: none; padding: 8px 0; cursor: pointer;
+    font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+    color: var(--color-fg-secondary); letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .activity-title { flex: 1; text-align: left; }
+  .activity-count {
+    font-weight: 500; font-size: 11px;
+    color: var(--color-fg-tertiary);
+    background: var(--color-surface-tertiary);
+    padding: 1px 8px; border-radius: 10px;
+  }
+  .activity-chevron { transition: transform 0.15s; }
+  .activity-chevron.collapsed { transform: rotate(-90deg); }
+  .activity-empty {
+    font-family: var(--font-ui); font-size: 12px;
+    color: var(--color-fg-tertiary); margin: 4px 0 0;
+  }
+  .activity-list {
+    list-style: none; padding: 0; margin: 4px 0 0;
+    max-height: 280px; overflow-y: auto;
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+  }
+  .activity-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 10px; font-family: var(--font-ui); font-size: 12px;
+    color: var(--color-fg-secondary);
+    border-bottom: 1px solid var(--color-border-default);
+  }
+  .activity-row:last-child { border-bottom: none; }
+  .activity-row.error .activity-icon { color: var(--color-status-error, #d97474); }
+  .activity-row .activity-icon { color: var(--color-status-success, #6fb37e); width: 12px; }
+  .activity-time { color: var(--color-fg-tertiary); width: 90px; }
+  .activity-summary { flex: 1; color: var(--color-fg-primary); }
+  .activity-err {
+    color: var(--color-status-error, #d97474);
+    font-style: italic;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 200px;
+  }
 </style>

@@ -11,6 +11,7 @@
 //! Phase 1 (this commit): module spine — op format, encryption, backend trait,
 //! filesystem backend, sync state tables. No op interception or sync runner yet.
 
+pub mod activity;
 pub mod app_backend;
 pub mod backend;
 pub mod conflict;

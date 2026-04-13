@@ -88,6 +88,10 @@ pub async fn take_snapshot(
         sqlx::query("DELETE FROM sync_state").execute(&snapshot_pool).await?;
         sqlx::query("DELETE FROM sync_config").execute(&snapshot_pool).await?;
         sqlx::query("DELETE FROM sync_conflicts").execute(&snapshot_pool).await?;
+        // sync_activity is a per-device log; fresh-restored DBs shouldn't
+        // inherit the source device's history. Best-effort (table may not
+        // exist on snapshots taken before migration 012).
+        let _ = sqlx::query("DELETE FROM sync_activity").execute(&snapshot_pool).await;
         sqlx::query("VACUUM").execute(&snapshot_pool).await?;
         snapshot_pool.close().await;
     }
