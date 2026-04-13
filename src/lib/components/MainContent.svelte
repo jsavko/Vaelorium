@@ -93,10 +93,6 @@
           {/if}
         </div>
       {/if}
-      <span class="sync-indicator">
-        <span class="sync-dot"></span>
-        <span class="sync-text">No sync</span>
-      </span>
     </div>
   </header>
   <div class="divider"></div>
@@ -260,25 +256,6 @@
 
   .more-item.danger:hover {
     background: rgba(184, 92, 92, 0.15);
-  }
-
-  .sync-indicator {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .sync-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: var(--color-fg-tertiary);
-  }
-
-  .sync-text {
-    font-family: var(--font-ui);
-    font-size: 12px;
-    color: var(--color-fg-tertiary);
   }
 
   .divider {

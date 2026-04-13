@@ -41,6 +41,7 @@ ulid = { version = "1", features = ["serde"] }
 thiserror = "1"
 zeroize = "1"
 base64 = "0.22"
+flate2 = "1"
 tempfile = "3"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-s3 = "1"
