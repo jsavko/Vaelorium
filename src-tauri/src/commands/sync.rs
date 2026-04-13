@@ -87,7 +87,7 @@ async fn resolve_row_label(pool: &sqlx::SqlitePool, table: &str, row_id: &str) -
     match table {
         "entity_field_values" => {
             let joined: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-                "SELECT p.title, f.label
+                "SELECT p.title, f.name
                  FROM entity_field_values v
                  LEFT JOIN pages p ON p.id = v.page_id
                  LEFT JOIN entity_type_fields f ON f.id = v.field_id
@@ -155,7 +155,7 @@ async fn resolve_row_label(pool: &sqlx::SqlitePool, table: &str, row_id: &str) -
     let name_col: Option<&str> = match table {
         "pages" => Some("title"),
         "entity_types" => Some("name"),
-        "entity_type_fields" => Some("label"),
+        "entity_type_fields" => Some("name"),
         "tags" => Some("name"),
         "maps" => Some("name"),
         "timelines" => Some("name"),
