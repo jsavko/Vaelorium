@@ -122,4 +122,14 @@ export class LocalYjsProvider {
     await this.save()
     this.doc.destroy()
   }
+
+  /** Destroy without the final save. Use when the DB row was replaced
+   *  externally (e.g. by restoring a version) — calling `destroy()`
+   *  would write our stale in-memory Y.Doc back over the fresh DB content
+   *  and silently defeat the restore. */
+  discard(): void {
+    if (this.saveTimeout) clearTimeout(this.saveTimeout)
+    if (this.versionInterval) clearInterval(this.versionInterval)
+    this.doc.destroy()
+  }
 }

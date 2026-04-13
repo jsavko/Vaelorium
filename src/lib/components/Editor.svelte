@@ -68,15 +68,25 @@
     const pageChanged = page.id !== currentLoadedPageId
     if (pageChanged || signalChanged) {
       lastReloadSignal = signal
-      loadEditor(page)
+      // DB was just replaced externally (version restore) — discard the
+      // stale in-memory Y.Doc without calling destroy(), because destroy()
+      // runs a final save() that would clobber the fresh DB content.
+      loadEditor(page, { discardExisting: signalChanged && !pageChanged })
     }
   })
 
-  async function loadEditor(page: Page) {
-    // Save and destroy previous editor
+  async function loadEditor(page: Page, opts: { discardExisting?: boolean } = {}) {
+    // Tear down the previous editor. Normal path saves in-memory Y.Doc first
+    // (so tab-switches don't lose unsaved edits). Discard path skips the
+    // save — used when the DB was externally replaced (restore) and saving
+    // our stale in-memory state would silently undo the replacement.
     if (provider) {
-      await provider.save() // Save with callbacks still intact
-      await provider.destroy()
+      if (opts.discardExisting) {
+        provider.discard()
+      } else {
+        await provider.save()
+        await provider.destroy()
+      }
       provider = null
     }
     if (editor) {
