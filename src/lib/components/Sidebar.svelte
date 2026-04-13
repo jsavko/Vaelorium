@@ -11,7 +11,11 @@
   import { syncIndicator, syncStatus, syncConflicts, refreshSyncStatus } from '../stores/syncStore'
   import { get } from 'svelte/store'
 
+  // syncStatus is read reactively in markup; silence unused-import warnings.
+  void syncStatus
+
   interface Props {
+    onOpenConflicts?: () => void
     onOpenSettings?: (initialTab?: string) => void
     onNewPage?: () => void
     onSelectType?: (typeId: string) => void
@@ -29,7 +33,7 @@
     boardsActive?: boolean
   }
 
-  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
+  let { onOpenConflicts, onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
 
   // Pill routing:
   // - conflicts → navigate to the first conflicted page so ConflictResolver
@@ -39,16 +43,12 @@
   async function handlePillClick() {
     await refreshSyncStatus()
     const all = get(syncConflicts)
-    // Prefer page conflicts (ConflictResolver renders only for pages).
-    // Navigating lands the user on the exact page whose fields conflict.
-    const pageConflict = all.find((c) => c.tableName === 'pages')
-    if (pageConflict) {
-      await loadPage(pageConflict.rowId)
+    if (all.length > 0) {
+      // Any conflicts → open the global conflicts modal.
+      onOpenConflicts?.()
       return
     }
-    // Non-page conflicts (or empty conflicts with stale count): fall back
-    // to Settings → Sync. The tab at least shows the conflict count and
-    // is the sensible home for "something's off with sync."
+    // No conflicts: route to Settings → Sync for locked/error/idle states.
     onOpenSettings?.('sync')
   }
 
@@ -181,7 +181,7 @@
       class:sync-error={$syncIndicator === 'error'}
       class:sync-locked={$syncIndicator === 'locked'}
       onclick={handlePillClick}
-      title={$syncIndicator === 'locked' ? 'Click to unlock' : $syncIndicator === 'conflicts' ? 'Go to first conflicted page' : 'Open sync settings'}
+      title={$syncIndicator === 'locked' ? 'Click to unlock' : $syncIndicator === 'conflicts' ? 'Resolve sync conflicts' : 'Open sync settings'}
       data-testid="sync-pill"
     >
       <span class="sync-dot"></span>

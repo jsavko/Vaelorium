@@ -19,6 +19,7 @@
   import Settings from './lib/components/Settings.svelte'
   import UpdateNotification from './lib/components/UpdateNotification.svelte'
   import ConflictResolver from './lib/components/ConflictResolver.svelte'
+  import ConflictsModal from './lib/components/ConflictsModal.svelte'
   import { initSyncStore, syncStatus } from './lib/stores/syncStore'
   import { onMount } from 'svelte'
   import { createPage, currentPageId } from './lib/stores/pageStore'
@@ -75,6 +76,7 @@
   let searchOpen = $state(false)
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
+  let conflictsModalOpen = $state(false)
   let settingsInitialTab = $state<string | undefined>(undefined)
   let newPageModalOpen = $state(false)
   let newPageInitialTypeId = $state<string | null>(null)
@@ -141,6 +143,7 @@
 {#if $isTomeOpen}
   <div class="app-layout">
     <Sidebar
+      onOpenConflicts={() => { conflictsModalOpen = true }}
       onOpenSettings={(tab?: string) => { settingsInitialTab = tab; settingsOpen = true }}
       onNewPage={() => { newPageInitialTypeId = null; newPageModalOpen = true }}
       onSelectType={(typeId) => { activeTypeListId = typeId; activeModule = 'entity-list' }}
@@ -191,6 +194,7 @@
   <SlashMenu />
   <MentionSuggestion />
   <Settings open={settingsOpen} initialTab={settingsInitialTab} onClose={() => settingsOpen = false} />
+  <ConflictsModal open={conflictsModalOpen} onClose={() => conflictsModalOpen = false} />
   <NewPageModal
     open={newPageModalOpen}
     onClose={() => { newPageModalOpen = false; newPageInitialTypeId = null }}
