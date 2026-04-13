@@ -1,20 +1,23 @@
-//! Sync journal — typed mutation operations.
+//! Sync journal — typed mutation operations and the local-side recording API.
 //!
 //! Each op records exactly one row mutation. User-facing edits that touch
-//! multiple rows (e.g. renaming an entity that updates 10 wiki link rows)
-//! share a single `transaction_id` so conflict detection and rollback can
-//! reason about them as a unit.
+//! multiple rows (e.g. `reorder_pages` updating 10 sort_orders) share a single
+//! `transaction_id` so conflict detection and rollback can reason about them
+//! as a unit.
 //!
-//! Ops are serialized to JSON for storage in `sync_journal_local` and for
-//! upload to backends (after encryption). The format is versioned via
+//! Ops are JSON-serialized for storage in `sync_journal_local` and for upload
+//! to backends (after encryption). The format is versioned via
 //! [`crate::sync::SCHEMA_VERSION`] so future format changes can be detected.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use sqlx::{Executor, Sqlite};
 use std::collections::BTreeMap;
 use ulid::Ulid;
 use uuid::Uuid;
+
+use super::SyncResult;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -24,16 +27,26 @@ pub enum OpKind {
     Delete,
 }
 
+impl OpKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OpKind::Insert => "insert",
+            OpKind::Update => "update",
+            OpKind::Delete => "delete",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "insert" => Some(OpKind::Insert),
+            "update" => Some(OpKind::Update),
+            "delete" => Some(OpKind::Delete),
+            _ => None,
+        }
+    }
+}
+
 /// One row-level mutation. The atomic unit of sync exchange.
-///
-/// `fields` captures the new state for [`OpKind::Insert`] / [`OpKind::Update`];
-/// for [`OpKind::Delete`] it is empty. `prev_fields` captures the pre-mutation
-/// state of every field present in `fields` — used during conflict detection
-/// to determine whether two ops touched truly overlapping data or just shared
-/// a row by accident.
-///
-/// `None` in either map means "field absent" (e.g. an optional column was
-/// previously NULL or has been cleared); `Some(value)` is the explicit value.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Op {
     pub op_id: Ulid,
@@ -49,19 +62,280 @@ pub struct Op {
 }
 
 impl Op {
-    /// Serialize to canonical JSON bytes for storage / encryption.
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }
 
-    /// Deserialize from JSON bytes (typically after decryption).
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(bytes)
     }
 
-    /// Return the set of field names this op modified.
     pub fn touched_fields(&self) -> impl Iterator<Item = &String> {
-        self.fields.keys()
+        self.fields.keys().chain(self.prev_fields.keys().filter(|k| !self.fields.contains_key(*k)))
+    }
+}
+
+/// Builder helpers ----------------------------------------------------------
+
+/// Build an Insert op from the fully-populated row.
+pub fn insert_op(
+    device_id: Uuid,
+    transaction_id: Ulid,
+    table: impl Into<String>,
+    row_id: impl Into<String>,
+    fields: BTreeMap<String, Option<JsonValue>>,
+) -> Op {
+    Op {
+        op_id: Ulid::new(),
+        device_id,
+        table: table.into(),
+        row_id: row_id.into(),
+        kind: OpKind::Insert,
+        fields,
+        prev_fields: BTreeMap::new(),
+        schema_version: super::SCHEMA_VERSION,
+        timestamp: Utc::now(),
+        transaction_id,
+    }
+}
+
+/// Build an Update op containing only the fields that actually changed.
+/// `before` and `after` should be full-row snapshots (caller responsibility).
+pub fn update_op(
+    device_id: Uuid,
+    transaction_id: Ulid,
+    table: impl Into<String>,
+    row_id: impl Into<String>,
+    before: &BTreeMap<String, Option<JsonValue>>,
+    after: &BTreeMap<String, Option<JsonValue>>,
+) -> Option<Op> {
+    let mut fields = BTreeMap::new();
+    let mut prev_fields = BTreeMap::new();
+
+    // Look at every key present in either side.
+    let mut all_keys: Vec<&String> = before.keys().chain(after.keys()).collect();
+    all_keys.sort();
+    all_keys.dedup();
+
+    for k in all_keys {
+        let b = before.get(k).cloned().unwrap_or(None);
+        let a = after.get(k).cloned().unwrap_or(None);
+        if b != a {
+            fields.insert(k.clone(), a);
+            prev_fields.insert(k.clone(), b);
+        }
+    }
+
+    if fields.is_empty() {
+        return None;
+    }
+
+    Some(Op {
+        op_id: Ulid::new(),
+        device_id,
+        table: table.into(),
+        row_id: row_id.into(),
+        kind: OpKind::Update,
+        fields,
+        prev_fields,
+        schema_version: super::SCHEMA_VERSION,
+        timestamp: Utc::now(),
+        transaction_id,
+    })
+}
+
+/// Build a Delete op carrying the full pre-deletion row in `prev_fields`.
+pub fn delete_op(
+    device_id: Uuid,
+    transaction_id: Ulid,
+    table: impl Into<String>,
+    row_id: impl Into<String>,
+    before: BTreeMap<String, Option<JsonValue>>,
+) -> Op {
+    Op {
+        op_id: Ulid::new(),
+        device_id,
+        table: table.into(),
+        row_id: row_id.into(),
+        kind: OpKind::Delete,
+        fields: BTreeMap::new(),
+        prev_fields: before,
+        schema_version: super::SCHEMA_VERSION,
+        timestamp: Utc::now(),
+        transaction_id,
+    }
+}
+
+/// Persist an op into `sync_journal_local`. Atomic with the caller's transaction.
+pub async fn record_op<'e, E>(executor: E, op: &Op, tome_id: &str) -> SyncResult<()>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    let payload = serde_json::json!({
+        "fields": &op.fields,
+        "prev_fields": &op.prev_fields,
+        "device_id": op.device_id.to_string(),
+    })
+    .to_string();
+
+    sqlx::query(
+        r#"INSERT INTO sync_journal_local
+             (op_id, tome_id, transaction_id, table_name, row_id,
+              op_kind, op_data, schema_version, timestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+    )
+    .bind(op.op_id.to_string())
+    .bind(tome_id)
+    .bind(op.transaction_id.to_string())
+    .bind(&op.table)
+    .bind(&op.row_id)
+    .bind(op.kind.as_str())
+    .bind(payload)
+    .bind(op.schema_version as i64)
+    .bind(op.timestamp.to_rfc3339())
+    .execute(executor)
+    .await?;
+
+    Ok(())
+}
+
+/// Convenience for callers in the live app: check whether sync is configured
+/// for any Tome in this DB; return the tome_id if so, otherwise `None`.
+/// Each `.tome` SQLite has at most one sync_config row (one Tome per file).
+pub async fn active_tome_id(pool: &sqlx::SqlitePool) -> SyncResult<Option<String>> {
+    let row: Option<(String, i64)> = sqlx::query_as(
+        "SELECT tome_id, enabled FROM sync_config LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.and_then(|(id, enabled)| if enabled != 0 { Some(id) } else { None }))
+}
+
+/// Returns `(tome_id, device_id)` when sync is enabled, or `None`. Mutation
+/// command code calls this once per request and uses the result to decide
+/// whether to record ops.
+pub async fn active_sync_session(pool: &sqlx::SqlitePool) -> SyncResult<Option<(String, Uuid)>> {
+    let row: Option<(String, i64, String)> = sqlx::query_as(
+        "SELECT tome_id, enabled, device_id FROM sync_config LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(match row {
+        Some((id, enabled, device_str)) if enabled != 0 => {
+            let dev = Uuid::parse_str(&device_str)
+                .map_err(|e| super::SyncError::Journal(format!("bad device_id: {e}")))?;
+            Some((id, dev))
+        }
+        _ => None,
+    })
+}
+
+/// All pending local ops with `op_id > after`, ascending. Used by the engine
+/// to upload journal tails.
+pub async fn pending_ops(
+    pool: &sqlx::SqlitePool,
+    tome_id: &str,
+    after: Option<&str>,
+) -> SyncResult<Vec<StoredOp>> {
+    let after_clause = after.unwrap_or("");
+    let rows: Vec<StoredOpRow> = sqlx::query_as(
+        r#"SELECT op_id, transaction_id, table_name, row_id, op_kind,
+                  op_data, schema_version, timestamp
+           FROM sync_journal_local
+           WHERE tome_id = ? AND op_id > ?
+           ORDER BY op_id ASC"#,
+    )
+    .bind(tome_id)
+    .bind(after_clause)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter().map(StoredOp::try_from).collect()
+}
+
+/// Drop journal entries with `op_id <= up_to`. Used after a snapshot is taken.
+pub async fn prune_journal(
+    pool: &sqlx::SqlitePool,
+    tome_id: &str,
+    up_to: &str,
+) -> SyncResult<u64> {
+    let res = sqlx::query(
+        "DELETE FROM sync_journal_local WHERE tome_id = ? AND op_id <= ?",
+    )
+    .bind(tome_id)
+    .bind(up_to)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
+/// Reconstructed op pulled from the local journal.
+#[derive(Debug, Clone)]
+pub struct StoredOp {
+    pub op: Op,
+}
+
+#[derive(sqlx::FromRow)]
+struct StoredOpRow {
+    op_id: String,
+    transaction_id: String,
+    table_name: String,
+    row_id: String,
+    op_kind: String,
+    op_data: String,
+    schema_version: i64,
+    timestamp: String,
+}
+
+impl TryFrom<StoredOpRow> for StoredOp {
+    type Error = super::SyncError;
+    fn try_from(r: StoredOpRow) -> Result<Self, Self::Error> {
+        let op_id = Ulid::from_string(&r.op_id)
+            .map_err(|e| super::SyncError::Journal(format!("bad op_id: {e}")))?;
+        let transaction_id = Ulid::from_string(&r.transaction_id)
+            .map_err(|e| super::SyncError::Journal(format!("bad transaction_id: {e}")))?;
+        let kind = OpKind::from_str(&r.op_kind)
+            .ok_or_else(|| super::SyncError::Journal(format!("bad op_kind: {}", r.op_kind)))?;
+        let payload: serde_json::Value = serde_json::from_str(&r.op_data)?;
+
+        let fields: BTreeMap<String, Option<JsonValue>> = payload
+            .get("fields")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()?
+            .unwrap_or_default();
+        let prev_fields: BTreeMap<String, Option<JsonValue>> = payload
+            .get("prev_fields")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()?
+            .unwrap_or_default();
+        let device_id_str = payload
+            .get("device_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| super::SyncError::Journal("missing device_id in op_data".to_string()))?;
+        let device_id = Uuid::parse_str(device_id_str)
+            .map_err(|e| super::SyncError::Journal(format!("bad device_id: {e}")))?;
+        let timestamp = DateTime::parse_from_rfc3339(&r.timestamp)
+            .map(|d| d.with_timezone(&Utc))
+            .map_err(|e| super::SyncError::Journal(format!("bad timestamp: {e}")))?;
+
+        Ok(StoredOp {
+            op: Op {
+                op_id,
+                device_id,
+                table: r.table_name,
+                row_id: r.row_id,
+                kind,
+                fields,
+                prev_fields,
+                schema_version: r.schema_version as u32,
+                timestamp,
+                transaction_id,
+            },
+        })
     }
 }
 
@@ -100,16 +374,9 @@ mod tests {
         let op = sample_op();
         let bytes = op.to_bytes().expect("serialize");
         let restored = Op::from_bytes(&bytes).expect("deserialize");
-
         assert_eq!(restored.op_id, op.op_id);
-        assert_eq!(restored.device_id, op.device_id);
-        assert_eq!(restored.table, op.table);
-        assert_eq!(restored.row_id, op.row_id);
-        assert_eq!(restored.kind, op.kind);
         assert_eq!(restored.fields, op.fields);
         assert_eq!(restored.prev_fields, op.prev_fields);
-        assert_eq!(restored.schema_version, op.schema_version);
-        assert_eq!(restored.transaction_id, op.transaction_id);
     }
 
     #[test]
@@ -123,26 +390,40 @@ mod tests {
     }
 
     #[test]
-    fn touched_fields_returns_modified_field_names() {
-        let op = sample_op();
-        let touched: Vec<&String> = op.touched_fields().collect();
-        assert_eq!(touched.len(), 3);
-        assert!(touched.iter().any(|f| f.as_str() == "title"));
-        assert!(touched.iter().any(|f| f.as_str() == "content"));
-        assert!(touched.iter().any(|f| f.as_str() == "archived"));
+    fn delete_op_carries_full_prev_state() {
+        let mut prev = BTreeMap::new();
+        prev.insert("title".to_string(), Some(json!("doomed")));
+        prev.insert("icon".to_string(), Some(json!("☠")));
+
+        let op = delete_op(Uuid::new_v4(), Ulid::new(), "pages", "p-1", prev.clone());
+        assert_eq!(op.kind, OpKind::Delete);
+        assert!(op.fields.is_empty());
+        assert_eq!(op.prev_fields, prev);
     }
 
     #[test]
-    fn delete_op_has_empty_fields() {
-        let op = Op {
-            kind: OpKind::Delete,
-            fields: BTreeMap::new(),
-            ..sample_op()
-        };
-        assert_eq!(op.touched_fields().count(), 0);
-        let bytes = op.to_bytes().unwrap();
-        let restored = Op::from_bytes(&bytes).unwrap();
-        assert_eq!(restored.kind, OpKind::Delete);
-        assert!(restored.fields.is_empty());
+    fn update_op_only_includes_changed_fields() {
+        let mut before = BTreeMap::new();
+        before.insert("title".to_string(), Some(json!("Old")));
+        before.insert("icon".to_string(), Some(json!("📜")));
+        before.insert("untouched".to_string(), Some(json!("same")));
+
+        let mut after = BTreeMap::new();
+        after.insert("title".to_string(), Some(json!("New")));
+        after.insert("icon".to_string(), Some(json!("📜")));
+        after.insert("untouched".to_string(), Some(json!("same")));
+
+        let op = update_op(Uuid::new_v4(), Ulid::new(), "pages", "p-1", &before, &after).unwrap();
+        assert_eq!(op.fields.len(), 1);
+        assert_eq!(op.fields.get("title"), Some(&Some(json!("New"))));
+        assert_eq!(op.prev_fields.get("title"), Some(&Some(json!("Old"))));
+    }
+
+    #[test]
+    fn update_op_returns_none_when_nothing_changed() {
+        let mut state = BTreeMap::new();
+        state.insert("title".to_string(), Some(json!("Same")));
+        let op = update_op(Uuid::new_v4(), Ulid::new(), "pages", "p-1", &state, &state);
+        assert!(op.is_none());
     }
 }

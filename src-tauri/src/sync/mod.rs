@@ -14,9 +14,12 @@
 pub mod backend;
 pub mod conflict;
 pub mod crypto;
+pub mod engine;
 pub mod journal;
 pub mod snapshot;
 pub mod state;
+
+pub use engine::{sync_tome_once, SyncOutcome};
 
 use thiserror::Error;
 

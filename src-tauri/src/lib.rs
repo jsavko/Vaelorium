@@ -1,7 +1,7 @@
 mod app_state;
 mod commands;
 mod db;
-mod sync;
+pub mod sync;
 
 use db::ManagedDb;
 use tauri::Manager;
@@ -163,6 +163,8 @@ pub fn run() {
             commands::export::export_tome_markdown,
             commands::import_data::import_markdown_folder,
             commands::import_data::import_json,
+            // Sync (DEV — phase 2; replaced by Settings UI in phase 3)
+            commands::sync_dev::sync_dev_filesystem,
             // Boards
             commands::boards::create_board,
             commands::boards::list_boards,

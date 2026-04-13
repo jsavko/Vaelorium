@@ -1,6 +1,41 @@
 use crate::db::{self, DbPool, ManagedDb};
+use crate::sync::journal::{
+    self, active_sync_session, delete_op, insert_op, record_op, update_op,
+};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value as JsonValue};
+use sqlx::Row;
+use std::collections::BTreeMap;
 use tauri::State;
+use ulid::Ulid;
+use uuid::Uuid;
+
+/// Load the full pages-row state into the field map shape expected by ops.
+async fn load_page_fields_for_op(
+    executor: &mut sqlx::SqliteConnection,
+    page_id: &str,
+) -> Result<BTreeMap<String, Option<JsonValue>>, String> {
+    let row = sqlx::query(
+        "SELECT title, icon, featured_image_path, parent_id, sort_order, entity_type_id, visibility, created_at, updated_at FROM pages WHERE id = ?",
+    )
+    .bind(page_id)
+    .fetch_optional(executor)
+    .await
+    .map_err(|e| e.to_string())?;
+    let row = row.ok_or_else(|| format!("Page '{}' not found", page_id))?;
+
+    let mut m = BTreeMap::new();
+    m.insert("title".into(), Some(json!(row.get::<String, _>("title"))));
+    m.insert("icon".into(), row.get::<Option<String>, _>("icon").map(|v| json!(v)));
+    m.insert("featured_image_path".into(), row.get::<Option<String>, _>("featured_image_path").map(|v| json!(v)));
+    m.insert("parent_id".into(), row.get::<Option<String>, _>("parent_id").map(|v| json!(v)));
+    m.insert("sort_order".into(), Some(json!(row.get::<i64, _>("sort_order"))));
+    m.insert("entity_type_id".into(), row.get::<Option<String>, _>("entity_type_id").map(|v| json!(v)));
+    m.insert("visibility".into(), Some(json!(row.get::<String, _>("visibility"))));
+    m.insert("created_at".into(), Some(json!(row.get::<String, _>("created_at"))));
+    m.insert("updated_at".into(), Some(json!(row.get::<String, _>("updated_at"))));
+    Ok(m)
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Page {
@@ -103,6 +138,22 @@ pub async fn create_page(
         .await
         .map_err(|e| e.to_string())?;
 
+    // Sync: emit insert op for the new page (atomic with the row writes).
+    if let Some((tome_id, device_id)) = active_sync_session(&pool).await.map_err(|e| e.to_string())? {
+        let tx_id = Ulid::new();
+        let mut fields = BTreeMap::new();
+        fields.insert("title".into(), Some(json!(input.title)));
+        fields.insert("icon".into(), input.icon.as_ref().map(|v| json!(v)));
+        fields.insert("parent_id".into(), input.parent_id.as_ref().map(|v| json!(v)));
+        fields.insert("sort_order".into(), Some(json!(sort_order)));
+        fields.insert("entity_type_id".into(), input.entity_type_id.as_ref().map(|v| json!(v)));
+        fields.insert("visibility".into(), Some(json!("private")));
+        fields.insert("created_at".into(), Some(json!(now)));
+        fields.insert("updated_at".into(), Some(json!(now)));
+        let op = insert_op(device_id, tx_id, "pages", &id, fields);
+        record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
+    }
+
     tx.commit().await.map_err(|e| e.to_string())?;
 
     get_page_by_pool(&pool, &id).await
@@ -165,6 +216,16 @@ pub async fn update_page(
         return get_page_by_pool(&pool, &id).await;
     }
 
+    let session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    // Capture before-state when sync is on (for op generation).
+    let before = if session.is_some() {
+        Some(load_page_fields_for_op(&mut *tx, &id).await?)
+    } else {
+        None
+    };
+
     let query_str = format!("UPDATE pages SET {} WHERE id = ?", updates.join(", "));
     let mut query = sqlx::query(&query_str).bind(&now);
 
@@ -176,19 +237,43 @@ pub async fn update_page(
     if let Some(ref fip) = input.featured_image_path { query = query.bind(fip); }
     if let Some(ref etid) = input.entity_type_id { query = query.bind(etid); }
 
-    query.bind(&id).execute(&pool).await.map_err(|e| e.to_string())?;
+    query.bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
+    if let (Some((tome_id, device_id)), Some(before)) = (session, before) {
+        let after = load_page_fields_for_op(&mut *tx, &id).await?;
+        if let Some(op) = update_op(device_id, Ulid::new(), "pages", &id, &before, &after) {
+            record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
+        }
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
     get_page_by_pool(&pool, &id).await
 }
 
 #[tauri::command]
 pub async fn delete_page(managed: State<'_, ManagedDb>, id: String) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
+    let session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    let before = if session.is_some() {
+        Some(load_page_fields_for_op(&mut *tx, &id).await?)
+    } else {
+        None
+    };
+
     sqlx::query("DELETE FROM pages WHERE id = ?")
         .bind(&id)
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
+
+    if let (Some((tome_id, device_id)), Some(before)) = (session, before) {
+        let op = delete_op(device_id, Ulid::new(), "pages", &id, before);
+        record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -294,11 +379,16 @@ pub async fn save_page_content(
     page_id: String,
     yjs_state: Vec<u8>,
 ) -> Result<(), String> {
+    use base64::{engine::general_purpose, Engine as _};
+
     let pool = db::get_pool(managed.inner()).await?;
+    let session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
     // Check page exists first to avoid FK violation
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM pages WHERE id = ?)")
         .bind(&page_id)
-        .fetch_one(&pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -313,7 +403,7 @@ pub async fn save_page_content(
     )
     .bind(&page_id)
     .bind(&yjs_state)
-    .execute(&pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -322,10 +412,21 @@ pub async fn save_page_content(
     sqlx::query("UPDATE pages SET updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(&page_id)
-        .execute(&pool)
+        .execute(&mut *tx)
         .await
         .map_err(|e| e.to_string())?;
 
+    if let Some((tome_id, device_id)) = session {
+        let tx_id = Ulid::new();
+        let yjs_b64 = general_purpose::STANDARD.encode(&yjs_state);
+        let mut fields = BTreeMap::new();
+        fields.insert("yjs_state".into(), Some(json!(yjs_b64)));
+        // page_content is upsert; treat as Update (apply path uses INSERT OR REPLACE).
+        let op = insert_op(device_id, tx_id, "page_content", &page_id, fields);
+        record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -352,14 +453,33 @@ pub async fn reorder_pages(
     moves: Vec<ReorderMove>,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
+    let session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let tx_id = Ulid::new(); // all moves share one transaction id
+
     for m in moves {
+        let before = if session.is_some() {
+            Some(load_page_fields_for_op(&mut *tx, &m.id).await?)
+        } else {
+            None
+        };
+
         sqlx::query("UPDATE pages SET parent_id = ?, sort_order = ? WHERE id = ?")
             .bind(&m.parent_id)
             .bind(m.sort_order)
             .bind(&m.id)
-            .execute(&pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+
+        if let (Some((ref tome_id, device_id)), Some(before)) = (&session, before) {
+            let after = load_page_fields_for_op(&mut *tx, &m.id).await?;
+            if let Some(op) = update_op(*device_id, tx_id, "pages", &m.id, &before, &after) {
+                record_op(&mut *tx, &op, tome_id).await.map_err(|e| e.to_string())?;
+            }
+        }
     }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
