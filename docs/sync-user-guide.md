@@ -84,6 +84,22 @@ User-clicked **Sync now** skips the retry loop — click it again if you want an
 - **Syncthing `.sync-conflict-*` files appear in the backup folder** — rare; happens if two devices upload the same snapshot pointer at exactly the same moment. Delete the `.sync-conflict-*` sibling; the engine will re-upload on the next tick.
 - **Sync activity shows "error" but Sync now works** — probably a transient network blip. The runner will retry on the next tick.
 
+## Using a NAS or network share
+
+The **Folder** backend accepts any path the OS can write to — local disk, a Syncthing/Dropbox folder, or a mounted NAS share. You don't need a separate backend for a NAS.
+
+**Example paths by OS:**
+
+- **Windows:** `\\UNRAID\vaelorium` (UNC) or `Z:\vaelorium` (mapped drive)
+- **macOS:** `/Volumes/vaelorium` (after mounting the share in Finder)
+- **Linux:** `/mnt/nas/vaelorium` (after an `fstab` or `gio mount`)
+
+**Credentials** are managed by the OS, not Vaelorium — use your NAS's user account with the platform's usual mount flow (Windows credential manager, macOS Finder "Connect to Server…", Linux `fstab` or `gio`).
+
+**Caveat:** the OS must keep the mount active while Vaelorium runs. A disconnected share surfaces as an IO error in the sync activity log; the runner retries transiently (1 s / 4 s / 16 s backoff) before surfacing the failure, so a brief network hiccup is usually invisible.
+
+Why this works: the backend writes immutable encrypted op/snapshot files (atomic tempfile + rename) and never rewrites in place — exactly the workload a network filesystem handles well. The live `.tome` SQLite database stays local on each device, never on the share.
+
 ## Advanced
 
 - **S3-compatible setup recipes:** see [sync-s3-testing.md](./sync-s3-testing.md) for a Minio-in-Docker recipe and notes on AWS / Cloudflare R2 / Backblaze B2.

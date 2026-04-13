@@ -136,8 +136,12 @@
           <label class="kind-card" class:selected={backendKind === 'filesystem'}>
             <input type="radio" name="kind" value="filesystem" checked={backendKind === 'filesystem'} onchange={() => backendKind = 'filesystem'} />
             <div class="kind-body">
-              <div class="kind-title">A folder on this computer</div>
-              <p class="kind-desc">Simple. Your live Tome stays local — only encrypted ops/snapshots land in this folder, so a folder-sync agent (Syncthing, Dropbox, iCloud) is safe.</p>
+              <div class="kind-title">A folder (local, synced, or network share)</div>
+              <p class="kind-desc">
+                Any path the OS can write — local disk, Syncthing/Dropbox/iCloud folder, or a mounted NAS share.
+                Windows UNC paths (<code>\\SERVER\share\…</code>), macOS <code>/Volumes/&lt;share&gt;</code>, and Linux <code>/mnt/…</code>
+                all work. Only encrypted ops/snapshots land here — your live Tome stays local.
+              </p>
             </div>
           </label>
           <label class="kind-card" class:selected={backendKind === 's3'}>
@@ -150,7 +154,11 @@
         {:else if step === 3}
           {#if backendKind === 'filesystem'}
             <h3>Pick a folder</h3>
-            <p class="sub">Choose any local directory. The backend writes immutable op/snapshot files (never rewrites in place), so Syncthing or a cloud-folder agent watching this directory is safe — your live .tome database is never inside it.</p>
+            <p class="sub">
+              Any local directory, a Syncthing/Dropbox folder, or a mounted network share (SMB/UNC, NFS, AFP)
+              works — the OS just needs to be able to write there. Your live <code>.tome</code> database stays local;
+              this folder only receives immutable op/snapshot files.
+            </p>
             <div class="row">
               <input class="text" type="text" placeholder="/path/to/backup/folder" bind:value={backendPath} />
               <button class="ghost" type="button" onclick={pickFolder}>Browse…</button>
