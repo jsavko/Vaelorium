@@ -160,10 +160,19 @@
       </div>
     {/if}
 
-    {#if isTauri && backupConfigured}
+    {#if isTauri}
       <div class="restore-section">
         <span class="section-label">RESTORE FROM BACKUP</span>
-        {#if backupLocked}
+        {#if !backupConfigured}
+          <button
+            class="restore-prompt"
+            onclick={() => onOpenSettings?.('backup')}
+            type="button"
+          >
+            <DownloadCloud size={16} />
+            <span>Set up a backup destination to recover Tomes from another device</span>
+          </button>
+        {:else if backupLocked}
           <button
             class="restore-prompt"
             onclick={() => onOpenSettings?.('backup')}
