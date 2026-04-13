@@ -13,11 +13,10 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Notify;
 use tokio::time::{sleep, Instant};
 
-use super::backend::filesystem::FilesystemBackend;
 use super::backend::SyncBackend;
 use super::engine::sync_tome_once;
 use super::session::SessionState;
-use super::state::{BackendKind, SyncRuntimeState};
+use super::state::SyncRuntimeState;
 use crate::db::ManagedDb;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
@@ -63,26 +62,14 @@ async fn run_loop(app: AppHandle, managed: ManagedDb, session: SessionState) {
         let Some(active) = session.current().await else { continue };
         let Some(pool) = managed.read().await.clone() else { continue };
 
-        let backend: Box<dyn SyncBackend + Send + Sync> = match active.backend_kind {
-            BackendKind::Filesystem => {
-                let path = active
-                    .backend_config
-                    .get("path")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                match FilesystemBackend::new(path).await {
-                    Ok(b) => Box::new(b),
-                    Err(e) => {
-                        emit_error(&app, &active.tome_id, format!("backend init failed: {e}"));
-                        continue;
-                    }
+        let backend: Box<dyn SyncBackend + Send + Sync> =
+            match crate::commands::sync::build_backend(active.backend_kind, &active.backend_config).await {
+                Ok(b) => b,
+                Err(e) => {
+                    emit_error(&app, &active.tome_id, format!("backend init failed: {e}"));
+                    continue;
                 }
-            }
-            BackendKind::S3 => {
-                emit_error(&app, &active.tome_id, "S3 backend is Phase 4 — not yet wired".to_string());
-                continue;
-            }
-        };
+            };
 
         let _ = app.emit(
             "sync:status",

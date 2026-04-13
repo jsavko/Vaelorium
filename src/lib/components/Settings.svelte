@@ -34,6 +34,12 @@
   let syncSetupOpen = $state(false)
   let syncBackendKind = $state<'filesystem' | 's3'>('filesystem')
   let syncBackendPath = $state('')
+  let syncS3Endpoint = $state('')
+  let syncS3Region = $state('us-east-1')
+  let syncS3Bucket = $state('')
+  let syncS3AccessKey = $state('')
+  let syncS3SecretKey = $state('')
+  let syncS3Prefix = $state('vaelorium')
   let syncPassphrase = $state('')
   let syncPassphraseConfirm = $state('')
   let syncDeviceName = $state('')
@@ -51,21 +57,40 @@
     syncSetupError = null
     if (syncPassphrase.length < 8) { syncSetupError = 'Passphrase must be at least 8 characters'; return }
     if (syncPassphrase !== syncPassphraseConfirm) { syncSetupError = 'Passphrases do not match'; return }
-    if (!syncBackendPath) { syncSetupError = 'Backend path is required'; return }
     const tome = $currentTome
     if (!tome) { syncSetupError = 'No Tome is open'; return }
+
+    let backendConfig: Record<string, unknown>
+    if (syncBackendKind === 'filesystem') {
+      if (!syncBackendPath) { syncSetupError = 'Folder path is required'; return }
+      backendConfig = { path: syncBackendPath }
+    } else {
+      if (!syncS3Bucket) { syncSetupError = 'Bucket name is required'; return }
+      if (!syncS3AccessKey || !syncS3SecretKey) { syncSetupError = 'Access key and secret key are required'; return }
+      backendConfig = {
+        endpoint: syncS3Endpoint || null,
+        region: syncS3Region,
+        bucket: syncS3Bucket,
+        access_key: syncS3AccessKey,
+        secret_key: syncS3SecretKey,
+        prefix: syncS3Prefix || null,
+      }
+    }
+
     syncBusy = true
     try {
       await enableSync({
         tomeId: tome.path,
         backendKind: syncBackendKind,
-        backendConfig: { path: syncBackendPath },
+        backendConfig,
         passphrase: syncPassphrase,
         deviceName: syncDeviceName || undefined,
       })
       syncSetupOpen = false
       syncPassphrase = ''
       syncPassphraseConfirm = ''
+      syncS3AccessKey = ''
+      syncS3SecretKey = ''
       await refreshSyncStatus()
       showToast('Sync enabled', 'success')
     } catch (e: any) {
@@ -434,7 +459,7 @@
                   <span class="sync-label">Backend</span>
                   <select bind:value={syncBackendKind} class="sync-input">
                     <option value="filesystem">Filesystem (local folder, Syncthing-friendly)</option>
-                    <option value="s3" disabled>S3-compatible (coming next)</option>
+                    <option value="s3">S3-compatible (AWS, R2, Minio, Backblaze, Wasabi, Garage…)</option>
                   </select>
                 </label>
                 {#if syncBackendKind === 'filesystem'}
@@ -444,6 +469,33 @@
                       <input type="text" bind:value={syncBackendPath} placeholder="/path/to/sync/folder" class="sync-input" />
                       <button type="button" class="data-btn" onclick={pickBackendDir}>Pick…</button>
                     </div>
+                  </label>
+                {:else}
+                  <label class="sync-field">
+                    <span class="sync-label">Endpoint URL (leave empty for AWS S3)</span>
+                    <input type="text" bind:value={syncS3Endpoint} placeholder="https://s3.us-east-1.amazonaws.com" class="sync-input" />
+                  </label>
+                  <div class="sync-row-split">
+                    <label class="sync-field">
+                      <span class="sync-label">Region</span>
+                      <input type="text" bind:value={syncS3Region} placeholder="us-east-1" class="sync-input" />
+                    </label>
+                    <label class="sync-field">
+                      <span class="sync-label">Bucket</span>
+                      <input type="text" bind:value={syncS3Bucket} placeholder="my-vaelorium-bucket" class="sync-input" />
+                    </label>
+                  </div>
+                  <label class="sync-field">
+                    <span class="sync-label">Access key ID</span>
+                    <input type="text" bind:value={syncS3AccessKey} class="sync-input" autocomplete="off" />
+                  </label>
+                  <label class="sync-field">
+                    <span class="sync-label">Secret access key</span>
+                    <input type="password" bind:value={syncS3SecretKey} class="sync-input" autocomplete="new-password" />
+                  </label>
+                  <label class="sync-field">
+                    <span class="sync-label">Prefix (optional)</span>
+                    <input type="text" bind:value={syncS3Prefix} placeholder="vaelorium" class="sync-input" />
                   </label>
                 {/if}
                 <label class="sync-field">
@@ -893,6 +945,8 @@
   .sync-input:focus { outline: 1px solid var(--color-accent-gold); }
   .sync-row { display: flex; gap: 8px; }
   .sync-row .sync-input { flex: 1; }
+  .sync-row-split { display: flex; gap: 12px; }
+  .sync-row-split > .sync-field { flex: 1; }
   .sync-warning {
     margin: 4px 0 0; padding: 10px 12px;
     background: rgba(184, 92, 92, 0.12);

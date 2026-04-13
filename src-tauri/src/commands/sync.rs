@@ -5,6 +5,7 @@
 
 use crate::db::{self, ManagedDb};
 use crate::sync::backend::filesystem::FilesystemBackend;
+use crate::sync::backend::s3::{S3Backend, S3Config};
 use crate::sync::backend::SyncBackend;
 use crate::sync::crypto::{generate_salt, KeyMaterial};
 use crate::sync::engine::sync_tome_once;
@@ -63,22 +64,11 @@ pub async fn sync_enable(
     let backend_kind = BackendKind::from_str(&input.backend_kind)
         .ok_or_else(|| format!("unknown backend_kind: {}", input.backend_kind))?;
 
-    // Validate backend config can be opened (catches bad paths early).
-    match backend_kind {
-        BackendKind::Filesystem => {
-            let path = input
-                .backend_config
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| "backend_config.path required for filesystem".to_string())?;
-            let _ = FilesystemBackend::new(PathBuf::from(path))
-                .await
-                .map_err(|e| format!("filesystem backend init failed: {e}"))?;
-        }
-        BackendKind::S3 => {
-            return Err("S3 backend is Phase 4 — not yet wired".to_string());
-        }
-    }
+    // Validate backend config can be opened (catches bad paths / bad creds early).
+    let _backend: Box<dyn SyncBackend + Send + Sync> =
+        build_backend(backend_kind, &input.backend_config)
+            .await
+            .map_err(|e| format!("backend init failed: {e}"))?;
 
     // Find or create sync_config (idempotent re-enable).
     let existing = SyncConfig::load(&pool, &input.tome_id)
@@ -152,21 +142,9 @@ pub async fn sync_now(
         .await
         .ok_or_else(|| "sync is not enabled".to_string())?;
 
-    let backend: Box<dyn SyncBackend + Send + Sync> = match active.backend_kind {
-        BackendKind::Filesystem => {
-            let path = active
-                .backend_config
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| "filesystem backend missing path".to_string())?;
-            Box::new(
-                FilesystemBackend::new(PathBuf::from(path))
-                    .await
-                    .map_err(|e| format!("backend init failed: {e}"))?,
-            )
-        }
-        BackendKind::S3 => return Err("S3 backend is Phase 4".to_string()),
-    };
+    let backend = build_backend(active.backend_kind, &active.backend_config)
+        .await
+        .map_err(|e| format!("backend init failed: {e}"))?;
 
     sync_tome_once(&pool, &active.tome_id, &active.key, backend.as_ref())
         .await
@@ -261,21 +239,9 @@ pub async fn sync_take_snapshot(
         .current()
         .await
         .ok_or_else(|| "sync is not enabled".to_string())?;
-    let backend: Box<dyn SyncBackend + Send + Sync> = match active.backend_kind {
-        BackendKind::Filesystem => {
-            let path = active
-                .backend_config
-                .get("path")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            Box::new(
-                FilesystemBackend::new(PathBuf::from(path))
-                    .await
-                    .map_err(|e| e.to_string())?,
-            )
-        }
-        BackendKind::S3 => return Err("S3 backend is Phase 4".to_string()),
-    };
+    let backend = build_backend(active.backend_kind, &active.backend_config)
+        .await
+        .map_err(|e| e.to_string())?;
     let info = crate::sync::snapshot::take_snapshot(&pool, &active.key, backend.as_ref())
         .await
         .map_err(|e| e.to_string())?;
@@ -393,6 +359,59 @@ pub async fn sync_resolve_conflict(
     tx.commit().await.map_err(|e| e.to_string())?;
     session.nudge();
     Ok(())
+}
+
+/// Shared backend constructor used by sync_enable / sync_now / sync_take_snapshot
+/// and by the runner (imported from there). Returns a boxed trait object so
+/// callers don't need to know which concrete type to hold.
+pub async fn build_backend(
+    kind: BackendKind,
+    config: &serde_json::Value,
+) -> Result<Box<dyn SyncBackend + Send + Sync>, String> {
+    match kind {
+        BackendKind::Filesystem => {
+            let path = config
+                .get("path")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "filesystem backend requires `path`".to_string())?;
+            Ok(Box::new(
+                FilesystemBackend::new(PathBuf::from(path))
+                    .await
+                    .map_err(|e| e.to_string())?,
+            ))
+        }
+        BackendKind::S3 => {
+            let s3_cfg = parse_s3_config(config)?;
+            Ok(Box::new(
+                S3Backend::new(s3_cfg)
+                    .await
+                    .map_err(|e| e.to_string())?,
+            ))
+        }
+    }
+}
+
+fn parse_s3_config(config: &serde_json::Value) -> Result<S3Config, String> {
+    fn s(v: &serde_json::Value, k: &str) -> Result<String, String> {
+        v.get(k)
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| format!("s3 backend requires `{k}`"))
+    }
+    fn s_opt(v: &serde_json::Value, k: &str) -> Option<String> {
+        v.get(k)
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    }
+    Ok(S3Config {
+        endpoint: s_opt(config, "endpoint"),
+        region: s(config, "region")?,
+        bucket: s(config, "bucket")?,
+        access_key: s(config, "access_key")?,
+        secret_key: s(config, "secret_key")?,
+        prefix: s_opt(config, "prefix"),
+    })
 }
 
 /// Restore the cached key from sync_config + a passphrase (called on app

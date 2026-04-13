@@ -47,6 +47,15 @@ Self-hosted, offline-first LegendKeeper alternative for worldbuilders. Cross-pla
 - Tag push → CI builds → creates a **draft** release. Promote to public with `gh release edit vX.Y.Z --draft=false` when ready to ship
 - Promoting a release fires `release.published` → triggers website rebuild (see below)
 
+## Sync (M7 — in progress)
+
+- **Status:** Phases 1–4b-S3 complete. 11 of ~14 user-data tables sync. S3 + filesystem backends. Phase 5 (polish + first-run wizard + recovery) remaining before v0.2.0.
+- **Schema registry** at `src-tauri/src/sync/registry.rs` lists every sync-tracked table. Adding one: register in `TABLES`, call `journal::emit_for_row(&mut *tx, &TABLES.<name>, ...)` from each mutation function, call `session.nudge()` after commit.
+- **Special apply paths:** `page_content` (binary BLOB) and `page_tags` (M:N pivot with composite `page_id|tag_id` row_id). Everything else goes through the generic `engine::apply_op_via_schema`.
+- **Backends:** Filesystem (local folder or Syncthing) and S3-compatible (AWS, Cloudflare R2, Minio, Backblaze B2, Wasabi, Garage) — built on `aws-sdk-s3`.
+- **Intentionally NOT synced:** wiki_links (derived from page content), versions (large; local-only), images (binary blob deferred), relation_types (built-ins dominate). Don't relitigate without strong reason.
+- **S3 testing:** `docs/sync-s3-testing.md` has a Minio-in-Docker recipe; the S3 backend has unit tests but no automated integration tests (thin translation layer on top of aws-sdk-s3 that would need a real bucket to exercise meaningfully).
+
 ## Marketing Website
 
 - **Repo:** `jsavko/vaelorium-website` (private), separate sibling at `~/Projects/vaelorium-website/`
