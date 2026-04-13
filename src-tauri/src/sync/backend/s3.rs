@@ -147,8 +147,23 @@ impl SyncBackend for S3Backend {
             .send()
             .await
             .map_err(|e| {
-                let msg = e.to_string();
-                if msg.contains("NoSuchKey") {
+                // Prefer typed error inspection — `SdkError::ServiceError`
+                // stringifies to "service error" on some providers (e.g.
+                // Backblaze B2), so substring-matching on `e.to_string()`
+                // misses NoSuchKey and the caller sees a spurious error.
+                // `into_service_error()` takes ownership, so check first
+                // via `as_service_error()`, and keep the substring fallback
+                // for any formatting we haven't seen yet.
+                use aws_sdk_s3::operation::get_object::GetObjectError;
+                let nsk = e
+                    .as_service_error()
+                    .map(|se| matches!(se, GetObjectError::NoSuchKey(_)))
+                    .unwrap_or(false);
+                let http_404 = e
+                    .raw_response()
+                    .map(|r| r.status().as_u16() == 404)
+                    .unwrap_or(false);
+                if nsk || http_404 || e.to_string().contains("NoSuchKey") {
                     BackendError::NotFound(full.clone())
                 } else {
                     to_backend_error(e, &format!("get_object {full}"))
