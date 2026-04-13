@@ -168,7 +168,13 @@ pub fn run() {
             commands::export::export_tome_markdown,
             commands::import_data::import_markdown_folder,
             commands::import_data::import_json,
-            // Sync (M7 Phase 3)
+            // Backup (app-global backend)
+            commands::backup::backup_configure,
+            commands::backup::backup_disconnect,
+            commands::backup::backup_status,
+            commands::backup::backup_unlock,
+            commands::backup::backup_try_auto_unlock,
+            // Sync (per-Tome opt-in)
             commands::sync::sync_enable,
             commands::sync::sync_disable,
             commands::sync::sync_now,
@@ -176,8 +182,6 @@ pub fn run() {
             commands::sync::sync_take_snapshot,
             commands::sync::sync_list_conflicts,
             commands::sync::sync_resolve_conflict,
-            commands::sync::sync_unlock,
-            commands::sync::sync_try_auto_unlock,
             // Boards
             commands::boards::create_board,
             commands::boards::list_boards,

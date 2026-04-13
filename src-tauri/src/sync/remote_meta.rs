@@ -1,13 +1,16 @@
 //! Unencrypted bucket-root metadata object (`sync-meta.json`).
 //!
-//! Holds the passphrase salt so that a second device / freshly-configured
-//! Tome can derive the same key from the same passphrase instead of
-//! generating its own salt and failing to decrypt existing remote data.
+//! Holds the passphrase salt so a fresh device can derive the same
+//! Argon2id key from the same passphrase instead of generating its own
+//! salt and failing to decrypt existing remote data.
 //!
 //! `salt` is intentionally not secret — Argon2id is strong enough that an
 //! attacker with the salt still needs to guess the passphrase. Keeping it
-//! unencrypted means new devices can bootstrap without any out-of-band
-//! channel beyond the passphrase itself.
+//! unencrypted means new devices bootstrap with passphrase alone.
+//!
+//! The meta is **app-global** for a backend: one bucket / folder hosts
+//! one or more Tomes, namespaced under `tomes/{tome_id}/`, all using the
+//! same key derived from this salt.
 
 use crate::sync::backend::{BackendError, SyncBackend};
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
@@ -15,26 +18,21 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 pub const META_KEY: &str = "sync-meta.json";
-pub const META_VERSION: u32 = 1;
+pub const META_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteMeta {
     pub version: u32,
     /// Base64-encoded Argon2id salt (16 bytes).
     pub salt_b64: String,
-    /// The tome_id that first enabled sync against this bucket. Used to
-    /// refuse enabling a *different* Tome on the same bucket (which would
-    /// scramble the snapshot/journal namespace).
-    pub tome_id: String,
     pub created_at: DateTime<Utc>,
 }
 
 impl RemoteMeta {
-    pub fn new(salt: &[u8], tome_id: &str) -> Self {
+    pub fn new(salt: &[u8]) -> Self {
         Self {
             version: META_VERSION,
             salt_b64: B64.encode(salt),
-            tome_id: tome_id.to_string(),
             created_at: Utc::now(),
         }
     }
@@ -45,8 +43,7 @@ impl RemoteMeta {
     }
 }
 
-/// Fetch the bucket's sync-meta.json. Returns `Ok(None)` if the object
-/// doesn't exist yet (fresh bucket).
+/// Fetch the bucket's sync-meta.json. `Ok(None)` when fresh bucket.
 pub async fn fetch(
     backend: &(dyn SyncBackend + Send + Sync),
 ) -> Result<Option<RemoteMeta>, String> {
@@ -61,7 +58,6 @@ pub async fn fetch(
     }
 }
 
-/// Write the bucket's sync-meta.json (overwrites any existing).
 pub async fn put(
     backend: &(dyn SyncBackend + Send + Sync),
     meta: &RemoteMeta,

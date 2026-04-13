@@ -1,32 +1,33 @@
-//! M7 Sync — public Tauri commands.
+//! Per-Tome sync commands.
 //!
-//! Replaces the dev-only `sync_dev_filesystem` from Phase 2. These are the
-//! commands the Settings → Sync UI calls.
+//! Backup destination + passphrase are app-global (see `commands::backup`).
+//! These commands just toggle whether the active Tome participates in
+//! sync and report its status. The runner picks up enabled Tomes
+//! automatically.
 
+use crate::commands::backup as backup_cmd;
 use crate::db::{self, ManagedDb};
-use crate::sync::backend::filesystem::FilesystemBackend;
-use crate::sync::backend::s3::{S3Backend, S3Config};
+use crate::sync::app_backend;
+use crate::sync::backend::prefixed::{tome_prefix, PrefixedBackend};
 use crate::sync::backend::SyncBackend;
-use crate::sync::crypto::{generate_salt, KeyMaterial};
 use crate::sync::engine::sync_tome_once;
-use crate::sync::session::{SessionState, SyncSession};
-use crate::sync::state::{BackendKind, SyncConfig, SyncRuntimeState};
+use crate::sync::session::SessionState;
+use crate::sync::state::{SyncConfig, SyncRuntimeState};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use ulid::Ulid;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
 pub struct SyncStatusPayload {
-    /// `sync_config.enabled = 1` in the local DB. Persists across app restarts.
+    /// Per-Tome enabled flag (sync_config.enabled).
     pub enabled: bool,
-    /// True when sync is `enabled` but the in-memory key is missing
-    /// (after Tome reopen / app restart). User must call `sync_unlock` with
-    /// the passphrase before the runner can sync.
+    /// True if (backup configured AND tome enabled) but the app-global key
+    /// isn't cached yet (after app restart, before passphrase entry).
     pub locked: bool,
+    /// True if the user hasn't configured a backup destination at all.
+    pub backup_missing: bool,
     pub tome_id: Option<String>,
     pub backend_kind: Option<String>,
     pub backend_summary: Option<String>,
@@ -43,8 +44,8 @@ pub struct ConflictPayload {
     pub table_name: String,
     pub row_id: String,
     pub field_name: String,
-    pub local_value: Option<String>,  // JSON-encoded
-    pub remote_value: Option<String>, // JSON-encoded
+    pub local_value: Option<String>,
+    pub remote_value: Option<String>,
     pub local_op_id: String,
     pub remote_op_id: String,
     pub detected_at: String,
@@ -53,141 +54,53 @@ pub struct ConflictPayload {
 #[derive(Debug, Deserialize)]
 pub struct EnableSyncInput {
     pub tome_id: String,
-    pub backend_kind: String, // "filesystem" | "s3"
-    pub backend_config: serde_json::Value,
-    pub passphrase: String,
     pub device_name: Option<String>,
 }
 
 #[tauri::command]
 pub async fn sync_enable(
+    app: AppHandle,
     managed: State<'_, ManagedDb>,
     session: State<'_, SessionState>,
     input: EnableSyncInput,
 ) -> Result<SyncStatusPayload, String> {
+    // Backup destination must already be configured + unlocked.
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app data dir: {e}"))?;
+    if app_backend::load(&app_data_dir).await?.is_none() {
+        return Err("no backup destination configured — set one up in Settings → Backup first".to_string());
+    }
+    if session.current().await.is_none() {
+        return Err("backup is locked — unlock it in Settings → Backup first".to_string());
+    }
+
     let pool = db::get_pool(managed.inner()).await?;
-    let backend_kind = BackendKind::from_str(&input.backend_kind)
-        .ok_or_else(|| format!("unknown backend_kind: {}", input.backend_kind))?;
-
-    // Open the backend once and reuse for meta check + probe.
-    let backend = build_backend(backend_kind, &input.backend_config)
-        .await
-        .map_err(|e| format!("backend init failed: {e}"))?;
-
-    // Look for a remote sync-meta.json at the bucket root. This is the
-    // authoritative salt source when a bucket already hosts a sync session,
-    // so a second device / freshly-configured Tome can join without
-    // generating a new salt and failing to decrypt existing data.
-    let remote_meta = crate::sync::remote_meta::fetch(backend.as_ref()).await?;
-
-    let existing = SyncConfig::load(&pool, &input.tome_id)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Decide the salt precedence:
-    //   1. Remote meta exists → always use remote salt (authoritative).
-    //      Refuse if the meta's tome_id disagrees with this Tome: a single
-    //      bucket can only host one Tome's snapshot/journal namespace.
-    //   2. No remote meta but local sync_config exists → reuse local salt
-    //      (idempotent re-enable on the original device).
-    //   3. Neither → fresh enable, generate a new salt.
-    let (salt, device_id, wrote_new_meta) = match (&remote_meta, &existing) {
-        (Some(meta), _) => {
-            if meta.tome_id != input.tome_id {
-                return Err(format!(
-                    "this bucket is already syncing a different Tome \
-                     (id '{}'). Use a different bucket for this Tome, \
-                     or open the other Tome instead.",
-                    meta.tome_id
-                ));
-            }
-            let salt = meta.salt()?;
-            let device_id = existing.as_ref().map(|c| c.device_id).unwrap_or_else(Uuid::new_v4);
-            (salt, device_id, false)
-        }
-        (None, Some(cfg)) => (cfg.passphrase_salt.clone(), cfg.device_id, false),
-        (None, None) => (generate_salt().to_vec(), Uuid::new_v4(), true),
-    };
-
-    let key = KeyMaterial::derive(&input.passphrase, &salt).map_err(|e| e.to_string())?;
-
-    // Validate the passphrase against existing backend data. If the bucket
-    // already has snapshots or journal entries, try to decrypt one with the
-    // derived key. A decrypt failure means the user typed the wrong
-    // passphrase.
-    {
-        let existing_snaps = backend
-            .list_prefix("snapshots")
-            .await
-            .map_err(|e| e.to_string())?;
-        let existing_ops = backend
-            .list_prefix("journal")
-            .await
-            .map_err(|e| e.to_string())?;
-        let probe = existing_snaps.first().or(existing_ops.first());
-        if let Some(obj) = probe {
-            let (ciphertext, _etag) = backend
-                .get_object(&obj.key)
-                .await
-                .map_err(|e| e.to_string())?;
-            crate::sync::crypto::decrypt(&key, &ciphertext).map_err(|_| {
-                "passphrase does not match the existing backend data — \
-                 the passphrase is wrong."
-                    .to_string()
-            })?;
-        }
-    }
-
-    // First-ever enable against this bucket → publish sync-meta.json so
-    // future devices/Tomes can derive the same key from this salt.
-    if wrote_new_meta {
-        let meta = crate::sync::remote_meta::RemoteMeta::new(&salt, &input.tome_id);
-        crate::sync::remote_meta::put(backend.as_ref(), &meta).await?;
-    }
-
+    let now = chrono::Utc::now();
     let device_name = input
         .device_name
         .unwrap_or_else(|| std::env::var("HOSTNAME").unwrap_or_else(|_| "Vaelorium Device".into()));
 
+    let existing = SyncConfig::load(&pool, &input.tome_id)
+        .await
+        .map_err(|e| e.to_string())?;
     let cfg = SyncConfig {
         tome_id: input.tome_id.clone(),
         enabled: true,
-        backend_type: backend_kind,
-        backend_config: input.backend_config.clone(),
-        passphrase_salt: salt,
-        device_id,
-        device_name: device_name.clone(),
-        schema_version: 1,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
+        device_id: existing.as_ref().map(|c| c.device_id).unwrap_or_else(Uuid::new_v4),
+        device_name,
+        created_at: existing.as_ref().map(|c| c.created_at).unwrap_or(now),
+        updated_at: now,
     };
     cfg.save(&pool).await.map_err(|e| e.to_string())?;
-
-    // Cache the unlocked key for the runner.
-    session
-        .set(SyncSession {
-            tome_id: input.tome_id.clone(),
-            device_id,
-            key: Arc::new(key),
-            backend_kind,
-            backend_config: input.backend_config,
-        })
-        .await;
     session.nudge();
-
-    // Persist passphrase to OS keychain so the next Tome reopen can
-    // auto-unlock without prompting. Best-effort: if no keychain backend
-    // available (e.g. WSL without gnome-keyring), log and continue —
-    // user will just have to re-enter on next launch.
-    if let Err(e) = crate::sync::keychain::store(&input.tome_id, &input.passphrase) {
-        log::warn!("could not store passphrase in OS keychain: {e}");
-    }
-
-    sync_status(managed, session).await
+    sync_status(app, managed, session).await
 }
 
 #[tauri::command]
 pub async fn sync_disable(
+    app: AppHandle,
     managed: State<'_, ManagedDb>,
     session: State<'_, SessionState>,
     tome_id: String,
@@ -199,16 +112,12 @@ pub async fn sync_disable(
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
-    session.clear().await;
-    // Forget the keychain entry so the next Enable starts clean.
-    if let Err(e) = crate::sync::keychain::delete(&tome_id) {
-        log::warn!("could not delete keychain entry: {e}");
-    }
-    sync_status(managed, session).await
+    sync_status(app, managed, session).await
 }
 
 #[tauri::command]
 pub async fn sync_now(
+    app: AppHandle,
     managed: State<'_, ManagedDb>,
     session: State<'_, SessionState>,
 ) -> Result<crate::sync::SyncOutcome, String> {
@@ -216,67 +125,55 @@ pub async fn sync_now(
     let active = session
         .current()
         .await
-        .ok_or_else(|| "sync is not enabled".to_string())?;
+        .ok_or_else(|| "backup is locked".to_string())?;
 
-    let backend = build_backend(active.backend_kind, &active.backend_config)
+    // Find the enabled Tome (single-Tome path for now; runner iterates).
+    let tome = SyncConfig::list_all(&pool)
         .await
-        .map_err(|e| format!("backend init failed: {e}"))?;
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|c| c.enabled)
+        .ok_or_else(|| "sync is not enabled for any Tome".to_string())?;
 
-    sync_tome_once(&pool, &active.tome_id, &active.key, backend.as_ref())
+    let backend = build_tome_backend(&app, &tome.tome_id).await?;
+    sync_tome_once(&pool, &tome.tome_id, &active.key, backend.as_ref())
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn sync_status(
+    app: AppHandle,
     managed: State<'_, ManagedDb>,
     session: State<'_, SessionState>,
 ) -> Result<SyncStatusPayload, String> {
     let pool = db::get_pool(managed.inner()).await?;
 
-    let active = session.current().await;
-    let cfg_row: Option<(String, i64, String, String, String)> = sqlx::query_as(
-        "SELECT tome_id, enabled, backend_type, backend_config, device_name FROM sync_config LIMIT 1",
+    // Backup status (app-global).
+    let backup = backup_cmd::backup_status(app.clone(), session.clone()).await?;
+
+    // Per-Tome status.
+    let cfg_row: Option<(String, i64, String)> = sqlx::query_as(
+        "SELECT tome_id, enabled, device_name FROM sync_config LIMIT 1",
     )
     .fetch_optional(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    let (enabled, tome_id, backend_kind, backend_summary, device_name) = match &cfg_row {
-        Some((id, en, kind, cfg_json, dev)) => {
-            let summary = match kind.as_str() {
-                "filesystem" => {
-                    let v: serde_json::Value =
-                        serde_json::from_str(cfg_json).unwrap_or(json!({}));
-                    v.get("path")
-                        .and_then(|x| x.as_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_default()
-                }
-                _ => kind.clone(),
-            };
-            (
-                *en != 0,
-                Some(id.clone()),
-                Some(kind.clone()),
-                Some(summary),
-                Some(dev.clone()),
-            )
-        }
-        None => (false, None, None, None, None),
+    let (tome_enabled, tome_id, device_name) = match &cfg_row {
+        Some((id, en, dev)) => (*en != 0, Some(id.clone()), Some(dev.clone())),
+        None => (false, None, None),
     };
-    // "locked" = configured-and-enabled in DB but no in-memory key cached.
-    // Happens after Tome reopen since the key derivation is process-local.
-    let locked = enabled && active.is_none();
+
+    // "locked" surfaces whenever there's something to unlock — either
+    // backup-locked OR a per-Tome that wants to sync but the key is gone.
+    let locked = backup.locked || (tome_enabled && session.current().await.is_none());
 
     let (last_sync_at, last_error, queue_size) = match &tome_id {
         Some(id) => {
             let st = SyncRuntimeState::load(&pool, id)
                 .await
                 .map_err(|e| e.to_string())?;
-            // Count only ops not yet uploaded. sync_journal_local retains
-            // already-uploaded ops until the next snapshot prunes them, so
-            // a naive COUNT(*) overstates "pending uploads" badly.
             let qs: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM sync_journal_local
                  WHERE tome_id = ? AND op_id > COALESCE(?, '')",
@@ -301,11 +198,12 @@ pub async fn sync_status(
     };
 
     Ok(SyncStatusPayload {
-        enabled,
+        enabled: tome_enabled,
         locked,
+        backup_missing: !backup.configured,
         tome_id,
-        backend_kind,
-        backend_summary,
+        backend_kind: backup.backend_kind,
+        backend_summary: backup.backend_summary,
         device_name,
         last_sync_at,
         last_error,
@@ -316,6 +214,7 @@ pub async fn sync_status(
 
 #[tauri::command]
 pub async fn sync_take_snapshot(
+    app: AppHandle,
     managed: State<'_, ManagedDb>,
     session: State<'_, SessionState>,
 ) -> Result<String, String> {
@@ -323,16 +222,19 @@ pub async fn sync_take_snapshot(
     let active = session
         .current()
         .await
-        .ok_or_else(|| "sync is not enabled".to_string())?;
-    let backend = build_backend(active.backend_kind, &active.backend_config)
+        .ok_or_else(|| "backup is locked".to_string())?;
+    let tome = SyncConfig::list_all(&pool)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|c| c.enabled)
+        .ok_or_else(|| "sync is not enabled for any Tome".to_string())?;
+    let backend = build_tome_backend(&app, &tome.tome_id).await?;
     let info = crate::sync::snapshot::take_snapshot(&pool, &active.key, backend.as_ref())
         .await
         .map_err(|e| e.to_string())?;
 
-    // Persist as the new last_snapshot_id.
-    let mut state = SyncRuntimeState::load(&pool, &active.tome_id)
+    let mut state = SyncRuntimeState::load(&pool, &tome.tome_id)
         .await
         .map_err(|e| e.to_string())?;
     state.last_snapshot_id = Some(info.snapshot_id.to_string());
@@ -382,7 +284,6 @@ pub async fn sync_resolve_conflict(
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
 
-    // Load conflict record.
     let row: Option<(String, String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
         "SELECT tome_id, table_name, row_id, field_name, local_value, remote_value FROM sync_conflicts WHERE conflict_id = ?",
     )
@@ -400,8 +301,6 @@ pub async fn sync_resolve_conflict(
         .transpose()
         .map_err(|e| e.to_string())?;
 
-    // Apply the chosen value to the local row (raw SQL; no op emission yet).
-    let active = session.current().await;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let sql = format!("UPDATE {} SET {} = ? WHERE id = ?", table, field);
@@ -415,23 +314,28 @@ pub async fn sync_resolve_conflict(
     q.bind(&row_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
     // Emit a resolution op so the choice propagates to other devices.
-    if let Some(active) = active {
-        use crate::sync::journal::{record_op, update_op};
-        use std::collections::BTreeMap;
-        let mut after = BTreeMap::new();
-        after.insert(field.clone(), chosen_value.clone());
-        let mut before = BTreeMap::new();
-        // We don't have the true "before" here; use the rejected side as before.
-        let rejected_json = if input.choose_local { remote_json } else { local_json };
-        let rejected_value: Option<serde_json::Value> = rejected_json
-            .as_ref()
-            .map(|s| serde_json::from_str(s))
-            .transpose()
-            .map_err(|e| e.to_string())?;
-        before.insert(field.clone(), rejected_value);
+    if session.current().await.is_some() {
+        let device_id = SyncConfig::load(&pool, &tome_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|c| c.device_id);
+        if let Some(device_id) = device_id {
+            use crate::sync::journal::{record_op, update_op};
+            use std::collections::BTreeMap;
+            let mut after = BTreeMap::new();
+            after.insert(field.clone(), chosen_value.clone());
+            let mut before = BTreeMap::new();
+            let rejected_json = if input.choose_local { remote_json } else { local_json };
+            let rejected_value: Option<serde_json::Value> = rejected_json
+                .as_ref()
+                .map(|s| serde_json::from_str(s))
+                .transpose()
+                .map_err(|e| e.to_string())?;
+            before.insert(field.clone(), rejected_value);
 
-        if let Some(op) = update_op(active.device_id, Ulid::new(), &table, &row_id, &before, &after) {
-            record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
+            if let Some(op) = update_op(device_id, Ulid::new(), &table, &row_id, &before, &after) {
+                record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
+            }
         }
     }
 
@@ -446,166 +350,21 @@ pub async fn sync_resolve_conflict(
     Ok(())
 }
 
-/// Shared backend constructor used by sync_enable / sync_now / sync_take_snapshot
-/// and by the runner (imported from there). Returns a boxed trait object so
-/// callers don't need to know which concrete type to hold.
-pub async fn build_backend(
-    kind: BackendKind,
-    config: &serde_json::Value,
+/// Build a Tome-prefixed backend by loading the app-global config and
+/// wrapping with `tomes/{tome_id}/`. Used by sync_now /
+/// sync_take_snapshot and the runner.
+pub async fn build_tome_backend(
+    app: &AppHandle,
+    tome_id: &str,
 ) -> Result<Box<dyn SyncBackend + Send + Sync>, String> {
-    match kind {
-        BackendKind::Filesystem => {
-            let path = config
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| "filesystem backend requires `path`".to_string())?;
-            Ok(Box::new(
-                FilesystemBackend::new(PathBuf::from(path))
-                    .await
-                    .map_err(|e| e.to_string())?,
-            ))
-        }
-        BackendKind::S3 => {
-            let s3_cfg = parse_s3_config(config)?;
-            Ok(Box::new(
-                S3Backend::new(s3_cfg)
-                    .await
-                    .map_err(|e| e.to_string())?,
-            ))
-        }
-    }
-}
-
-fn parse_s3_config(config: &serde_json::Value) -> Result<S3Config, String> {
-    fn s(v: &serde_json::Value, k: &str) -> Result<String, String> {
-        v.get(k)
-            .and_then(|x| x.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| format!("s3 backend requires `{k}`"))
-    }
-    fn s_opt(v: &serde_json::Value, k: &str) -> Option<String> {
-        v.get(k)
-            .and_then(|x| x.as_str())
-            .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
-    }
-    Ok(S3Config {
-        endpoint: s_opt(config, "endpoint"),
-        region: s(config, "region")?,
-        bucket: s(config, "bucket")?,
-        access_key: s(config, "access_key")?,
-        secret_key: s(config, "secret_key")?,
-        prefix: s_opt(config, "prefix"),
-    })
-}
-
-/// Restore the cached key from sync_config + a passphrase (called on app
-/// startup if a Tome with sync enabled is opened).
-#[tauri::command]
-pub async fn sync_unlock(
-    managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
-    passphrase: String,
-) -> Result<SyncStatusPayload, String> {
-    let pool = db::get_pool(managed.inner()).await?;
-    let cfg = sqlx::query_as::<_, (String, i64, String, String, Vec<u8>, String)>(
-        "SELECT tome_id, enabled, backend_type, backend_config, passphrase_salt, device_id FROM sync_config LIMIT 1",
-    )
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| "sync not configured for this Tome".to_string())?;
-
-    let backend_kind = BackendKind::from_str(&cfg.2)
-        .ok_or_else(|| format!("unknown backend kind {}", cfg.2))?;
-    let backend_config: serde_json::Value =
-        serde_json::from_str(&cfg.3).map_err(|e| e.to_string())?;
-    let key = KeyMaterial::derive(&passphrase, &cfg.4).map_err(|e| e.to_string())?;
-    let device_id = Uuid::parse_str(&cfg.5).map_err(|e| e.to_string())?;
-
-    // Validate the passphrase against existing backend data BEFORE caching.
-    // Without this, a wrong passphrase silently caches a bogus key, the
-    // sidebar pill briefly shows green, and the runner only fails ~10s later
-    // when it tries to apply remote ops. Confusing UX.
-    let backend = build_backend(backend_kind, &backend_config)
-        .await
-        .map_err(|e| format!("backend init failed: {e}"))?;
-    let existing_snaps = backend
-        .list_prefix("snapshots")
-        .await
-        .map_err(|e| e.to_string())?;
-    let existing_ops = backend
-        .list_prefix("journal")
-        .await
-        .map_err(|e| e.to_string())?;
-    let probe = existing_snaps.first().or(existing_ops.first());
-    if let Some(obj) = probe {
-        let (ciphertext, _etag) = backend
-            .get_object(&obj.key)
-            .await
-            .map_err(|e| e.to_string())?;
-        crate::sync::crypto::decrypt(&key, &ciphertext).map_err(|_| {
-            "wrong passphrase — could not decrypt existing sync data".to_string()
-        })?;
-    }
-    // (If backend has no data yet, the unlock is trivially valid — there's
-    // nothing to decrypt-check against. First sync will write the first blob.)
-
-    if cfg.1 != 0 {
-        session
-            .set(SyncSession {
-                tome_id: cfg.0.clone(),
-                device_id,
-                key: Arc::new(key),
-                backend_kind,
-                backend_config,
-            })
-            .await;
-        session.nudge();
-
-        // Refresh the keychain entry so future auto-unlocks succeed.
-        if let Err(e) = crate::sync::keychain::store(&cfg.0, &passphrase) {
-            log::warn!("could not refresh keychain entry: {e}");
-        }
-    }
-    sync_status(managed, session).await
-}
-
-/// Attempt to unlock sync using a passphrase stored in the OS keychain.
-/// Returns true if a stored passphrase was found AND validated successfully.
-/// Returns false in all other cases — caller falls back to manual unlock UI.
-/// Never errors loudly: keychain unavailable, no entry, wrong stored
-/// passphrase (rotated externally?) all return Ok(false).
-#[tauri::command]
-pub async fn sync_try_auto_unlock(
-    managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
-) -> Result<bool, String> {
-    let pool = db::get_pool(managed.inner()).await?;
-
-    // Already unlocked? Nothing to do.
-    if session.current().await.is_some() {
-        return Ok(true);
-    }
-
-    let cfg: Option<(String, i64)> =
-        sqlx::query_as("SELECT tome_id, enabled FROM sync_config LIMIT 1")
-            .fetch_optional(&pool)
-            .await
-            .map_err(|e| e.to_string())?;
-    let Some((tome_id, enabled)) = cfg else { return Ok(false) };
-    if enabled == 0 {
-        return Ok(false);
-    }
-
-    let passphrase = match crate::sync::keychain::retrieve(&tome_id) {
-        Ok(Some(p)) => p,
-        _ => return Ok(false),
-    };
-
-    // Reuse sync_unlock's path. If the stored passphrase is wrong (e.g.
-    // user changed it externally and sync_unlock validates it against
-    // backend data), the call returns Err — surface as Ok(false) so the
-    // UI shows the manual unlock prompt.
-    Ok(sync_unlock(managed, session, passphrase).await.is_ok())
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app data dir: {e}"))?;
+    let cfg = app_backend::load(&app_data_dir)
+        .await?
+        .ok_or_else(|| "no backup destination configured".to_string())?;
+    let raw = backup_cmd::build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
+    let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
+    Ok(Box::new(PrefixedBackend::new(raw_arc, tome_prefix(tome_id))))
 }

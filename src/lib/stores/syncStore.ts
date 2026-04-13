@@ -1,9 +1,11 @@
 import { writable, derived } from 'svelte/store'
-import { getSyncStatus, listConflicts, subscribeSyncStatus, tryAutoUnlock, type SyncStatus, type SyncConflict } from '../api/sync'
+import { getSyncStatus, listConflicts, subscribeSyncStatus, type SyncStatus, type SyncConflict } from '../api/sync'
+import { getBackupStatus, tryAutoUnlockBackup, type BackupStatus } from '../api/backup'
 
-const initial: SyncStatus = {
+const initialSync: SyncStatus = {
   enabled: false,
   locked: false,
+  backupMissing: true,
   tomeId: null,
   backendKind: null,
   backendSummary: null,
@@ -14,14 +16,24 @@ const initial: SyncStatus = {
   pendingConflicts: 0,
 }
 
-export const syncStatus = writable<SyncStatus>(initial)
+const initialBackup: BackupStatus = {
+  configured: false,
+  locked: false,
+  backendKind: null,
+  backendSummary: null,
+}
+
+export const syncStatus = writable<SyncStatus>(initialSync)
+export const backupStatus = writable<BackupStatus>(initialBackup)
 export const syncConflicts = writable<SyncConflict[]>([])
 export const syncRunning = writable(false)
 
-/** "idle" | "syncing" | "conflicts" | "offline" | "error" | "locked" */
+/** "idle" | "syncing" | "conflicts" | "offline" | "error" | "locked" | "backup-missing" */
 export const syncIndicator = derived(
-  [syncStatus, syncRunning],
-  ([$status, $running]) => {
+  [syncStatus, backupStatus, syncRunning],
+  ([$status, $backup, $running]) => {
+    if (!$backup.configured) return 'backup-missing' as const
+    if ($backup.locked) return 'locked' as const
     if (!$status.enabled) return 'offline' as const
     if ($status.locked) return 'locked' as const
     if ($running) return 'syncing' as const
@@ -32,6 +44,14 @@ export const syncIndicator = derived(
 )
 
 let unsubscribed: (() => void) | null = null
+
+export async function refreshBackupStatus() {
+  try {
+    backupStatus.set(await getBackupStatus())
+  } catch (e) {
+    console.warn('[sync] refreshBackupStatus failed:', e)
+  }
+}
 
 export async function refreshSyncStatus() {
   try {
@@ -44,22 +64,21 @@ export async function refreshSyncStatus() {
       syncConflicts.set([])
     }
   } catch (e) {
-    // Don't break UI if backend errors, but surface so the locked pill
-    // not appearing isn't invisible.
     console.warn('[sync] refreshSyncStatus failed:', e)
   }
 }
 
 export async function initSyncStore() {
+  await refreshBackupStatus()
   await refreshSyncStatus()
-  let current: SyncStatus | undefined
-  syncStatus.subscribe((s) => { current = s })()
-  console.info('[sync] initSyncStore → enabled=%s locked=%s tomeId=%s', current?.enabled, current?.locked, current?.tomeId)
-  // If sync is configured but locked, try the OS keychain — most users will
-  // have stored their passphrase and never see the manual unlock UI.
-  if (current?.enabled && current.locked) {
-    const ok = await tryAutoUnlock()
-    if (ok) await refreshSyncStatus()
+  let backup: BackupStatus | undefined
+  backupStatus.subscribe((s) => { backup = s })()
+  if (backup?.configured && backup.locked) {
+    const ok = await tryAutoUnlockBackup()
+    if (ok) {
+      await refreshBackupStatus()
+      await refreshSyncStatus()
+    }
   }
   if (!unsubscribed) {
     unsubscribed = await subscribeSyncStatus((e) => {

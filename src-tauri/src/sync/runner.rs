@@ -4,8 +4,8 @@
 //! - the slow tick (every 5 minutes) to catch remote-side changes, or
 //! - a `nudge` from a mutation path, debounced ~10s, to push local edits.
 //!
-//! Cancelled when the runner's `CancellationToken` is triggered (sync disable
-//! or app close).
+//! With app-global backup, each tick iterates every Tome that has
+//! `sync_config.enabled = 1` for the currently-open Tome's DB.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,10 +13,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Notify;
 use tokio::time::{sleep, Instant};
 
-use super::backend::SyncBackend;
 use super::engine::sync_tome_once;
 use super::session::SessionState;
-use super::state::SyncRuntimeState;
+use super::state::{SyncConfig, SyncRuntimeState};
 use crate::db::ManagedDb;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
@@ -33,9 +32,6 @@ pub struct SyncStatusEvent {
 }
 
 pub fn start(app: AppHandle, managed: ManagedDb, session: SessionState) {
-    // Use Tauri's async runtime (which is Tokio under the hood) so this
-    // works when called from the synchronous setup hook, which doesn't
-    // have a Tokio runtime context the way #[tokio::main] does.
     tauri::async_runtime::spawn(async move {
         run_loop(app, managed, session).await;
     });
@@ -44,11 +40,9 @@ pub fn start(app: AppHandle, managed: ManagedDb, session: SessionState) {
 async fn run_loop(app: AppHandle, managed: ManagedDb, session: SessionState) {
     let nudge: Arc<Notify> = session.nudge_notify.clone();
     loop {
-        // Wait for either the slow tick or a nudge (with debounce).
         tokio::select! {
             _ = sleep(POLL_INTERVAL) => {},
             _ = nudge.notified() => {
-                // Drain rapid follow-up nudges so we sync once after a burst.
                 let until = Instant::now() + NUDGE_DEBOUNCE;
                 loop {
                     let remaining = until.saturating_duration_since(Instant::now());
@@ -61,57 +55,64 @@ async fn run_loop(app: AppHandle, managed: ManagedDb, session: SessionState) {
             }
         }
 
-        // Snapshot the session, the pool, and run a sync if we can.
+        // Need an unlocked session AND an open Tome DB.
         let Some(active) = session.current().await else { continue };
         let Some(pool) = managed.read().await.clone() else { continue };
 
-        let backend: Box<dyn SyncBackend + Send + Sync> =
-            match crate::commands::sync::build_backend(active.backend_kind, &active.backend_config).await {
+        // Pull every Tome flagged enabled in the active Tome's DB.
+        let configs = match SyncConfig::list_all(&pool).await {
+            Ok(v) => v.into_iter().filter(|c| c.enabled).collect::<Vec<_>>(),
+            Err(e) => {
+                log::warn!("runner: list_all failed: {e}");
+                continue;
+            }
+        };
+
+        for cfg in configs {
+            let backend = match crate::commands::sync::build_tome_backend(&app, &cfg.tome_id).await {
                 Ok(b) => b,
                 Err(e) => {
-                    emit_error(&app, &active.tome_id, format!("backend init failed: {e}"));
+                    emit_error(&app, &cfg.tome_id, format!("backend init failed: {e}"));
                     continue;
                 }
             };
 
-        let _ = app.emit(
-            "sync:status",
-            SyncStatusEvent {
-                tome_id: active.tome_id.clone(),
-                state: "syncing",
-                ops_uploaded: 0,
-                ops_applied: 0,
-                conflicts_created: 0,
-                error: None,
-            },
-        );
+            let _ = app.emit(
+                "sync:status",
+                SyncStatusEvent {
+                    tome_id: cfg.tome_id.clone(),
+                    state: "syncing",
+                    ops_uploaded: 0,
+                    ops_applied: 0,
+                    conflicts_created: 0,
+                    error: None,
+                },
+            );
 
-        match sync_tome_once(&pool, &active.tome_id, &active.key, backend.as_ref()).await {
-            Ok(outcome) => {
-                let _ = app.emit(
-                    "sync:status",
-                    SyncStatusEvent {
-                        tome_id: active.tome_id.clone(),
-                        state: if outcome.error.is_some() { "error" } else { "idle" },
-                        ops_uploaded: outcome.ops_uploaded,
-                        ops_applied: outcome.ops_applied,
-                        conflicts_created: outcome.conflicts_created,
-                        error: outcome.error.clone(),
-                    },
-                );
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                // Persist the error to sync_state so the UI can read it across restarts.
-                if let Ok(mut state) = SyncRuntimeState::load(&pool, &active.tome_id).await {
-                    state.last_error = Some(msg.clone());
-                    let _ = state.save(&pool).await;
+            match sync_tome_once(&pool, &cfg.tome_id, &active.key, backend.as_ref()).await {
+                Ok(outcome) => {
+                    let _ = app.emit(
+                        "sync:status",
+                        SyncStatusEvent {
+                            tome_id: cfg.tome_id.clone(),
+                            state: if outcome.error.is_some() { "error" } else { "idle" },
+                            ops_uploaded: outcome.ops_uploaded,
+                            ops_applied: outcome.ops_applied,
+                            conflicts_created: outcome.conflicts_created,
+                            error: outcome.error.clone(),
+                        },
+                    );
                 }
-                emit_error(&app, &active.tome_id, msg);
+                Err(e) => {
+                    let msg = e.to_string();
+                    if let Ok(mut state) = SyncRuntimeState::load(&pool, &cfg.tome_id).await {
+                        state.last_error = Some(msg.clone());
+                        let _ = state.save(&pool).await;
+                    }
+                    emit_error(&app, &cfg.tome_id, msg);
+                }
             }
         }
-
-        // Loop continues — yields back to the select.
     }
 }
 
@@ -129,7 +130,6 @@ fn emit_error(app: &AppHandle, tome_id: &str, msg: String) {
     );
 }
 
-/// Convenience: pull the SessionState from the AppHandle.
 pub fn session_state(app: &AppHandle) -> SessionState {
     app.state::<SessionState>().inner().clone()
 }

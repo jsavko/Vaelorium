@@ -6,8 +6,9 @@
   import { showToast } from '../stores/toastStore'
   import { loadPageTree } from '../stores/pageStore'
   import ConfirmDialog from './ConfirmDialog.svelte'
-  import { syncStatus, refreshSyncStatus } from '../stores/syncStore'
-  import { enableSync, disableSync, syncNow, takeSnapshot, unlockSync } from '../api/sync'
+  import { syncStatus, backupStatus, refreshSyncStatus, refreshBackupStatus } from '../stores/syncStore'
+  import { enableSync, disableSync, syncNow, takeSnapshot } from '../api/sync'
+  import { configureBackup, disconnectBackup, unlockBackup } from '../api/backup'
   import { currentTome } from '../stores/tomeStore'
 
   interface Props {
@@ -32,6 +33,7 @@
     { id: 'keybinds', label: 'Keybinds' },
     { id: 'appearance', label: 'Appearance' },
     { id: 'data', label: 'Data' },
+    { id: 'backup', label: 'Backup' },
     { id: 'sync', label: 'Sync' },
     { id: 'account', label: 'Account' },
   ]
@@ -61,12 +63,12 @@
     if (path) syncBackendPath = path as string
   }
 
-  async function submitEnableSync() {
+  // ----- Backup configuration (app-global) -----
+
+  async function submitConfigureBackup() {
     syncSetupError = null
     if (syncPassphrase.length < 8) { syncSetupError = 'Passphrase must be at least 8 characters'; return }
     if (syncPassphrase !== syncPassphraseConfirm) { syncSetupError = 'Passphrases do not match'; return }
-    const tome = $currentTome
-    if (!tome) { syncSetupError = 'No Tome is open'; return }
 
     let backendConfig: Record<string, unknown>
     if (syncBackendKind === 'filesystem') {
@@ -87,25 +89,67 @@
 
     syncBusy = true
     try {
-      await enableSync({
-        tomeId: tome.path,
+      await configureBackup({
         backendKind: syncBackendKind,
         backendConfig,
         passphrase: syncPassphrase,
-        deviceName: syncDeviceName || undefined,
       })
       syncSetupOpen = false
       syncPassphrase = ''
       syncPassphraseConfirm = ''
       syncS3AccessKey = ''
       syncS3SecretKey = ''
+      await refreshBackupStatus()
       await refreshSyncStatus()
-      showToast('Sync enabled', 'success')
+      showToast('Backup connected', 'success')
     } catch (e: any) {
       syncSetupError = e.message || String(e)
     } finally {
       syncBusy = false
     }
+  }
+
+  async function handleDisconnectBackup() {
+    syncBusy = true
+    try {
+      await disconnectBackup()
+      await refreshBackupStatus()
+      await refreshSyncStatus()
+      showToast('Backup disconnected', 'success')
+    } catch (e: any) {
+      showToast(`Disconnect failed: ${e.message || e}`, 'error')
+    } finally {
+      syncBusy = false
+    }
+  }
+
+  async function handleUnlock() {
+    if (!syncUnlockPassphrase) return
+    syncBusy = true
+    try {
+      await unlockBackup(syncUnlockPassphrase)
+      syncUnlockPassphrase = ''
+      await refreshBackupStatus()
+      await refreshSyncStatus()
+      showToast('Backup unlocked', 'success')
+    } catch (e: any) {
+      showToast(`Unlock failed: ${e.message || e}`, 'error')
+    } finally { syncBusy = false }
+  }
+
+  // ----- Per-Tome sync toggle -----
+
+  async function handleEnableSync() {
+    const tome = $currentTome
+    if (!tome) return
+    syncBusy = true
+    try {
+      await enableSync({ tomeId: tome.path, deviceName: syncDeviceName || undefined })
+      await refreshSyncStatus()
+      showToast('Sync enabled for this Tome', 'success')
+    } catch (e: any) {
+      showToast(`Enable failed: ${e.message || e}`, 'error')
+    } finally { syncBusy = false }
   }
 
   async function handleDisableSync() {
@@ -131,19 +175,6 @@
     } finally { syncBusy = false }
   }
 
-  async function handleUnlock() {
-    if (!syncUnlockPassphrase) return
-    syncBusy = true
-    try {
-      await unlockSync(syncUnlockPassphrase)
-      syncUnlockPassphrase = ''
-      await refreshSyncStatus()
-      showToast('Sync unlocked', 'success')
-    } catch (e: any) {
-      showToast(`Unlock failed: ${e.message || e}`, 'error')
-    } finally { syncBusy = false }
-  }
-
   async function handleTakeSnapshot() {
     syncBusy = true
     try {
@@ -156,7 +187,10 @@
   }
 
   $effect(() => {
-    if (open) refreshSyncStatus()
+    if (open) {
+      refreshBackupStatus()
+      refreshSyncStatus()
+    }
   })
 
   let appVersion = $state<string>('')
@@ -462,15 +496,17 @@
             </div>
             <p class="data-desc">Import adds pages to the current Tome without replacing existing data.</p>
           </div>
-        {:else if activeTab === 'sync'}
+        {:else if activeTab === 'backup'}
           <div class="settings-section">
-            <h3 class="settings-section-title">Sync</h3>
+            <h3 class="settings-section-title">Backup destination</h3>
+            <p class="data-desc">
+              Configure one backend (filesystem or S3-compatible bucket) and one passphrase for the whole app.
+              Each Tome can opt into syncing on the Sync tab. Your data is end-to-end encrypted before it leaves your device.
+            </p>
             {#if !isTauri}
-              <p class="data-desc">Sync is only available in the desktop app.</p>
-            {:else if $syncStatus.enabled && $syncStatus.locked}
-              <p class="data-desc">
-                Sync is configured for this Tome but locked. Enter your passphrase to unlock and resume syncing.
-              </p>
+              <p class="data-desc">Backup is only available in the desktop app.</p>
+            {:else if $backupStatus.configured && $backupStatus.locked}
+              <p class="data-desc">Backup is locked. Enter your passphrase to unlock.</p>
               <div class="sync-form">
                 <label class="sync-field">
                   <span class="sync-label">Passphrase</span>
@@ -483,14 +519,23 @@
                   </button>
                 </div>
               </div>
-            {:else if !$syncStatus.enabled && !syncSetupOpen}
-              <p class="data-desc">
-                Sync is off. Enable it to keep this Tome synchronized across devices.
-                Bring your own backend (filesystem / S3-compatible) — your data is end-to-end encrypted.
-              </p>
-              <button class="data-btn" onclick={() => syncSetupOpen = true}>Enable sync</button>
+            {:else if $backupStatus.configured}
+              <div class="sync-status-card">
+                <div class="sync-status-row">
+                  <span class="sync-status-label">Status</span>
+                  <span class="sync-status-value">Connected</span>
+                </div>
+                <div class="sync-status-row">
+                  <span class="sync-status-label">Backend</span>
+                  <span class="sync-status-value">{$backupStatus.backendKind} — {$backupStatus.backendSummary}</span>
+                </div>
+              </div>
+              <div class="sync-actions">
+                <button class="data-btn danger" onclick={handleDisconnectBackup} disabled={syncBusy}>
+                  Disconnect backup
+                </button>
+              </div>
             {:else if syncSetupOpen}
-              <p class="data-desc">Configure sync for the active Tome.</p>
               <div class="sync-form">
                 <label class="sync-field">
                   <span class="sync-label">Backend</span>
@@ -546,19 +591,49 @@
                 <p class="sync-warning">
                   ⚠ Lose this passphrase and your data is unrecoverable. There is no recovery.
                 </p>
-                <label class="sync-field">
-                  <span class="sync-label">Device name</span>
-                  <input type="text" bind:value={syncDeviceName} placeholder="Laptop" class="sync-input" />
-                </label>
                 {#if syncSetupError}
                   <p class="sync-error">{syncSetupError}</p>
                 {/if}
                 <div class="sync-actions">
                   <button class="data-btn" onclick={() => syncSetupOpen = false}>Cancel</button>
-                  <button class="data-btn primary" onclick={submitEnableSync} disabled={syncBusy}>
-                    {syncBusy ? 'Enabling…' : 'Enable sync for this Tome'}
+                  <button class="data-btn primary" onclick={submitConfigureBackup} disabled={syncBusy}>
+                    {syncBusy ? 'Connecting…' : 'Connect backup'}
                   </button>
                 </div>
+              </div>
+            {:else}
+              <button class="data-btn" onclick={() => syncSetupOpen = true}>Connect a backup destination…</button>
+            {/if}
+          </div>
+        {:else if activeTab === 'sync'}
+          <div class="settings-section">
+            <h3 class="settings-section-title">Sync this Tome</h3>
+            {#if !isTauri}
+              <p class="data-desc">Sync is only available in the desktop app.</p>
+            {:else if $syncStatus.backupMissing}
+              <p class="data-desc">
+                No backup destination is configured. Set one up in the
+                <strong>Backup</strong> tab first, then come back here to enable sync for this Tome.
+              </p>
+              <button class="data-btn" onclick={() => activeTab = 'backup'}>Go to Backup settings</button>
+            {:else if $backupStatus.locked}
+              <p class="data-desc">
+                The backup is locked. Unlock it in the <strong>Backup</strong> tab to resume syncing.
+              </p>
+              <button class="data-btn" onclick={() => activeTab = 'backup'}>Go to Backup settings</button>
+            {:else if !$syncStatus.enabled}
+              <p class="data-desc">
+                Sync is off for this Tome. Enable it to back up and sync this Tome to the configured destination
+                ({$syncStatus.backendKind} — {$syncStatus.backendSummary}).
+              </p>
+              <label class="sync-field">
+                <span class="sync-label">Device name (optional)</span>
+                <input type="text" bind:value={syncDeviceName} placeholder="Laptop" class="sync-input" />
+              </label>
+              <div class="sync-actions">
+                <button class="data-btn primary" onclick={handleEnableSync} disabled={syncBusy}>
+                  {syncBusy ? 'Enabling…' : 'Back up this Tome'}
+                </button>
               </div>
             {:else}
               <div class="sync-status-card">
@@ -597,7 +672,7 @@
               <div class="sync-actions">
                 <button class="data-btn" onclick={handleSyncNow} disabled={syncBusy}>Sync now</button>
                 <button class="data-btn" onclick={handleTakeSnapshot} disabled={syncBusy}>Take snapshot</button>
-                <button class="data-btn danger" onclick={handleDisableSync} disabled={syncBusy}>Disable sync</button>
+                <button class="data-btn danger" onclick={handleDisableSync} disabled={syncBusy}>Stop syncing this Tome</button>
               </div>
             {/if}
           </div>

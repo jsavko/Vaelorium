@@ -2,10 +2,12 @@ import { callCommand, isTauri } from './bridge'
 
 export interface SyncStatus {
   enabled: boolean
-  /** True when sync is configured/enabled in the DB but the in-memory key
-   *  is missing (after Tome reopen). User must call `unlockSync(passphrase)`
-   *  before the runner can sync. */
+  /** True when sync is enabled but the app-global key isn't cached
+   *  (after app restart). User must unlock via Settings → Backup. */
   locked: boolean
+  /** True when no app-global backup destination has been configured.
+   *  In this state, sync_enable refuses to run. */
+  backupMissing: boolean
   tomeId: string | null
   backendKind: string | null
   backendSummary: string | null
@@ -40,6 +42,7 @@ export interface SyncConflict {
 interface RawStatus {
   enabled: boolean
   locked: boolean
+  backup_missing: boolean
   tome_id: string | null
   backend_kind: string | null
   backend_summary: string | null
@@ -65,6 +68,7 @@ interface RawConflict {
 const fromRawStatus = (r: RawStatus): SyncStatus => ({
   enabled: r.enabled,
   locked: r.locked,
+  backupMissing: r.backup_missing,
   tomeId: r.tome_id,
   backendKind: r.backend_kind,
   backendSummary: r.backend_summary,
@@ -89,9 +93,6 @@ const fromRawConflict = (r: RawConflict): SyncConflict => ({
 
 export interface EnableSyncInput {
   tomeId: string
-  backendKind: 'filesystem' | 's3'
-  backendConfig: Record<string, unknown>
-  passphrase: string
   deviceName?: string
 }
 
@@ -99,9 +100,6 @@ export async function enableSync(input: EnableSyncInput): Promise<SyncStatus> {
   const raw = await callCommand<RawStatus>('sync_enable', {
     input: {
       tome_id: input.tomeId,
-      backend_kind: input.backendKind,
-      backend_config: input.backendConfig,
-      passphrase: input.passphrase,
       device_name: input.deviceName ?? null,
     },
   })
@@ -122,6 +120,7 @@ export async function getSyncStatus(): Promise<SyncStatus> {
     return {
       enabled: false,
       locked: false,
+      backupMissing: true,
       tomeId: null,
       backendKind: null,
       backendSummary: null,
@@ -152,22 +151,8 @@ export async function resolveConflict(conflictId: string, chooseLocal: boolean):
   })
 }
 
-export async function unlockSync(passphrase: string): Promise<SyncStatus> {
-  const raw = await callCommand<RawStatus>('sync_unlock', { passphrase })
-  return fromRawStatus(raw)
-}
-
-/** Attempt to auto-unlock from a passphrase stored in the OS keychain.
- *  Returns true if the unlock succeeded; false if no stored passphrase,
- *  no keychain backend, or the stored passphrase no longer validates. */
-export async function tryAutoUnlock(): Promise<boolean> {
-  if (!isTauri) return false
-  try {
-    return await callCommand<boolean>('sync_try_auto_unlock')
-  } catch {
-    return false
-  }
-}
+// unlockSync / tryAutoUnlock now live in api/backup.ts — the passphrase
+// is app-global, not per-Tome.
 
 /** Subscribe to sync:status events. Returns an unsubscribe function. */
 export async function subscribeSyncStatus(

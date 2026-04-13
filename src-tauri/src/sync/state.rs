@@ -1,13 +1,11 @@
 //! Per-Tome sync configuration & runtime state.
 //!
-//! Two records map to the [`crate::sync`] module:
-//! - [`SyncConfig`] — user-set: backend type, backend config, passphrase salt,
-//!   device identity. Stable.
-//! - [`SyncRuntimeState`] — engine-managed: where we are in the journal
-//!   exchange, last sync time, last error. Mutates on every sync cycle.
+//! [`SyncConfig`] is per-Tome — just `enabled` flag + device identity. The
+//! backend credentials and passphrase salt are app-global and live in
+//! `sync-backend.json` + the OS keychain (see `sync::app_backend`).
 //!
-//! Phase 1 ships the structs, sqlite-row mappers, and basic load/save helpers.
-//! The sync engine that mutates these is Phase 2.
+//! [`SyncRuntimeState`] — engine-managed: where we are in the journal
+//! exchange, last sync time, last error. Mutates on every sync cycle.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -44,14 +42,8 @@ impl BackendKind {
 pub struct SyncConfig {
     pub tome_id: String,
     pub enabled: bool,
-    pub backend_type: BackendKind,
-    /// JSON-encoded backend-specific config: `{"path": "/Sync/Vaelorium"}` for
-    /// filesystem, `{"endpoint": "...", "bucket": "...", ...}` for S3.
-    pub backend_config: serde_json::Value,
-    pub passphrase_salt: Vec<u8>,
     pub device_id: Uuid,
     pub device_name: String,
-    pub schema_version: u32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -67,12 +59,9 @@ pub struct SyncRuntimeState {
 }
 
 impl SyncConfig {
-    /// Load config for a Tome, if any. `None` means sync was never set up.
     pub async fn load(pool: &SqlitePool, tome_id: &str) -> SyncResult<Option<Self>> {
         let row: Option<SyncConfigRow> = sqlx::query_as(
-            r#"SELECT tome_id, enabled, backend_type, backend_config,
-                      passphrase_salt, device_id, device_name,
-                      schema_version, created_at, updated_at
+            r#"SELECT tome_id, enabled, device_id, device_name, created_at, updated_at
                FROM sync_config WHERE tome_id = ?"#,
         )
         .bind(tome_id)
@@ -82,29 +71,32 @@ impl SyncConfig {
         row.map(SyncConfig::try_from).transpose()
     }
 
-    /// Insert or replace this config row.
+    /// List every Tome with sync_config row (enabled or not). Used by the
+    /// runner to iterate enabled Tomes.
+    pub async fn list_all(pool: &SqlitePool) -> SyncResult<Vec<Self>> {
+        let rows: Vec<SyncConfigRow> = sqlx::query_as(
+            r#"SELECT tome_id, enabled, device_id, device_name, created_at, updated_at
+               FROM sync_config ORDER BY created_at"#,
+        )
+        .fetch_all(pool)
+        .await?;
+        rows.into_iter().map(SyncConfig::try_from).collect()
+    }
+
     pub async fn save(&self, pool: &SqlitePool) -> SyncResult<()> {
         sqlx::query(
             r#"INSERT INTO sync_config
-                 (tome_id, enabled, backend_type, backend_config,
-                  passphrase_salt, device_id, device_name,
-                  schema_version, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 (tome_id, enabled, device_id, device_name, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(tome_id) DO UPDATE SET
-                 enabled        = excluded.enabled,
-                 backend_type   = excluded.backend_type,
-                 backend_config = excluded.backend_config,
-                 device_name    = excluded.device_name,
-                 updated_at     = excluded.updated_at"#,
+                 enabled     = excluded.enabled,
+                 device_name = excluded.device_name,
+                 updated_at  = excluded.updated_at"#,
         )
         .bind(&self.tome_id)
         .bind(self.enabled as i32)
-        .bind(self.backend_type.as_str())
-        .bind(self.backend_config.to_string())
-        .bind(&self.passphrase_salt)
         .bind(self.device_id.to_string())
         .bind(&self.device_name)
-        .bind(self.schema_version as i64)
         .bind(self.created_at.to_rfc3339())
         .bind(self.updated_at.to_rfc3339())
         .execute(pool)
@@ -157,18 +149,12 @@ impl SyncRuntimeState {
     }
 }
 
-// --- internal sqlx row mappers ----------------------------------------------
-
 #[derive(sqlx::FromRow)]
 struct SyncConfigRow {
     tome_id: String,
     enabled: i64,
-    backend_type: String,
-    backend_config: String,
-    passphrase_salt: Vec<u8>,
     device_id: String,
     device_name: String,
-    schema_version: i64,
     created_at: String,
     updated_at: String,
 }
@@ -179,15 +165,9 @@ impl TryFrom<SyncConfigRow> for SyncConfig {
         Ok(SyncConfig {
             tome_id: r.tome_id,
             enabled: r.enabled != 0,
-            backend_type: BackendKind::from_str(&r.backend_type).ok_or_else(|| {
-                super::SyncError::Journal(format!("unknown backend_type: {}", r.backend_type))
-            })?,
-            backend_config: serde_json::from_str(&r.backend_config)?,
-            passphrase_salt: r.passphrase_salt,
             device_id: Uuid::parse_str(&r.device_id)
                 .map_err(|e| super::SyncError::Journal(format!("bad device_id: {e}")))?,
             device_name: r.device_name,
-            schema_version: r.schema_version as u32,
             created_at: parse_rfc3339(&r.created_at)?,
             updated_at: parse_rfc3339(&r.updated_at)?,
         })
@@ -228,10 +208,6 @@ mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
 
-    /// Statement splitter mirroring the production migration runner
-    /// (`db::migrations::split_sql_statements`) — strips line comments and
-    /// tracks paren depth so multi-line `CREATE TABLE (...)` blocks aren't
-    /// chopped at internal semicolons.
     fn split_sql(sql: &str) -> Vec<String> {
         let mut out = Vec::new();
         let mut current = String::new();
@@ -262,9 +238,14 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        let sql = include_str!("../../migrations/009_sync.sql");
-        for stmt in split_sql(sql) {
-            sqlx::query(&stmt).execute(&pool).await.unwrap();
+        // Apply 009 then 010 to mirror prod migration order.
+        for sql in [
+            include_str!("../../migrations/009_sync.sql"),
+            include_str!("../../migrations/010_sync_app_global.sql"),
+        ] {
+            for stmt in split_sql(sql) {
+                sqlx::query(&stmt).execute(&pool).await.unwrap();
+            }
         }
         pool
     }
@@ -273,12 +254,8 @@ mod tests {
         SyncConfig {
             tome_id: "tome-test".to_string(),
             enabled: true,
-            backend_type: BackendKind::Filesystem,
-            backend_config: serde_json::json!({ "path": "/tmp/sync-test" }),
-            passphrase_salt: vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
             device_id: Uuid::new_v4(),
             device_name: "Test Device".to_string(),
-            schema_version: 1,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -293,9 +270,6 @@ mod tests {
         let loaded = SyncConfig::load(&pool, "tome-test").await.unwrap().unwrap();
         assert_eq!(loaded.tome_id, cfg.tome_id);
         assert_eq!(loaded.enabled, cfg.enabled);
-        assert_eq!(loaded.backend_type, cfg.backend_type);
-        assert_eq!(loaded.backend_config, cfg.backend_config);
-        assert_eq!(loaded.passphrase_salt, cfg.passphrase_salt);
         assert_eq!(loaded.device_id, cfg.device_id);
         assert_eq!(loaded.device_name, cfg.device_name);
     }
@@ -346,7 +320,6 @@ mod tests {
         assert_eq!(loaded.last_uploaded_op_id, state.last_uploaded_op_id);
         assert_eq!(loaded.last_applied_op_id, state.last_applied_op_id);
         assert_eq!(loaded.last_snapshot_id, state.last_snapshot_id);
-        // RFC3339 roundtrip drops sub-second precision below microseconds; compare to second.
         assert_eq!(
             loaded.last_sync_at.unwrap().timestamp(),
             state.last_sync_at.unwrap().timestamp()

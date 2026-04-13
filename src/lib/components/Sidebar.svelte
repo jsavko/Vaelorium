@@ -12,7 +12,6 @@
 
   interface Props {
     onOpenSettings?: (initialTab?: string) => void
-    onOpenUnlock?: () => void
     onNewPage?: () => void
     onSelectType?: (typeId: string) => void
     activeTypeId?: string | null
@@ -29,7 +28,7 @@
     boardsActive?: boolean
   }
 
-  let { onOpenSettings, onOpenUnlock, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
+  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
 
   // Clicking the sync pill always opens Settings → Sync tab. When locked,
   // the Sync tab shows the passphrase prompt inline.
@@ -165,6 +164,7 @@
       class:sync-offline={$syncIndicator === 'offline'}
       class:sync-error={$syncIndicator === 'error'}
       class:sync-locked={$syncIndicator === 'locked'}
+      class:sync-offline={$syncIndicator === 'backup-missing'}
       onclick={handlePillClick}
       title={$syncIndicator === 'locked' ? 'Click to unlock' : 'Open sync settings'}
       data-testid="sync-pill"
@@ -174,6 +174,7 @@
         {#if $syncIndicator === 'syncing'}Syncing…
         {:else if $syncIndicator === 'conflicts'}{$syncStatus.pendingConflicts} conflict{$syncStatus.pendingConflicts === 1 ? '' : 's'}
         {:else if $syncIndicator === 'error'}Sync error
+        {:else if $syncIndicator === 'backup-missing'}No backup
         {:else if $syncIndicator === 'offline'}Sync off
         {:else if $syncIndicator === 'locked'}Sync locked
         {:else}Synced{/if}

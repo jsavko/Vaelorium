@@ -71,16 +71,15 @@ impl Device {
         }
     }
 
-    async fn enable_sync(&self, salt: &[u8]) {
+    async fn enable_sync(&self, _salt: &[u8]) {
+        // _salt parameter retained for backward compatibility with multi-device
+        // test setup; in the app-global model the salt lives in
+        // sync-backend.json (out of scope for these per-pool tests).
         let cfg = SyncConfig {
             tome_id: TOME_ID.to_string(),
             enabled: true,
-            backend_type: BackendKind::Filesystem,
-            backend_config: json!({}),
-            passphrase_salt: salt.to_vec(),
             device_id: self.device_id,
             device_name: self.name.clone(),
-            schema_version: 1,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -210,6 +209,7 @@ async fn apply_all_migrations(pool: &SqlitePool) {
         ("007_timelines", include_str!("../migrations/007_timelines.sql")),
         ("008_boards", include_str!("../migrations/008_boards.sql")),
         ("009_sync", include_str!("../migrations/009_sync.sql")),
+        ("010_sync_app_global", include_str!("../migrations/010_sync_app_global.sql")),
     ];
     for (_name, sql) in migrations {
         for stmt in split_sql(sql) {
@@ -719,12 +719,8 @@ async fn scenario_f_snapshot_bootstrap_for_fresh_device() {
     let cfg = SyncConfig {
         tome_id: TOME_ID.to_string(),
         enabled: true,
-        backend_type: BackendKind::Filesystem,
-        backend_config: json!({}),
-        passphrase_salt: salt.to_vec(),
         device_id: Uuid::new_v4(),
         device_name: "d3".to_string(),
-        schema_version: 1,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };

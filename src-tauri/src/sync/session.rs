@@ -1,22 +1,20 @@
 //! In-memory session state for sync.
 //!
-//! Holds the unlocked [`KeyMaterial`] for the currently-syncing Tome, plus a
-//! `Notify` handle that mutation paths use to nudge the runner into syncing
-//! soon. Everything here is process-local — never persisted.
+//! Holds the unlocked app-global [`KeyMaterial`] used by every Tome that
+//! opts into backup, plus a `Notify` handle that mutation paths use to
+//! nudge the runner. Process-local; never persisted.
 
 use std::sync::Arc;
 use tokio::sync::{Notify, RwLock};
-use uuid::Uuid;
 
 use super::crypto::KeyMaterial;
 
+/// The unlocked app-global session: the derived key for whatever backup
+/// destination is configured in `sync-backend.json`. Per-Tome
+/// `device_id` lives on `SyncConfig` rows in the per-Tome DB.
 #[derive(Clone)]
 pub struct SyncSession {
-    pub tome_id: String,
-    pub device_id: Uuid,
     pub key: Arc<KeyMaterial>,
-    pub backend_kind: super::state::BackendKind,
-    pub backend_config: serde_json::Value,
 }
 
 #[derive(Clone, Default)]

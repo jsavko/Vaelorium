@@ -14,6 +14,7 @@
 //! standard ETag header.
 
 pub mod filesystem;
+pub mod prefixed;
 pub mod s3;
 
 use async_trait::async_trait;

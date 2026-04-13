@@ -19,7 +19,6 @@
   import Settings from './lib/components/Settings.svelte'
   import UpdateNotification from './lib/components/UpdateNotification.svelte'
   import ConflictResolver from './lib/components/ConflictResolver.svelte'
-  import SyncUnlockModal from './lib/components/SyncUnlockModal.svelte'
   import { initSyncStore, syncStatus } from './lib/stores/syncStore'
   import { onMount } from 'svelte'
   import { createPage, currentPageId } from './lib/stores/pageStore'
@@ -77,12 +76,6 @@
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
   let settingsInitialTab = $state<string | undefined>(undefined)
-  let syncUnlockOpen = $state(false)
-
-  // Don't auto-open the unlock modal on launch — it covered the locked
-  // pill (its z-index is higher than the sidebar's), defeating the
-  // visibility the pill was added to provide. The pill stays visible;
-  // user clicks it to open the unlock dialog.
   let newPageModalOpen = $state(false)
   let newPageInitialTypeId = $state<string | null>(null)
   let createTomeModalOpen = $state(false)
@@ -149,7 +142,6 @@
   <div class="app-layout">
     <Sidebar
       onOpenSettings={(tab?: string) => { settingsInitialTab = tab; settingsOpen = true }}
-      onOpenUnlock={() => syncUnlockOpen = true}
       onNewPage={() => { newPageInitialTypeId = null; newPageModalOpen = true }}
       onSelectType={(typeId) => { activeTypeListId = typeId; activeModule = 'entity-list' }}
       activeTypeId={activeModule === 'entity-list' ? activeTypeListId : null}
@@ -199,7 +191,6 @@
   <SlashMenu />
   <MentionSuggestion />
   <Settings open={settingsOpen} initialTab={settingsInitialTab} onClose={() => settingsOpen = false} />
-  <SyncUnlockModal open={syncUnlockOpen} onClose={() => syncUnlockOpen = false} />
   <NewPageModal
     open={newPageModalOpen}
     onClose={() => { newPageModalOpen = false; newPageInitialTypeId = null }}
