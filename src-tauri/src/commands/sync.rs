@@ -237,10 +237,15 @@ pub async fn sync_status(
             let st = SyncRuntimeState::load(&pool, id)
                 .await
                 .map_err(|e| e.to_string())?;
+            // Count only ops not yet uploaded. sync_journal_local retains
+            // already-uploaded ops until the next snapshot prunes them, so
+            // a naive COUNT(*) overstates "pending uploads" badly.
             let qs: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM sync_journal_local WHERE tome_id = ?",
+                "SELECT COUNT(*) FROM sync_journal_local
+                 WHERE tome_id = ? AND op_id > COALESCE(?, '')",
             )
             .bind(id)
+            .bind(st.last_uploaded_op_id.as_deref())
             .fetch_one(&pool)
             .await
             .unwrap_or(0);
