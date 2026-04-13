@@ -80,6 +80,7 @@ async fn apply_all_migrations(pool: &SqlitePool) {
         ("008_boards", include_str!("../migrations/008_boards.sql")),
         ("009_sync", include_str!("../migrations/009_sync.sql")),
         ("010_sync_app_global", include_str!("../migrations/010_sync_app_global.sql")),
+        ("011_device_name_app_global", include_str!("../migrations/011_device_name_app_global.sql")),
     ];
     for (_name, sql) in migrations {
         for stmt in split_sql(sql) {
@@ -116,7 +117,6 @@ async fn configure_sync(pool: &SqlitePool, _salt: &[u8]) -> Uuid {
         tome_id: TOME_ID.to_string(),
         enabled: true,
         device_id,
-        device_name: "smoke-test-device".to_string(),
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     };

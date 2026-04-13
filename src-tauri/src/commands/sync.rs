@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 use ulid::Ulid;
-use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
 pub struct SyncStatusPayload {
@@ -54,7 +53,6 @@ pub struct ConflictPayload {
 #[derive(Debug, Deserialize)]
 pub struct EnableSyncInput {
     pub tome_id: String,
-    pub device_name: Option<String>,
 }
 
 #[tauri::command]
@@ -69,27 +67,25 @@ pub async fn sync_enable(
         .path()
         .app_data_dir()
         .map_err(|e| format!("app data dir: {e}"))?;
-    if app_backend::load(&app_data_dir).await?.is_none() {
-        return Err("no backup destination configured — set one up in Settings → Backup first".to_string());
-    }
+    let app_cfg = app_backend::load(&app_data_dir)
+        .await?
+        .ok_or_else(|| "no backup destination configured — set one up in Settings → Backup first".to_string())?;
     if session.current().await.is_none() {
         return Err("backup is locked — unlock it in Settings → Backup first".to_string());
     }
 
     let pool = db::get_pool(managed.inner()).await?;
     let now = chrono::Utc::now();
-    let device_name = input
-        .device_name
-        .unwrap_or_else(|| std::env::var("HOSTNAME").unwrap_or_else(|_| "Vaelorium Device".into()));
 
     let existing = SyncConfig::load(&pool, &input.tome_id)
         .await
         .map_err(|e| e.to_string())?;
+    // Stamp the app-global device_id into sync_config so mutation paths
+    // that call `active_sync_session(pool)` pick up the same attribution.
     let cfg = SyncConfig {
         tome_id: input.tome_id.clone(),
         enabled: true,
-        device_id: existing.as_ref().map(|c| c.device_id).unwrap_or_else(Uuid::new_v4),
-        device_name,
+        device_id: app_cfg.device_id,
         created_at: existing.as_ref().map(|c| c.created_at).unwrap_or(now),
         updated_at: now,
     };
@@ -153,17 +149,19 @@ pub async fn sync_status(
     let backup = backup_cmd::backup_status(app.clone(), session.clone()).await?;
 
     // Per-Tome status.
-    let cfg_row: Option<(String, i64, String)> = sqlx::query_as(
-        "SELECT tome_id, enabled, device_name FROM sync_config LIMIT 1",
+    let cfg_row: Option<(String, i64)> = sqlx::query_as(
+        "SELECT tome_id, enabled FROM sync_config LIMIT 1",
     )
     .fetch_optional(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    let (tome_enabled, tome_id, device_name) = match &cfg_row {
-        Some((id, en, dev)) => (*en != 0, Some(id.clone()), Some(dev.clone())),
-        None => (false, None, None),
+    let (tome_enabled, tome_id) = match &cfg_row {
+        Some((id, en)) => (*en != 0, Some(id.clone())),
+        None => (false, None),
     };
+    // device_name now lives on backup_status (app-global).
+    let device_name = backup.device_name.clone();
 
     // "locked" surfaces whenever there's something to unlock — either
     // backup-locked OR a per-Tome that wants to sync but the key is gone.

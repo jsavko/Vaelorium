@@ -93,6 +93,7 @@
         backendKind: syncBackendKind,
         backendConfig,
         passphrase: syncPassphrase,
+        deviceName: syncDeviceName || undefined,
       })
       syncSetupOpen = false
       syncPassphrase = ''
@@ -144,7 +145,7 @@
     if (!tome) return
     syncBusy = true
     try {
-      await enableSync({ tomeId: tome.path, deviceName: syncDeviceName || undefined })
+      await enableSync({ tomeId: tome.path })
       await refreshSyncStatus()
       showToast('Sync enabled for this Tome', 'success')
     } catch (e: any) {
@@ -529,6 +530,10 @@
                   <span class="sync-status-label">Backend</span>
                   <span class="sync-status-value">{$backupStatus.backendKind} — {$backupStatus.backendSummary}</span>
                 </div>
+                <div class="sync-status-row">
+                  <span class="sync-status-label">Device name</span>
+                  <span class="sync-status-value">{$backupStatus.deviceName}</span>
+                </div>
               </div>
               <div class="sync-actions">
                 <button class="data-btn danger" onclick={handleDisconnectBackup} disabled={syncBusy}>
@@ -591,6 +596,10 @@
                 <p class="sync-warning">
                   ⚠ Lose this passphrase and your data is unrecoverable. There is no recovery.
                 </p>
+                <label class="sync-field">
+                  <span class="sync-label">Device name (shown in op history across devices)</span>
+                  <input type="text" bind:value={syncDeviceName} placeholder="Laptop" class="sync-input" />
+                </label>
                 {#if syncSetupError}
                   <p class="sync-error">{syncSetupError}</p>
                 {/if}
@@ -626,10 +635,6 @@
                 Sync is off for this Tome. Enable it to back up and sync this Tome to the configured destination
                 ({$syncStatus.backendKind} — {$syncStatus.backendSummary}).
               </p>
-              <label class="sync-field">
-                <span class="sync-label">Device name (optional)</span>
-                <input type="text" bind:value={syncDeviceName} placeholder="Laptop" class="sync-input" />
-              </label>
               <div class="sync-actions">
                 <button class="data-btn primary" onclick={handleEnableSync} disabled={syncBusy}>
                   {syncBusy ? 'Enabling…' : 'Back up this Tome'}

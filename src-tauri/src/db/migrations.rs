@@ -22,6 +22,7 @@ pub async fn run(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
         ("008_boards", include_str!("../../migrations/008_boards.sql")),
         ("009_sync", include_str!("../../migrations/009_sync.sql")),
         ("010_sync_app_global", include_str!("../../migrations/010_sync_app_global.sql")),
+        ("011_device_name_app_global", include_str!("../../migrations/011_device_name_app_global.sql")),
     ];
 
     for (name, sql) in migrations {

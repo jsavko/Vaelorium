@@ -28,6 +28,7 @@ pub struct BackupStatusPayload {
     pub backend_kind: Option<String>,
     /// Human-readable summary (e.g. filesystem path, S3 bucket name).
     pub backend_summary: Option<String>,
+    pub device_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +36,12 @@ pub struct ConfigureInput {
     pub backend_kind: String,
     pub backend_config: serde_json::Value,
     pub passphrase: String,
+    pub device_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeviceNameInput {
+    pub device_name: String,
 }
 
 #[tauri::command]
@@ -86,12 +93,28 @@ pub async fn backup_configure(
         remote_meta::put(raw_arc.as_ref(), &RemoteMeta::new(&salt)).await?;
     }
 
-    // Persist the app-global config.
+    // Persist the app-global config. Reuse the existing device_id if the
+    // user is reconnecting to the same bucket — otherwise ops from this
+    // device would start showing up under a new attribution.
+    let existing = app_backend::load(
+        &app.path().app_data_dir().map_err(|e| format!("app data dir: {e}"))?,
+    )
+    .await
+    .ok()
+    .flatten();
+    let device_name = input.device_name.unwrap_or_else(|| {
+        existing
+            .as_ref()
+            .map(|c| c.device_name.clone())
+            .unwrap_or_else(|| std::env::var("HOSTNAME").unwrap_or_else(|_| "Vaelorium Device".into()))
+    });
     let cfg = AppBackendConfig {
         backend_kind,
         backend_config: input.backend_config.clone(),
         salt_b64: B64.encode(&salt),
-        created_at: chrono::Utc::now(),
+        device_id: existing.as_ref().map(|c| c.device_id).unwrap_or_else(uuid::Uuid::new_v4),
+        device_name,
+        created_at: existing.as_ref().map(|c| c.created_at).unwrap_or_else(chrono::Utc::now),
     };
     let app_data_dir = app
         .path()
@@ -142,7 +165,7 @@ pub async fn backup_status(
     let cfg = app_backend::load(&app_data_dir).await?;
     let configured = cfg.is_some();
     let locked = configured && session.current().await.is_none();
-    let (backend_kind, backend_summary) = match &cfg {
+    let (backend_kind, backend_summary, device_name) = match &cfg {
         Some(c) => {
             let summary = match c.backend_kind {
                 BackendKind::Filesystem => c
@@ -165,16 +188,42 @@ pub async fn backup_status(
                     format!("{} on {}", bucket, endpoint)
                 }
             };
-            (Some(c.backend_kind.as_str().to_string()), Some(summary))
+            (
+                Some(c.backend_kind.as_str().to_string()),
+                Some(summary),
+                Some(c.device_name.clone()),
+            )
         }
-        None => (None, None),
+        None => (None, None, None),
     };
     Ok(BackupStatusPayload {
         configured,
         locked,
         backend_kind,
         backend_summary,
+        device_name,
     })
+}
+
+/// Rename this device. Persists to sync-backend.json. Does NOT rewrite
+/// already-uploaded ops — they keep the old device_id (which may have
+/// been associated with the prior name). Future ops get the new name.
+#[tauri::command]
+pub async fn backup_set_device_name(
+    app: AppHandle,
+    session: State<'_, SessionState>,
+    input: DeviceNameInput,
+) -> Result<BackupStatusPayload, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app data dir: {e}"))?;
+    let mut cfg = app_backend::load(&app_data_dir)
+        .await?
+        .ok_or_else(|| "no backup destination configured".to_string())?;
+    cfg.device_name = input.device_name;
+    app_backend::save(&app_data_dir, &cfg).await?;
+    backup_status(app, session).await
 }
 
 #[tauri::command]

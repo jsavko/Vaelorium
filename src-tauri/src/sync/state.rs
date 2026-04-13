@@ -42,8 +42,10 @@ impl BackendKind {
 pub struct SyncConfig {
     pub tome_id: String,
     pub enabled: bool,
+    /// Copy of the app-global device_id, stamped at sync_enable time so
+    /// journal::active_sync_session can read it via a simple pool query
+    /// without plumbing SessionState through every mutation command.
     pub device_id: Uuid,
-    pub device_name: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -61,7 +63,7 @@ pub struct SyncRuntimeState {
 impl SyncConfig {
     pub async fn load(pool: &SqlitePool, tome_id: &str) -> SyncResult<Option<Self>> {
         let row: Option<SyncConfigRow> = sqlx::query_as(
-            r#"SELECT tome_id, enabled, device_id, device_name, created_at, updated_at
+            r#"SELECT tome_id, enabled, device_id, created_at, updated_at
                FROM sync_config WHERE tome_id = ?"#,
         )
         .bind(tome_id)
@@ -75,7 +77,7 @@ impl SyncConfig {
     /// runner to iterate enabled Tomes.
     pub async fn list_all(pool: &SqlitePool) -> SyncResult<Vec<Self>> {
         let rows: Vec<SyncConfigRow> = sqlx::query_as(
-            r#"SELECT tome_id, enabled, device_id, device_name, created_at, updated_at
+            r#"SELECT tome_id, enabled, device_id, created_at, updated_at
                FROM sync_config ORDER BY created_at"#,
         )
         .fetch_all(pool)
@@ -86,17 +88,16 @@ impl SyncConfig {
     pub async fn save(&self, pool: &SqlitePool) -> SyncResult<()> {
         sqlx::query(
             r#"INSERT INTO sync_config
-                 (tome_id, enabled, device_id, device_name, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?)
+                 (tome_id, enabled, device_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(tome_id) DO UPDATE SET
-                 enabled     = excluded.enabled,
-                 device_name = excluded.device_name,
-                 updated_at  = excluded.updated_at"#,
+                 enabled    = excluded.enabled,
+                 device_id  = excluded.device_id,
+                 updated_at = excluded.updated_at"#,
         )
         .bind(&self.tome_id)
         .bind(self.enabled as i32)
         .bind(self.device_id.to_string())
-        .bind(&self.device_name)
         .bind(self.created_at.to_rfc3339())
         .bind(self.updated_at.to_rfc3339())
         .execute(pool)
@@ -154,7 +155,6 @@ struct SyncConfigRow {
     tome_id: String,
     enabled: i64,
     device_id: String,
-    device_name: String,
     created_at: String,
     updated_at: String,
 }
@@ -167,7 +167,6 @@ impl TryFrom<SyncConfigRow> for SyncConfig {
             enabled: r.enabled != 0,
             device_id: Uuid::parse_str(&r.device_id)
                 .map_err(|e| super::SyncError::Journal(format!("bad device_id: {e}")))?,
-            device_name: r.device_name,
             created_at: parse_rfc3339(&r.created_at)?,
             updated_at: parse_rfc3339(&r.updated_at)?,
         })
@@ -242,6 +241,7 @@ mod tests {
         for sql in [
             include_str!("../../migrations/009_sync.sql"),
             include_str!("../../migrations/010_sync_app_global.sql"),
+            include_str!("../../migrations/011_device_name_app_global.sql"),
         ] {
             for stmt in split_sql(sql) {
                 sqlx::query(&stmt).execute(&pool).await.unwrap();
@@ -255,7 +255,6 @@ mod tests {
             tome_id: "tome-test".to_string(),
             enabled: true,
             device_id: Uuid::new_v4(),
-            device_name: "Test Device".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -271,7 +270,6 @@ mod tests {
         assert_eq!(loaded.tome_id, cfg.tome_id);
         assert_eq!(loaded.enabled, cfg.enabled);
         assert_eq!(loaded.device_id, cfg.device_id);
-        assert_eq!(loaded.device_name, cfg.device_name);
     }
 
     #[tokio::test]
@@ -286,11 +284,12 @@ mod tests {
         let pool = make_pool().await;
         let mut cfg = sample_config();
         cfg.save(&pool).await.unwrap();
-        cfg.device_name = "Renamed Device".to_string();
+        let new_id = Uuid::new_v4();
+        cfg.device_id = new_id;
         cfg.save(&pool).await.unwrap();
 
         let loaded = SyncConfig::load(&pool, "tome-test").await.unwrap().unwrap();
-        assert_eq!(loaded.device_name, "Renamed Device");
+        assert_eq!(loaded.device_id, new_id);
     }
 
     #[tokio::test]

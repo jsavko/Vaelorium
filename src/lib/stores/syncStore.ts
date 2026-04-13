@@ -21,6 +21,7 @@ const initialBackup: BackupStatus = {
   locked: false,
   backendKind: null,
   backendSummary: null,
+  deviceName: null,
 }
 
 export const syncStatus = writable<SyncStatus>(initialSync)

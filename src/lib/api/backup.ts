@@ -5,6 +5,7 @@ export interface BackupStatus {
   locked: boolean
   backendKind: string | null
   backendSummary: string | null
+  deviceName: string | null
 }
 
 interface RawBackupStatus {
@@ -12,6 +13,7 @@ interface RawBackupStatus {
   locked: boolean
   backend_kind: string | null
   backend_summary: string | null
+  device_name: string | null
 }
 
 const fromRaw = (r: RawBackupStatus): BackupStatus => ({
@@ -19,12 +21,14 @@ const fromRaw = (r: RawBackupStatus): BackupStatus => ({
   locked: r.locked,
   backendKind: r.backend_kind,
   backendSummary: r.backend_summary,
+  deviceName: r.device_name,
 })
 
 export interface ConfigureBackupInput {
   backendKind: 'filesystem' | 's3'
   backendConfig: Record<string, unknown>
   passphrase: string
+  deviceName?: string
 }
 
 export async function configureBackup(input: ConfigureBackupInput): Promise<BackupStatus> {
@@ -33,7 +37,15 @@ export async function configureBackup(input: ConfigureBackupInput): Promise<Back
       backend_kind: input.backendKind,
       backend_config: input.backendConfig,
       passphrase: input.passphrase,
+      device_name: input.deviceName ?? null,
     },
+  })
+  return fromRaw(raw)
+}
+
+export async function setBackupDeviceName(deviceName: string): Promise<BackupStatus> {
+  const raw = await callCommand<RawBackupStatus>('backup_set_device_name', {
+    input: { device_name: deviceName },
   })
   return fromRaw(raw)
 }

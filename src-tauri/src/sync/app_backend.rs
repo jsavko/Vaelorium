@@ -23,7 +23,18 @@ pub struct AppBackendConfig {
     /// Cached salt — authoritative copy lives in bucket-root sync-meta.json,
     /// but we keep a local copy to derive the key without a round-trip.
     pub salt_b64: String,
+    /// App-global device identity. All Tomes on this device share the same
+    /// (id, name) in their op attribution. Defaulted on load so configs
+    /// written before these fields existed don't fail to deserialize.
+    #[serde(default = "uuid::Uuid::new_v4")]
+    pub device_id: uuid::Uuid,
+    #[serde(default = "default_device_name")]
+    pub device_name: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+fn default_device_name() -> String {
+    std::env::var("HOSTNAME").unwrap_or_else(|_| "Vaelorium Device".into())
 }
 
 fn config_path(app_data_dir: &std::path::Path) -> PathBuf {
@@ -85,6 +96,8 @@ mod tests {
             backend_kind: BackendKind::Filesystem,
             backend_config: serde_json::json!({"path": "/tmp/sync"}),
             salt_b64: "AAAAAAAAAAAAAAAAAAAAAA==".to_string(),
+            device_id: uuid::Uuid::new_v4(),
+            device_name: "Test Device".to_string(),
             created_at: Utc::now(),
         }
     }
