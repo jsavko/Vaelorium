@@ -201,11 +201,15 @@
     }}
   />
 {:else}
-  <TomePicker onCreateNew={() => createTomeModalOpen = true} />
+  <TomePicker
+    onCreateNew={() => createTomeModalOpen = true}
+    onOpenSettings={(tab?: string) => { settingsInitialTab = tab; settingsOpen = true }}
+  />
   <CreateTomeModal
     open={createTomeModalOpen}
     onClose={() => createTomeModalOpen = false}
   />
+  <Settings open={settingsOpen} initialTab={settingsInitialTab} onClose={() => settingsOpen = false} />
 {/if}
 
 <ToastContainer />

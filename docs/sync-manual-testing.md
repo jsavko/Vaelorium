@@ -22,6 +22,20 @@ your initials when you sign off.
 > Delete the old `tomes/*` entries from your bucket and re-enable sync — a new
 > `tomes/<uuid>/` prefix is created on first upload.
 
+## Restoring a Tome on a second device (Phase 5.1)
+
+1. Install Vaelorium on the second machine.
+2. Settings → Backup: configure the **same** backend + passphrase used on the first machine. Unlock if not auto-unlocked.
+3. Open the TomePicker (close any open Tome with `Cmd/Ctrl+W` if needed).
+4. The **"Restore from backup"** section lists every Tome the backend has snapshots for, with display name, size, and snapshot age. Only appears once Backup is configured + unlocked.
+5. Click **Restore** next to the Tome you want. The snapshot is downloaded, decrypted, written to `<app_data>/restored/<name>.tome`, registered in Recent Tomes, and opened.
+6. The restored Tome has no `sync_config` row (the snapshot strips it). To resume sync from this device, open Settings → Sync → Enable. Future improvement (Phase 5.5 wizard) will offer to do this automatically as the last step of the restore flow.
+
+**Conflict-resolution rehearsal:**
+- Edit a page on machine A → sync.
+- Edit the same field on machine B (after enabling sync) → sync.
+- Banner appears above the page; pick local or remote per field.
+
 For a B2-style smoke setup:
 - Endpoint: `https://s3.us-west-000.backblazeb2.com`
 - Region: `us-west-000`

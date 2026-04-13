@@ -358,3 +358,221 @@ fn parse_s3_config(config: &serde_json::Value) -> Result<S3Config, String> {
 fn _unused_json_marker() -> serde_json::Value {
     json!({})
 }
+
+#[derive(Debug, Serialize)]
+pub struct RestorableTome {
+    pub tome_uuid: String,
+    pub snapshot_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub size_bytes: u64,
+    pub last_modified: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RestoredTome {
+    pub path: String,
+    pub name: String,
+    pub tome_uuid: String,
+}
+
+/// List Tomes available for restore on this backend. Discovers via
+/// `tomes/<uuid>/snapshots/*.snap.enc` keys, then downloads + decrypts the
+/// latest snapshot for each to extract the display name from
+/// `tome_metadata`.
+///
+/// Eager name extraction is acceptable for MVP — typical user has 1-3
+/// Tomes, snapshots are gzipped + tiny (~10 KB empty, scaling with content).
+#[tauri::command]
+pub async fn backup_list_restorable_tomes(
+    app: AppHandle,
+    session: State<'_, SessionState>,
+) -> Result<Vec<RestorableTome>, String> {
+    let active = session
+        .current()
+        .await
+        .ok_or_else(|| "backup is locked — unlock it in Settings → Backup first".to_string())?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app data dir: {e}"))?;
+    let cfg = app_backend::load(&app_data_dir)
+        .await?
+        .ok_or_else(|| "no backup destination configured".to_string())?;
+
+    let raw = build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
+    let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
+
+    let summaries = crate::sync::snapshot::list_tome_snapshots(raw_arc.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut out = Vec::with_capacity(summaries.len());
+    for s in summaries {
+        let key = format!(
+            "tomes/{}/snapshots/{}.snap.enc",
+            s.tome_uuid, s.snapshot_id
+        );
+        // Restore to a temp file to peek metadata, then drop.
+        let peek_dir = tempfile::tempdir().map_err(|e| format!("tempdir: {e}"))?;
+        let peek_path = peek_dir.path().join("peek.tome");
+        if let Err(e) = crate::sync::snapshot::restore_snapshot_by_key(
+            &key,
+            &active.key,
+            raw_arc.as_ref(),
+            &peek_path,
+        )
+        .await
+        {
+            log::warn!("could not peek snapshot {key}: {e}");
+            continue;
+        }
+        let (name, description) = match peek_tome_metadata(&peek_path).await {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("could not read metadata from {key}: {e}");
+                (format!("Tome {}", &s.tome_uuid[..8]), None)
+            }
+        };
+        out.push(RestorableTome {
+            tome_uuid: s.tome_uuid,
+            snapshot_id: s.snapshot_id,
+            name,
+            description,
+            size_bytes: s.size_bytes,
+            last_modified: s.last_modified.to_rfc3339(),
+        });
+    }
+    Ok(out)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RestoreInput {
+    pub tome_uuid: String,
+}
+
+/// Download the latest snapshot for `tome_uuid`, decrypt, write to the
+/// app data dir as a `.tome` file, register in recent_tomes. Returns the
+/// new file path so the UI can immediately invoke `open_tome`.
+#[tauri::command]
+pub async fn backup_restore_tome(
+    app: AppHandle,
+    session: State<'_, SessionState>,
+    input: RestoreInput,
+) -> Result<RestoredTome, String> {
+    let active = session
+        .current()
+        .await
+        .ok_or_else(|| "backup is locked".to_string())?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app data dir: {e}"))?;
+    let cfg = app_backend::load(&app_data_dir)
+        .await?
+        .ok_or_else(|| "no backup destination configured".to_string())?;
+    let raw = build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
+    let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
+
+    let summaries = crate::sync::snapshot::list_tome_snapshots(raw_arc.as_ref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let summary = summaries
+        .into_iter()
+        .find(|s| s.tome_uuid == input.tome_uuid)
+        .ok_or_else(|| format!("no snapshots for tome_uuid {}", input.tome_uuid))?;
+
+    let key = format!(
+        "tomes/{}/snapshots/{}.snap.enc",
+        summary.tome_uuid, summary.snapshot_id
+    );
+
+    // Stage to a temp file first so a partial download never lands in
+    // the user-visible Tomes directory.
+    let stage_dir = app_data_dir.join("restored-staging");
+    tokio::fs::create_dir_all(&stage_dir)
+        .await
+        .map_err(|e| format!("stage dir: {e}"))?;
+    let stage_path = stage_dir.join(format!("{}.tome", summary.tome_uuid));
+    crate::sync::snapshot::restore_snapshot_by_key(
+        &key,
+        &active.key,
+        raw_arc.as_ref(),
+        &stage_path,
+    )
+    .await
+    .map_err(|e| {
+        if e.to_string().contains("crypto") {
+            "wrong passphrase — could not decrypt snapshot".to_string()
+        } else {
+            e.to_string()
+        }
+    })?;
+
+    let (name, description) = peek_tome_metadata(&stage_path)
+        .await
+        .map_err(|e| format!("reading restored tome metadata: {e}"))?;
+
+    // Move into a stable, user-visible location: <app_data>/restored/<safe_name>.tome
+    let restored_dir = app_data_dir.join("restored");
+    tokio::fs::create_dir_all(&restored_dir)
+        .await
+        .map_err(|e| format!("restored dir: {e}"))?;
+    let safe_name = sanitize_filename(&name);
+    let mut final_path = restored_dir.join(format!("{safe_name}.tome"));
+    let mut suffix = 1;
+    while final_path.exists() {
+        final_path = restored_dir.join(format!("{safe_name} ({suffix}).tome"));
+        suffix += 1;
+    }
+    tokio::fs::rename(&stage_path, &final_path)
+        .await
+        .map_err(|e| format!("moving restored tome into place: {e}"))?;
+
+    let path_str = final_path.to_string_lossy().to_string();
+    crate::app_state::add_recent_tome(&app, &path_str, &name, description.as_deref());
+
+    Ok(RestoredTome {
+        path: path_str,
+        name,
+        tome_uuid: summary.tome_uuid,
+    })
+}
+
+async fn peek_tome_metadata(path: &std::path::Path) -> Result<(String, Option<String>), String> {
+    use sqlx::sqlite::SqlitePoolOptions;
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect(&format!("sqlite:{}", path.display()))
+        .await
+        .map_err(|e| format!("opening restored tome: {e}"))?;
+    let name: Option<String> =
+        sqlx::query_scalar("SELECT value FROM tome_metadata WHERE key = 'name'")
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| format!("reading name: {e}"))?;
+    let description: Option<String> =
+        sqlx::query_scalar("SELECT value FROM tome_metadata WHERE key = 'description'")
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| format!("reading description: {e}"))?;
+    pool.close().await;
+    Ok((name.unwrap_or_else(|| "Untitled Tome".to_string()), description))
+}
+
+fn sanitize_filename(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.');
+    if trimmed.is_empty() {
+        "Restored Tome".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}

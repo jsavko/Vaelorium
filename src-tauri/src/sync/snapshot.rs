@@ -126,6 +126,84 @@ pub async fn restore_snapshot_to_file(
     Ok(())
 }
 
+/// Per-Tome snapshot summary used by recovery flow on a fresh device.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TomeSnapshotSummary {
+    pub tome_uuid: String,
+    pub snapshot_id: String,
+    pub size_bytes: u64,
+    pub last_modified: chrono::DateTime<chrono::Utc>,
+}
+
+/// Discover all Tomes that have at least one snapshot under this backend.
+/// Returns the latest snapshot per Tome (ULID order = chronological).
+///
+/// The backend passed in must be the **raw** (non-prefixed) backend so we
+/// can see across all `tomes/<uuid>/` subtrees.
+pub async fn list_tome_snapshots(
+    raw_backend: &dyn SyncBackend,
+) -> SyncResult<Vec<TomeSnapshotSummary>> {
+    use std::collections::HashMap;
+    let infos = raw_backend.list_prefix("tomes").await?;
+    let mut by_tome: HashMap<String, super::backend::ObjectInfo> = HashMap::new();
+    for info in infos {
+        // Expected key shape: tomes/<uuid>/snapshots/<ulid>.snap.enc
+        let parts: Vec<&str> = info.key.split('/').collect();
+        if parts.len() != 4 || parts[0] != "tomes" || parts[2] != "snapshots" {
+            continue;
+        }
+        if !parts[3].ends_with(".snap.enc") {
+            continue;
+        }
+        let uuid = parts[1].to_string();
+        // ULID file names sort lexicographically = chronologically.
+        match by_tome.get(&uuid) {
+            Some(existing) if existing.key >= info.key => {}
+            _ => {
+                by_tome.insert(uuid, info);
+            }
+        }
+    }
+    let mut out: Vec<TomeSnapshotSummary> = by_tome
+        .into_iter()
+        .map(|(tome_uuid, info)| {
+            let stem = info
+                .key
+                .rsplit('/')
+                .next()
+                .and_then(|f| f.strip_suffix(".snap.enc"))
+                .unwrap_or("")
+                .to_string();
+            TomeSnapshotSummary {
+                tome_uuid,
+                snapshot_id: stem,
+                size_bytes: info.size,
+                last_modified: info.last_modified,
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+    Ok(out)
+}
+
+/// Restore a snapshot identified by its full key `tomes/<uuid>/snapshots/<ulid>.snap.enc`
+/// from the raw backend. Decrypts and writes raw SQLite bytes to `dest_path`.
+pub async fn restore_snapshot_by_key(
+    full_key: &str,
+    key: &KeyMaterial,
+    raw_backend: &dyn SyncBackend,
+    dest_path: &Path,
+) -> SyncResult<()> {
+    let (ciphertext, _etag) = raw_backend.get_object(full_key).await?;
+    let compressed = crypto::decrypt(key, &ciphertext)?;
+    let bytes = gzip_decompress(&compressed).map_err(|e| super::SyncError::Io(e))?;
+    if let Some(parent) = dest_path.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(dest_path, bytes).await?;
+    Ok(())
+}
+
 /// List snapshots on the backend in chronological (= ULID) order.
 pub async fn list_snapshots(backend: &dyn SyncBackend) -> SyncResult<Vec<String>> {
     let infos = backend.list_prefix("snapshots").await?;
@@ -179,5 +257,54 @@ mod tests {
         let mut state = SyncRuntimeState::default();
         state.last_snapshot_id = Some(Ulid::new().to_string());
         assert!(should_snapshot(&state, 0, SNAPSHOT_OPS_THRESHOLD));
+    }
+
+    #[tokio::test]
+    async fn list_tome_snapshots_groups_by_uuid_and_picks_latest() {
+        use crate::sync::backend::filesystem::FilesystemBackend;
+        let dir = tempfile::tempdir().unwrap();
+        let backend = FilesystemBackend::new(dir.path().to_path_buf()).await.unwrap();
+
+        // Two Tomes, two snapshots each.
+        let uuid_a = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let uuid_b = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let snap_a_old = Ulid::new();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let snap_a_new = Ulid::new();
+        let snap_b = Ulid::new();
+        backend
+            .put_object(&format!("tomes/{uuid_a}/snapshots/{snap_a_old}.snap.enc"), b"x")
+            .await
+            .unwrap();
+        backend
+            .put_object(&format!("tomes/{uuid_a}/snapshots/{snap_a_new}.snap.enc"), b"x")
+            .await
+            .unwrap();
+        backend
+            .put_object(&format!("tomes/{uuid_b}/snapshots/{snap_b}.snap.enc"), b"x")
+            .await
+            .unwrap();
+        // Decoy: a journal entry should be ignored.
+        backend
+            .put_object(&format!("tomes/{uuid_a}/journal/{snap_a_old}.op.enc"), b"x")
+            .await
+            .unwrap();
+
+        let mut summaries = list_tome_snapshots(&backend).await.unwrap();
+        summaries.sort_by(|a, b| a.tome_uuid.cmp(&b.tome_uuid));
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].tome_uuid, uuid_a);
+        assert_eq!(summaries[0].snapshot_id, snap_a_new.to_string());
+        assert_eq!(summaries[1].tome_uuid, uuid_b);
+        assert_eq!(summaries[1].snapshot_id, snap_b.to_string());
+    }
+
+    #[tokio::test]
+    async fn list_tome_snapshots_returns_empty_for_fresh_backend() {
+        use crate::sync::backend::filesystem::FilesystemBackend;
+        let dir = tempfile::tempdir().unwrap();
+        let backend = FilesystemBackend::new(dir.path().to_path_buf()).await.unwrap();
+        let summaries = list_tome_snapshots(&backend).await.unwrap();
+        assert!(summaries.is_empty());
     }
 }

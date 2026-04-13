@@ -734,3 +734,78 @@ async fn scenario_f_snapshot_bootstrap_for_fresh_device() {
     assert_eq!(total, 7, "expected snapshot pages + journal-tail pages");
     assert!(outcome.ops_applied >= 2);
 }
+
+/// Scenario G — multi-Tome recovery discovery on a fresh device.
+///
+/// Two devices each push a snapshot for a different `tome_uuid` into the
+/// shared backend (under `tomes/<uuid>/snapshots/...`). A third device,
+/// starting from no local DB, calls `list_tome_snapshots` against the raw
+/// backend to discover both Tomes, then `restore_snapshot_by_key` to pull
+/// down one of them. Verifies the restored DB contains the originating
+/// device's pages.
+#[tokio::test]
+async fn scenario_g_multi_tome_recovery_discovery() {
+    use std::sync::Arc;
+    use vaelorium_lib::sync::backend::prefixed::PrefixedBackend;
+
+    let backend_dir = shared_backend_dir();
+    let raw_backend = make_backend(&backend_dir).await;
+    let raw_arc: Arc<dyn SyncBackend + Send + Sync> = Arc::new(raw_backend);
+    let salt = generate_salt();
+    let key = make_key(&salt);
+
+    let uuid_alpha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let uuid_beta = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    // Device A syncs into tomes/<uuid_alpha>/...
+    let d_a = Device::new("d_a").await;
+    d_a.enable_sync(&salt).await;
+    d_a.create_page("Alpha One", None).await;
+    d_a.create_page("Alpha Two", None).await;
+    let alpha_backend =
+        PrefixedBackend::new(raw_arc.clone(), format!("tomes/{}", uuid_alpha));
+    d_a.sync(&key, &alpha_backend).await;
+
+    // Device B syncs into tomes/<uuid_beta>/...
+    let d_b = Device::new("d_b").await;
+    d_b.enable_sync(&salt).await;
+    d_b.create_page("Beta One", None).await;
+    let beta_backend =
+        PrefixedBackend::new(raw_arc.clone(), format!("tomes/{}", uuid_beta));
+    d_b.sync(&key, &beta_backend).await;
+
+    // Fresh device C: discover what Tomes are out there.
+    let summaries = snapshot::list_tome_snapshots(raw_arc.as_ref())
+        .await
+        .expect("list_tome_snapshots");
+    assert_eq!(summaries.len(), 2, "should discover both Tomes");
+    let alpha_summary = summaries
+        .iter()
+        .find(|s| s.tome_uuid == uuid_alpha)
+        .expect("alpha discovered");
+    let beta_summary = summaries
+        .iter()
+        .find(|s| s.tome_uuid == uuid_beta)
+        .expect("beta discovered");
+    assert!(!alpha_summary.snapshot_id.is_empty());
+    assert!(!beta_summary.snapshot_id.is_empty());
+
+    // C restores Alpha by full key.
+    let c_tmpdir = TempDir::new().unwrap();
+    let c_path = c_tmpdir.path().join("c.tome");
+    let alpha_key = format!(
+        "tomes/{}/snapshots/{}.snap.enc",
+        uuid_alpha, alpha_summary.snapshot_id
+    );
+    snapshot::restore_snapshot_by_key(&alpha_key, &key, raw_arc.as_ref(), &c_path)
+        .await
+        .expect("restore_snapshot_by_key");
+
+    let c_pool = open_existing(&c_path).await;
+    let titles: Vec<String> =
+        sqlx::query_scalar("SELECT title FROM pages ORDER BY title")
+            .fetch_all(&c_pool)
+            .await
+            .unwrap();
+    assert_eq!(titles, vec!["Alpha One".to_string(), "Alpha Two".to_string()]);
+}

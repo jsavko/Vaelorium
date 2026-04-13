@@ -1,19 +1,91 @@
 <script lang="ts">
-  import { BookOpen, FolderOpen, Plus, Map as MapIcon } from 'lucide-svelte'
+  import { BookOpen, FolderOpen, Plus, Map as MapIcon, DownloadCloud, Lock } from 'lucide-svelte'
   import { recentTomes, openTome, loadRecentTomes } from '../stores/tomeStore'
   import { isTauri } from '../api/bridge'
   import { onMount } from 'svelte'
   import type { RecentTome } from '../api/tomes'
+  import {
+    getBackupStatus,
+    listRestorableTomes,
+    restoreTomeFromBackup,
+    type RestorableTome,
+  } from '../api/backup'
 
   interface Props {
     onCreateNew: () => void
+    onOpenSettings?: (tab?: string) => void
   }
 
-  let { onCreateNew }: Props = $props()
+  let { onCreateNew, onOpenSettings }: Props = $props()
 
-  onMount(() => {
+  let backupConfigured = $state(false)
+  let backupLocked = $state(false)
+  let restorable = $state<RestorableTome[]>([])
+  let restorableLoading = $state(false)
+  let restorableError = $state<string | null>(null)
+  let restoringUuid = $state<string | null>(null)
+
+  onMount(async () => {
     loadRecentTomes()
+    await refreshBackupSection()
   })
+
+  async function refreshBackupSection() {
+    if (!isTauri) return
+    try {
+      const status = await getBackupStatus()
+      backupConfigured = status.configured
+      backupLocked = status.locked
+      if (status.configured && !status.locked) {
+        await loadRestorable()
+      }
+    } catch (e) {
+      console.warn('backup status fetch failed', e)
+    }
+  }
+
+  async function loadRestorable() {
+    restorableLoading = true
+    restorableError = null
+    try {
+      restorable = await listRestorableTomes()
+    } catch (e) {
+      restorableError = e instanceof Error ? e.message : String(e)
+      restorable = []
+    } finally {
+      restorableLoading = false
+    }
+  }
+
+  async function handleRestore(t: RestorableTome) {
+    restoringUuid = t.tomeUuid
+    try {
+      const restored = await restoreTomeFromBackup(t.tomeUuid)
+      await openTome(restored.path)
+    } catch (e) {
+      restorableError = e instanceof Error ? e.message : String(e)
+    } finally {
+      restoringUuid = null
+    }
+  }
+
+  function formatBytes(n: number): string {
+    if (n < 1024) return `${n} B`
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+    return `${(n / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  function relativeAge(iso: string): string {
+    const d = new Date(iso)
+    const diffMin = Math.floor((Date.now() - d.getTime()) / 60_000)
+    if (diffMin < 1) return 'just now'
+    if (diffMin < 60) return `${diffMin} min ago`
+    const hr = Math.floor(diffMin / 60)
+    if (hr < 24) return `${hr} hr ago`
+    const days = Math.floor(hr / 24)
+    if (days < 30) return `${days}d ago`
+    return d.toLocaleDateString()
+  }
 
   async function handleOpenRecent(tome: RecentTome) {
     await openTome(tome.path)
@@ -85,6 +157,50 @@
         <button class="empty-create" onclick={onCreateNew}>
           Create Your First Tome
         </button>
+      </div>
+    {/if}
+
+    {#if isTauri && backupConfigured}
+      <div class="restore-section">
+        <span class="section-label">RESTORE FROM BACKUP</span>
+        {#if backupLocked}
+          <button
+            class="restore-prompt"
+            onclick={() => onOpenSettings?.('backup')}
+            type="button"
+          >
+            <Lock size={16} />
+            <span>Backup is locked — unlock it to see Tomes available on this backend</span>
+          </button>
+        {:else if restorableLoading}
+          <p class="restore-status">Looking for Tomes on backup…</p>
+        {:else if restorableError}
+          <p class="restore-error">Could not list backup: {restorableError}</p>
+        {:else if restorable.length === 0}
+          <p class="restore-status">No Tomes found on this backend.</p>
+        {:else}
+          <div class="restore-list">
+            {#each restorable as t (t.tomeUuid)}
+              <div class="restore-row">
+                <DownloadCloud size={20} class="restore-icon" />
+                <div class="restore-meta">
+                  <h4 class="restore-name">{t.name}</h4>
+                  <span class="restore-sub">
+                    {formatBytes(t.sizeBytes)} · snapshot {relativeAge(t.lastModified)}
+                  </span>
+                </div>
+                <button
+                  class="restore-btn"
+                  onclick={() => handleRestore(t)}
+                  disabled={restoringUuid !== null}
+                  type="button"
+                >
+                  {restoringUuid === t.tomeUuid ? 'Restoring…' : 'Restore'}
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -298,5 +414,104 @@
     font-size: 12px;
     color: var(--color-fg-tertiary);
     opacity: 0.5;
+  }
+
+  .restore-section {
+    width: 100%;
+  }
+
+  .restore-status,
+  .restore-error {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--color-fg-tertiary);
+    margin: 0;
+    padding: 12px 14px;
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+  }
+
+  .restore-error {
+    color: var(--color-status-error, #d97474);
+  }
+
+  .restore-prompt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--color-surface-card);
+    border: 1px dashed var(--color-border-default);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    color: var(--color-fg-secondary);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .restore-prompt:hover {
+    border-color: var(--color-accent-gold);
+    color: var(--color-fg-primary);
+  }
+
+  .restore-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .restore-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+  }
+
+  .restore-meta {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+  }
+
+  .restore-name {
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-fg-primary);
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .restore-sub {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--color-fg-tertiary);
+  }
+
+  .restore-btn {
+    padding: 6px 14px;
+    background: var(--color-accent-gold);
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-fg-inverse);
+    cursor: pointer;
+  }
+
+  .restore-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>

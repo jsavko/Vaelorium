@@ -57,7 +57,7 @@ export async function disconnectBackup(): Promise<BackupStatus> {
 
 export async function getBackupStatus(): Promise<BackupStatus> {
   if (!isTauri) {
-    return { configured: false, locked: false, backendKind: null, backendSummary: null }
+    return { configured: false, locked: false, backendKind: null, backendSummary: null, deviceName: null }
   }
   const raw = await callCommand<RawBackupStatus>('backup_status')
   return fromRaw(raw)
@@ -75,4 +75,54 @@ export async function tryAutoUnlockBackup(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+export interface RestorableTome {
+  tomeUuid: string
+  snapshotId: string
+  name: string
+  description: string | null
+  sizeBytes: number
+  lastModified: string
+}
+
+interface RawRestorableTome {
+  tome_uuid: string
+  snapshot_id: string
+  name: string
+  description: string | null
+  size_bytes: number
+  last_modified: string
+}
+
+export async function listRestorableTomes(): Promise<RestorableTome[]> {
+  if (!isTauri) return []
+  const raw = await callCommand<RawRestorableTome[]>('backup_list_restorable_tomes')
+  return raw.map((r) => ({
+    tomeUuid: r.tome_uuid,
+    snapshotId: r.snapshot_id,
+    name: r.name,
+    description: r.description,
+    sizeBytes: r.size_bytes,
+    lastModified: r.last_modified,
+  }))
+}
+
+export interface RestoredTome {
+  path: string
+  name: string
+  tomeUuid: string
+}
+
+interface RawRestoredTome {
+  path: string
+  name: string
+  tome_uuid: string
+}
+
+export async function restoreTomeFromBackup(tomeUuid: string): Promise<RestoredTome> {
+  const raw = await callCommand<RawRestoredTome>('backup_restore_tome', {
+    input: { tome_uuid: tomeUuid },
+  })
+  return { path: raw.path, name: raw.name, tomeUuid: raw.tome_uuid }
 }

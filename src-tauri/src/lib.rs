@@ -175,6 +175,8 @@ pub fn run() {
             commands::backup::backup_unlock,
             commands::backup::backup_try_auto_unlock,
             commands::backup::backup_set_device_name,
+            commands::backup::backup_list_restorable_tomes,
+            commands::backup::backup_restore_tome,
             // Sync (per-Tome opt-in)
             commands::sync::sync_enable,
             commands::sync::sync_disable,
