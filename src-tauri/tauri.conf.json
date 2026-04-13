@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "vaelorium",
-  "version": "0.1.1",
+  "version": "0.1.5",
   "identifier": "com.vaelorium.app",
   "build": {
     "frontendDist": "../dist",
@@ -35,7 +35,10 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["tome", "vaelorium"],
+        "ext": [
+          "tome",
+          "vaelorium"
+        ],
         "name": "Vaelorium Tome",
         "description": "Vaelorium worldbuilding Tome",
         "role": "Editor"
