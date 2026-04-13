@@ -57,6 +57,7 @@ pub async fn list_relation_types(managed: State<'_, ManagedDb>) -> Result<Vec<Re
 #[tauri::command]
 pub async fn create_relation_type(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     name: String,
     inverse_name: Option<String>,
     color: Option<String>,
@@ -65,9 +66,18 @@ pub async fn create_relation_type(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
     sqlx::query("INSERT INTO relation_types (id, name, inverse_name, color, is_builtin, created_at) VALUES (?, ?, ?, ?, FALSE, ?)")
         .bind(&id).bind(&name).bind(&inverse_name).bind(&color).bind(&now)
-        .execute(&pool).await.map_err(|e| e.to_string())?;
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.relation_types, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
 
     Ok(RelationType { id, name, inverse_name, color, is_builtin: false, created_at: now })
 }
