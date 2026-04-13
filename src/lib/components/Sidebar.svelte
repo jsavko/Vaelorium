@@ -154,14 +154,10 @@
     </div>
   </header>
 
-  <!-- DEBUG: forced-visible pill showing raw syncStatus so we can tell
-       whether the locked pill disappearance is a rendering issue or a
-       state-loading issue. Remove once the user confirms it's rendering. -->
-  <div class="sync-pill" style="background: magenta; color: black; font-size: 10px;" title="DEBUG">
-    DBG en={String($syncStatus.enabled)} lk={String($syncStatus.locked)} tm={$syncStatus.tomeId ? 'Y' : 'N'}
-  </div>
-  {#if $syncStatus.enabled || $syncStatus.tomeId}
-    <button
+  <!-- Always show the sync pill when a Tome is open. Previously it was
+       gated on `enabled || tomeId`, which meant a Tome with sync locked
+       (or never configured) had no visual indicator at all. -->
+  <button
       class="sync-pill"
       class:sync-idle={$syncIndicator === 'idle'}
       class:sync-syncing={$syncIndicator === 'syncing'}
@@ -183,7 +179,6 @@
         {:else}Synced{/if}
       </span>
     </button>
-  {/if}
 
   <div class="divider"></div>
 
