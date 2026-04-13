@@ -116,6 +116,30 @@ pub async fn sync_tome_once(
         } else {
             apply_op(pool, &filtered_op).await?;
             outcome.ops_applied += 1;
+
+            // Incoming op carried values for these fields → any stale local
+            // sync_conflicts rows for the same (table, row, field) are now
+            // resolved from the other device's side. Clear them so the user
+            // isn't asked to resolve the same conflict twice across devices.
+            // Skip fields that JUST got conflicted (conflicted_fields) — those
+            // belong to this incoming op and are still unresolved locally.
+            let applied_fields: Vec<&String> = filtered_op
+                .fields
+                .keys()
+                .filter(|f| !conflicted_fields.contains(*f))
+                .collect();
+            for field in &applied_fields {
+                sqlx::query(
+                    "DELETE FROM sync_conflicts
+                     WHERE tome_id = ? AND table_name = ? AND row_id = ? AND field_name = ?",
+                )
+                .bind(tome_id)
+                .bind(&filtered_op.table)
+                .bind(&filtered_op.row_id.to_string())
+                .bind(field)
+                .execute(pool)
+                .await?;
+            }
         }
 
         state.last_applied_op_id = Some(id_str);

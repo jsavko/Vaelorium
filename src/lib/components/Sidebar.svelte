@@ -46,7 +46,9 @@
     // Locked / backup-missing always goes to Settings — conflicts can't be
     // resolved without an active session, and the state prompt belongs there.
     if (indicator === 'locked' || indicator === 'backup-missing') {
-      onOpenSettings?.(indicator === 'backup-missing' ? 'backup' : 'sync')
+      // Both states are resolved in Backup tab — that's where the passphrase
+      // lives under the app-global model. Sync tab just shows per-Tome toggle.
+      onOpenSettings?.('backup')
       return
     }
     const all = get(syncConflicts)
