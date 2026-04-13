@@ -127,7 +127,7 @@
             devices. Everything is end-to-end encrypted with a passphrase only you know.
           </p>
           <ul class="bullets">
-            <li>Use a folder on your disk (great with Syncthing or Dropbox)</li>
+            <li>Use a folder on your disk — your live Tome stays local; the folder only receives immutable encrypted ops and snapshots, safe to share with Syncthing or a cloud-folder agent</li>
             <li>Or any S3-compatible bucket: AWS, Cloudflare R2, Backblaze B2, Minio…</li>
             <li>One backup destination is shared across every Tome you sync</li>
           </ul>
@@ -137,7 +137,7 @@
             <input type="radio" name="kind" value="filesystem" checked={backendKind === 'filesystem'} onchange={() => backendKind = 'filesystem'} />
             <div class="kind-body">
               <div class="kind-title">A folder on this computer</div>
-              <p class="kind-desc">Simple. Pair with Syncthing/Dropbox/iCloud for cross-device sync.</p>
+              <p class="kind-desc">Simple. Your live Tome stays local — only encrypted ops/snapshots land in this folder, so a folder-sync agent (Syncthing, Dropbox, iCloud) is safe.</p>
             </div>
           </label>
           <label class="kind-card" class:selected={backendKind === 's3'}>
@@ -150,7 +150,7 @@
         {:else if step === 3}
           {#if backendKind === 'filesystem'}
             <h3>Pick a folder</h3>
-            <p class="sub">Choose any local directory. Syncthing or any cloud-folder agent will distribute it.</p>
+            <p class="sub">Choose any local directory. The backend writes immutable op/snapshot files (never rewrites in place), so Syncthing or a cloud-folder agent watching this directory is safe — your live .tome database is never inside it.</p>
             <div class="row">
               <input class="text" type="text" placeholder="/path/to/backup/folder" bind:value={backendPath} />
               <button class="ghost" type="button" onclick={pickFolder}>Browse…</button>
