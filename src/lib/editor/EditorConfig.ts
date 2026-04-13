@@ -17,8 +17,17 @@ import { PageEmbedNode } from './PageEmbedExtension'
 import { CalloutBlock } from './CalloutExtension'
 import type { Doc as YDoc } from 'yjs'
 
-export function createEditorExtensions(ydoc: YDoc) {
-  return [
+export interface EditorExtensionOptions {
+  /** Read-only preview mode (e.g. VersionHistory's version preview).
+   *  Skips the interactive extensions that register global suggestion
+   *  handlers or reference singleton UI elements owned by the live
+   *  editor — SlashCommands, MentionExtension, WikiLinkSyntax. Preview
+   *  only needs to RENDER existing content, not support typing/commands. */
+  forPreview?: boolean
+}
+
+export function createEditorExtensions(ydoc: YDoc, opts: EditorExtensionOptions = {}) {
+  const base = [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
       undoRedo: false, // Yjs Collaboration has its own undo
@@ -41,10 +50,14 @@ export function createEditorExtensions(ydoc: YDoc) {
       document: ydoc,
       field: 'content',
     }),
+    PageEmbedNode,
+    CalloutBlock,
+  ]
+  if (opts.forPreview) return base
+  return [
+    ...base,
     SlashCommands,
     MentionExtension,
     WikiLinkSyntax,
-    PageEmbedNode,
-    CalloutBlock,
   ]
 }

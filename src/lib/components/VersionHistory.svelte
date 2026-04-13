@@ -65,7 +65,9 @@
       const editor = new Editor({
         element: tmpEl,
         editable: false,
-        extensions: createEditorExtensions(doc),
+        // Use the preview-mode extension list: no suggestion/mention
+        // handlers that would conflict with the live editor's singletons.
+        extensions: createEditorExtensions(doc, { forPreview: true }),
       })
       previewHTML = editor.getHTML()
       editor.destroy()
