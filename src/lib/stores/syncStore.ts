@@ -58,7 +58,13 @@ export async function refreshSyncStatus() {
   try {
     const s = await getSyncStatus()
     syncStatus.set(s)
-    if (s.enabled) {
+    // Always fetch conflicts when the count is non-zero, regardless of
+    // sync_config.enabled. A Tome can have unresolved conflicts in its DB
+    // even with sync currently disabled (e.g. restored from backup before
+    // the auto-enable fix shipped) — and the pill's conflict count comes
+    // from a COUNT query that doesn't gate on enabled either. Mismatched
+    // gating here caused the conflict pill to route nowhere useful.
+    if (s.pendingConflicts > 0) {
       const c = await listConflicts()
       syncConflicts.set(c)
     } else {

@@ -38,11 +38,17 @@
   // - anything else → open Settings → Sync (locked state handled inline there).
   async function handlePillClick() {
     await refreshSyncStatus()
-    const conflicts = get(syncConflicts).filter((c) => c.tableName === 'pages')
-    if (conflicts.length > 0) {
-      await loadPage(conflicts[0].rowId)
+    const all = get(syncConflicts)
+    // Prefer page conflicts (ConflictResolver renders only for pages).
+    // Navigating lands the user on the exact page whose fields conflict.
+    const pageConflict = all.find((c) => c.tableName === 'pages')
+    if (pageConflict) {
+      await loadPage(pageConflict.rowId)
       return
     }
+    // Non-page conflicts (or empty conflicts with stale count): fall back
+    // to Settings → Sync. The tab at least shows the conflict count and
+    // is the sensible home for "something's off with sync."
     onOpenSettings?.('sync')
   }
 
