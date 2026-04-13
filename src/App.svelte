@@ -30,11 +30,17 @@
   import { loadTimelines } from './lib/stores/timelineStore'
   import { isTomeOpen, currentTome, currentTomeMetadata, loadRecentTomes, closeTome } from './lib/stores/tomeStore'
   import { getTomeMetadata } from './lib/api/tomes'
-  import { isTauri } from './lib/api/bridge'
+  import { isTauri, callCommand } from './lib/api/bridge'
   import { matchesKeybind } from './lib/utils/keybinds'
 
   onMount(async () => {
     if (isTauri) {
+      // Dev override: launch with VAELORIUM_WIZARD=1 to force-open the
+      // first-run wizard regardless of current backup state.
+      try {
+        const force = await callCommand<boolean>('should_show_wizard_override')
+        if (force) wizardOpen = true
+      } catch {}
       await loadRecentTomes()
       // Check if a Tome was auto-opened (legacy migration)
       try {

@@ -185,6 +185,7 @@ pub fn run() {
             commands::sync::sync_take_snapshot,
             commands::sync::sync_list_conflicts,
             commands::sync::sync_activity_list,
+            commands::tomes::should_show_wizard_override,
             commands::sync::sync_resolve_conflict,
             // Boards
             commands::boards::create_board,
