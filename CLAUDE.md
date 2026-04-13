@@ -5,7 +5,7 @@ Self-hosted, offline-first LegendKeeper alternative for worldbuilders. Cross-pla
 - **Domain:** vaelorium.com
 - **Theme:** arcane library; dark walnut palette is the default
 - **Tome file extension:** `.tome`
-- **Status:** v0.1.1 released; milestones M0–M6, M9, M10 complete; M7 (sync) + M8 (collaboration) remaining
+- **Status:** v0.2.0 released; milestones M0–M7, M9, M10 complete; M8 (collaboration) remaining
 - **Marketing site:** [vaelorium-website](https://github.com/jsavko/vaelorium-website) (private repo, sibling directory; see Marketing Website section below)
 
 ## Stack
@@ -47,9 +47,10 @@ Self-hosted, offline-first LegendKeeper alternative for worldbuilders. Cross-pla
 - Tag push → CI builds → creates a **draft** release. Promote to public with `gh release edit vX.Y.Z --draft=false` when ready to ship
 - Promoting a release fires `release.published` → triggers website rebuild (see below)
 
-## Sync (M7 — in progress)
+## Sync (M7 — shipped in v0.2.0)
 
-- **Status:** Phases 1–4b-S3 complete. 11 of ~14 user-data tables sync. S3 + filesystem backends. Phase 5 (polish + first-run wizard + recovery) remaining before v0.2.0.
+- **Status:** All phases complete. 12 of ~14 user-data tables sync (images + versions + wiki_links intentionally deferred). S3 + filesystem backends. First-run wizard, activity log, retry/backoff, cross-device conflict resolution, restore-from-backup all shipped.
+- **User guide:** `docs/sync-user-guide.md`.
 - **Schema registry** at `src-tauri/src/sync/registry.rs` lists every sync-tracked table. Adding one: register in `TABLES`, call `journal::emit_for_row(&mut *tx, &TABLES.<name>, ...)` from each mutation function, call `session.nudge()` after commit.
 - **Special apply paths:** `page_content` (binary BLOB) and `page_tags` (M:N pivot with composite `page_id|tag_id` row_id). Everything else goes through the generic `engine::apply_op_via_schema`.
 - **Backends:** Filesystem (local folder or Syncthing) and S3-compatible (AWS, Cloudflare R2, Minio, Backblaze B2, Wasabi, Garage) — built on `aws-sdk-s3`.
