@@ -31,15 +31,10 @@
 
   let { onOpenSettings, onOpenUnlock, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
 
-  // Clicking the sync pill:
-  //  - locked → open the inline unlock modal (no Settings detour)
-  //  - any other state → open Settings on the Sync tab specifically
+  // Clicking the sync pill always opens Settings → Sync tab. When locked,
+  // the Sync tab shows the passphrase prompt inline.
   function handlePillClick() {
-    if ($syncIndicator === 'locked') {
-      onOpenUnlock?.()
-    } else {
-      onOpenSettings?.('sync')
-    }
+    onOpenSettings?.('sync')
   }
 
   // Collapsible sections with persisted state
