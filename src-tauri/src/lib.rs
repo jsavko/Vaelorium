@@ -177,6 +177,7 @@ pub fn run() {
             commands::sync::sync_list_conflicts,
             commands::sync::sync_resolve_conflict,
             commands::sync::sync_unlock,
+            commands::sync::sync_try_auto_unlock,
             // Boards
             commands::boards::create_board,
             commands::boards::list_boards,

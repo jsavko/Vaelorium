@@ -45,6 +45,7 @@ flate2 = "1"
 tempfile = "3"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-s3 = "1"
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native-sync-persistent", "sync-secret-service"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

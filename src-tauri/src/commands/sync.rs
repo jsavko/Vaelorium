@@ -150,6 +150,14 @@ pub async fn sync_enable(
         .await;
     session.nudge();
 
+    // Persist passphrase to OS keychain so the next Tome reopen can
+    // auto-unlock without prompting. Best-effort: if no keychain backend
+    // available (e.g. WSL without gnome-keyring), log and continue —
+    // user will just have to re-enter on next launch.
+    if let Err(e) = crate::sync::keychain::store(&input.tome_id, &input.passphrase) {
+        log::warn!("could not store passphrase in OS keychain: {e}");
+    }
+
     sync_status(managed, session).await
 }
 
@@ -167,6 +175,10 @@ pub async fn sync_disable(
         .await
         .map_err(|e| e.to_string())?;
     session.clear().await;
+    // Forget the keychain entry so the next Enable starts clean.
+    if let Err(e) = crate::sync::keychain::delete(&tome_id) {
+        log::warn!("could not delete keychain entry: {e}");
+    }
     sync_status(managed, session).await
 }
 
@@ -525,6 +537,50 @@ pub async fn sync_unlock(
             })
             .await;
         session.nudge();
+
+        // Refresh the keychain entry so future auto-unlocks succeed.
+        if let Err(e) = crate::sync::keychain::store(&cfg.0, &passphrase) {
+            log::warn!("could not refresh keychain entry: {e}");
+        }
     }
     sync_status(managed, session).await
+}
+
+/// Attempt to unlock sync using a passphrase stored in the OS keychain.
+/// Returns true if a stored passphrase was found AND validated successfully.
+/// Returns false in all other cases — caller falls back to manual unlock UI.
+/// Never errors loudly: keychain unavailable, no entry, wrong stored
+/// passphrase (rotated externally?) all return Ok(false).
+#[tauri::command]
+pub async fn sync_try_auto_unlock(
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+) -> Result<bool, String> {
+    let pool = db::get_pool(managed.inner()).await?;
+
+    // Already unlocked? Nothing to do.
+    if session.current().await.is_some() {
+        return Ok(true);
+    }
+
+    let cfg: Option<(String, i64)> =
+        sqlx::query_as("SELECT tome_id, enabled FROM sync_config LIMIT 1")
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    let Some((tome_id, enabled)) = cfg else { return Ok(false) };
+    if enabled == 0 {
+        return Ok(false);
+    }
+
+    let passphrase = match crate::sync::keychain::retrieve(&tome_id) {
+        Ok(Some(p)) => p,
+        _ => return Ok(false),
+    };
+
+    // Reuse sync_unlock's path. If the stored passphrase is wrong (e.g.
+    // user changed it externally and sync_unlock validates it against
+    // backend data), the call returns Err — surface as Ok(false) so the
+    // UI shows the manual unlock prompt.
+    Ok(sync_unlock(managed, session, passphrase).await.is_ok())
 }

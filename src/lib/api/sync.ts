@@ -157,6 +157,18 @@ export async function unlockSync(passphrase: string): Promise<SyncStatus> {
   return fromRawStatus(raw)
 }
 
+/** Attempt to auto-unlock from a passphrase stored in the OS keychain.
+ *  Returns true if the unlock succeeded; false if no stored passphrase,
+ *  no keychain backend, or the stored passphrase no longer validates. */
+export async function tryAutoUnlock(): Promise<boolean> {
+  if (!isTauri) return false
+  try {
+    return await callCommand<boolean>('sync_try_auto_unlock')
+  } catch {
+    return false
+  }
+}
+
 /** Subscribe to sync:status events. Returns an unsubscribe function. */
 export async function subscribeSyncStatus(
   cb: (event: { tome_id: string; state: string; ops_uploaded: number; ops_applied: number; conflicts_created: number; error: string | null }) => void,

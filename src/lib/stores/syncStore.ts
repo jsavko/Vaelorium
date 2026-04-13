@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store'
-import { getSyncStatus, listConflicts, subscribeSyncStatus, type SyncStatus, type SyncConflict } from '../api/sync'
+import { getSyncStatus, listConflicts, subscribeSyncStatus, tryAutoUnlock, type SyncStatus, type SyncConflict } from '../api/sync'
 
 const initial: SyncStatus = {
   enabled: false,
@@ -50,10 +50,17 @@ export async function refreshSyncStatus() {
 
 export async function initSyncStore() {
   await refreshSyncStatus()
+  // If sync is configured but locked, try the OS keychain — most users will
+  // have stored their passphrase and never see the manual unlock UI.
+  let current: SyncStatus | undefined
+  syncStatus.subscribe((s) => { current = s })()
+  if (current?.enabled && current.locked) {
+    const ok = await tryAutoUnlock()
+    if (ok) await refreshSyncStatus()
+  }
   if (!unsubscribed) {
     unsubscribed = await subscribeSyncStatus((e) => {
       syncRunning.set(e.state === 'syncing')
-      // After any event, refresh status to pull queue size + conflicts.
       refreshSyncStatus()
     })
   }
