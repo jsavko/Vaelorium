@@ -19,7 +19,8 @@
   import Settings from './lib/components/Settings.svelte'
   import UpdateNotification from './lib/components/UpdateNotification.svelte'
   import ConflictResolver from './lib/components/ConflictResolver.svelte'
-  import { initSyncStore } from './lib/stores/syncStore'
+  import SyncUnlockModal from './lib/components/SyncUnlockModal.svelte'
+  import { initSyncStore, syncStatus } from './lib/stores/syncStore'
   import { onMount } from 'svelte'
   import { createPage, currentPageId } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
@@ -68,6 +69,18 @@
   let searchOpen = $state(false)
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
+  let syncUnlockOpen = $state(false)
+
+  // Auto-open the unlock modal once per session when the app lands in a
+  // locked state (e.g. fresh launch with sync configured but no keychain
+  // auto-unlock available). Fires once per status transition into 'locked'.
+  let hasPromptedForUnlock = $state(false)
+  $effect(() => {
+    if ($syncStatus.enabled && $syncStatus.locked && !hasPromptedForUnlock) {
+      syncUnlockOpen = true
+      hasPromptedForUnlock = true
+    }
+  })
   let newPageModalOpen = $state(false)
   let newPageInitialTypeId = $state<string | null>(null)
   let createTomeModalOpen = $state(false)
@@ -134,6 +147,7 @@
   <div class="app-layout">
     <Sidebar
       onOpenSettings={() => settingsOpen = true}
+      onOpenUnlock={() => syncUnlockOpen = true}
       onNewPage={() => { newPageInitialTypeId = null; newPageModalOpen = true }}
       onSelectType={(typeId) => { activeTypeListId = typeId; activeModule = 'entity-list' }}
       activeTypeId={activeModule === 'entity-list' ? activeTypeListId : null}
@@ -183,6 +197,7 @@
   <SlashMenu />
   <MentionSuggestion />
   <Settings open={settingsOpen} onClose={() => settingsOpen = false} />
+  <SyncUnlockModal open={syncUnlockOpen} onClose={() => syncUnlockOpen = false} />
   <NewPageModal
     open={newPageModalOpen}
     onClose={() => { newPageModalOpen = false; newPageInitialTypeId = null }}

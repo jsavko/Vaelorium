@@ -12,6 +12,7 @@
 
   interface Props {
     onOpenSettings?: () => void
+    onOpenUnlock?: () => void
     onNewPage?: () => void
     onSelectType?: (typeId: string) => void
     activeTypeId?: string | null
@@ -28,7 +29,16 @@
     boardsActive?: boolean
   }
 
-  let { onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
+  let { onOpenSettings, onOpenUnlock, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
+
+  // Clicking the sync pill: if locked, open unlock modal directly; else Settings.
+  function handlePillClick() {
+    if ($syncIndicator === 'locked') {
+      onOpenUnlock?.()
+    } else {
+      onOpenSettings?.()
+    }
+  }
 
   // Collapsible sections with persisted state
   let typesCollapsed = $state(localStorage.getItem('vaelorium-types-collapsed') === 'true')
@@ -156,8 +166,8 @@
       class:sync-offline={$syncIndicator === 'offline'}
       class:sync-error={$syncIndicator === 'error'}
       class:sync-locked={$syncIndicator === 'locked'}
-      onclick={() => onOpenSettings?.()}
-      title="Open sync settings"
+      onclick={handlePillClick}
+      title={$syncIndicator === 'locked' ? 'Click to unlock' : 'Open sync settings'}
       data-testid="sync-pill"
     >
       <span class="sync-dot"></span>
