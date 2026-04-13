@@ -481,6 +481,34 @@ pub async fn sync_unlock(
     let key = KeyMaterial::derive(&passphrase, &cfg.4).map_err(|e| e.to_string())?;
     let device_id = Uuid::parse_str(&cfg.5).map_err(|e| e.to_string())?;
 
+    // Validate the passphrase against existing backend data BEFORE caching.
+    // Without this, a wrong passphrase silently caches a bogus key, the
+    // sidebar pill briefly shows green, and the runner only fails ~10s later
+    // when it tries to apply remote ops. Confusing UX.
+    let backend = build_backend(backend_kind, &backend_config)
+        .await
+        .map_err(|e| format!("backend init failed: {e}"))?;
+    let existing_snaps = backend
+        .list_prefix("snapshots")
+        .await
+        .map_err(|e| e.to_string())?;
+    let existing_ops = backend
+        .list_prefix("journal")
+        .await
+        .map_err(|e| e.to_string())?;
+    let probe = existing_snaps.first().or(existing_ops.first());
+    if let Some(obj) = probe {
+        let (ciphertext, _etag) = backend
+            .get_object(&obj.key)
+            .await
+            .map_err(|e| e.to_string())?;
+        crate::sync::crypto::decrypt(&key, &ciphertext).map_err(|_| {
+            "wrong passphrase — could not decrypt existing sync data".to_string()
+        })?;
+    }
+    // (If backend has no data yet, the unlock is trivially valid — there's
+    // nothing to decrypt-check against. First sync will write the first blob.)
+
     if cfg.1 != 0 {
         session
             .set(SyncSession {
