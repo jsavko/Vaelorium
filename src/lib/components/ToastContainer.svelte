@@ -1,12 +1,18 @@
 <script lang="ts">
-  import { toasts } from '../stores/toastStore'
+  import { toasts, dismissToast } from '../stores/toastStore'
 </script>
 
 {#if $toasts.length > 0}
   <div class="toast-container">
     {#each $toasts as toast (toast.id)}
       <div class="toast" class:success={toast.type === 'success'} class:error={toast.type === 'error'}>
-        {toast.message}
+        <span class="toast-message">{toast.message}</span>
+        {#if toast.action}
+          <button
+            class="toast-action"
+            onclick={() => { toast.action!.onClick(); dismissToast(toast.id) }}
+          >{toast.action.label}</button>
+        {/if}
       </div>
     {/each}
   </div>
@@ -37,7 +43,23 @@
     font-size: 13px;
     color: var(--color-fg-primary);
     animation: slideIn 0.2s ease-out;
+    display: flex;
+    align-items: center;
+    gap: 14px;
   }
+  .toast-message { flex: 1; }
+  .toast-action {
+    background: transparent;
+    border: 1px solid var(--color-accent-gold);
+    color: var(--color-accent-gold);
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .toast-action:hover { background: var(--color-accent-gold); color: var(--color-fg-inverse); }
 
   .toast.success {
     border-left: 3px solid var(--color-status-success);
