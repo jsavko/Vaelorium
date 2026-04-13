@@ -23,14 +23,6 @@ pub async fn get_app_state(app: AppHandle) -> Result<app_state::AppState, String
     Ok(app_state::load_app_state(&app))
 }
 
-/// Returns true when VAELORIUM_WIZARD env var is set (any non-empty value).
-/// Used to force-open the first-run backup wizard for testing without
-/// disconnecting the real backup.
-#[tauri::command]
-pub async fn should_show_wizard_override() -> Result<bool, String> {
-    Ok(std::env::var("VAELORIUM_WIZARD").map(|v| !v.is_empty()).unwrap_or(false))
-}
-
 #[tauri::command]
 pub async fn create_tome(
     app: AppHandle,
