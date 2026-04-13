@@ -16,6 +16,7 @@ pub mod conflict;
 pub mod crypto;
 pub mod engine;
 pub mod journal;
+pub mod registry;
 pub mod runner;
 pub mod session;
 pub mod snapshot;

@@ -1,6 +1,10 @@
 use crate::db::{self, ManagedDb};
+use crate::sync::journal::{self, active_sync_session, emit_for_row};
+use crate::sync::registry::TABLES;
+use crate::sync::SessionState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use ulid::Ulid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Tag {
@@ -12,18 +16,23 @@ pub struct Tag {
 #[tauri::command]
 pub async fn create_tag(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     name: String,
     color: Option<String>,
 ) -> Result<Tag, String> {
     let pool = db::get_pool(managed.inner()).await?;
     let id = uuid::Uuid::new_v4().to_string();
+
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query("INSERT INTO tags (id, name, color) VALUES (?, ?, ?)")
-        .bind(&id)
-        .bind(&name)
-        .bind(&color)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        .bind(&id).bind(&name).bind(&color)
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.tags, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
 
     Ok(Tag { id, name, color })
 }

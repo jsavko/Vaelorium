@@ -1,42 +1,14 @@
 use crate::db::{self, DbPool, ManagedDb};
 use crate::sync::journal::{
-    self, active_sync_session, delete_op, insert_op, record_op, update_op,
+    self, active_sync_session, emit_for_row, insert_op, load_row_via_schema, record_op,
 };
+use crate::sync::registry::TABLES;
 use crate::sync::SessionState;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value as JsonValue};
-use sqlx::Row;
+use serde_json::json;
 use std::collections::BTreeMap;
 use tauri::State;
 use ulid::Ulid;
-use uuid::Uuid;
-
-/// Load the full pages-row state into the field map shape expected by ops.
-async fn load_page_fields_for_op(
-    executor: &mut sqlx::SqliteConnection,
-    page_id: &str,
-) -> Result<BTreeMap<String, Option<JsonValue>>, String> {
-    let row = sqlx::query(
-        "SELECT title, icon, featured_image_path, parent_id, sort_order, entity_type_id, visibility, created_at, updated_at FROM pages WHERE id = ?",
-    )
-    .bind(page_id)
-    .fetch_optional(executor)
-    .await
-    .map_err(|e| e.to_string())?;
-    let row = row.ok_or_else(|| format!("Page '{}' not found", page_id))?;
-
-    let mut m = BTreeMap::new();
-    m.insert("title".into(), Some(json!(row.get::<String, _>("title"))));
-    m.insert("icon".into(), row.get::<Option<String>, _>("icon").map(|v| json!(v)));
-    m.insert("featured_image_path".into(), row.get::<Option<String>, _>("featured_image_path").map(|v| json!(v)));
-    m.insert("parent_id".into(), row.get::<Option<String>, _>("parent_id").map(|v| json!(v)));
-    m.insert("sort_order".into(), Some(json!(row.get::<i64, _>("sort_order"))));
-    m.insert("entity_type_id".into(), row.get::<Option<String>, _>("entity_type_id").map(|v| json!(v)));
-    m.insert("visibility".into(), Some(json!(row.get::<String, _>("visibility"))));
-    m.insert("created_at".into(), Some(json!(row.get::<String, _>("created_at"))));
-    m.insert("updated_at".into(), Some(json!(row.get::<String, _>("updated_at"))));
-    Ok(m)
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Page {
@@ -141,20 +113,10 @@ pub async fn create_page(
         .map_err(|e| e.to_string())?;
 
     // Sync: emit insert op for the new page (atomic with the row writes).
-    if let Some((tome_id, device_id)) = active_sync_session(&pool).await.map_err(|e| e.to_string())? {
-        let tx_id = Ulid::new();
-        let mut fields = BTreeMap::new();
-        fields.insert("title".into(), Some(json!(input.title)));
-        fields.insert("icon".into(), input.icon.as_ref().map(|v| json!(v)));
-        fields.insert("parent_id".into(), input.parent_id.as_ref().map(|v| json!(v)));
-        fields.insert("sort_order".into(), Some(json!(sort_order)));
-        fields.insert("entity_type_id".into(), input.entity_type_id.as_ref().map(|v| json!(v)));
-        fields.insert("visibility".into(), Some(json!("private")));
-        fields.insert("created_at".into(), Some(json!(now)));
-        fields.insert("updated_at".into(), Some(json!(now)));
-        let op = insert_op(device_id, tx_id, "pages", &id, fields);
-        record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
-    }
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.pages, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
+        .await.map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
     session.nudge();
@@ -223,9 +185,8 @@ pub async fn update_page(
     let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
-    // Capture before-state when sync is on (for op generation).
     let before = if sync_session.is_some() {
-        Some(load_page_fields_for_op(&mut *tx, &id).await?)
+        Some(load_row_via_schema(&mut *tx, &TABLES.pages, &id).await.map_err(|e| e.to_string())?)
     } else {
         None
     };
@@ -243,12 +204,9 @@ pub async fn update_page(
 
     query.bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
-    if let (Some((tome_id, device_id)), Some(before)) = (sync_session, before) {
-        let after = load_page_fields_for_op(&mut *tx, &id).await?;
-        if let Some(op) = update_op(device_id, Ulid::new(), "pages", &id, &before, &after) {
-            record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
-        }
-    }
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.pages, &id, journal::OpKind::Update, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
     session.nudge();
@@ -266,7 +224,7 @@ pub async fn delete_page(
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     let before = if sync_session.is_some() {
-        Some(load_page_fields_for_op(&mut *tx, &id).await?)
+        Some(load_row_via_schema(&mut *tx, &TABLES.pages, &id).await.map_err(|e| e.to_string())?)
     } else {
         None
     };
@@ -277,10 +235,9 @@ pub async fn delete_page(
         .await
         .map_err(|e| e.to_string())?;
 
-    if let (Some((tome_id, device_id)), Some(before)) = (sync_session, before) {
-        let op = delete_op(device_id, Ulid::new(), "pages", &id, before);
-        record_op(&mut *tx, &op, &tome_id).await.map_err(|e| e.to_string())?;
-    }
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.pages, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
     session.nudge();
@@ -470,9 +427,11 @@ pub async fn reorder_pages(
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     let tx_id = Ulid::new(); // all moves share one transaction id
 
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+
     for m in moves {
         let before = if sync_session.is_some() {
-            Some(load_page_fields_for_op(&mut *tx, &m.id).await?)
+            Some(load_row_via_schema(&mut *tx, &TABLES.pages, &m.id).await.map_err(|e| e.to_string())?)
         } else {
             None
         };
@@ -485,12 +444,8 @@ pub async fn reorder_pages(
             .await
             .map_err(|e| e.to_string())?;
 
-        if let (Some((ref tome_id, device_id)), Some(before)) = (&sync_session, before) {
-            let after = load_page_fields_for_op(&mut *tx, &m.id).await?;
-            if let Some(op) = update_op(*device_id, tx_id, "pages", &m.id, &before, &after) {
-                record_op(&mut *tx, &op, tome_id).await.map_err(|e| e.to_string())?;
-            }
-        }
+        emit_for_row(&mut *tx, &TABLES.pages, &m.id, journal::OpKind::Update, tx_id, before, session_ref)
+            .await.map_err(|e| e.to_string())?;
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;

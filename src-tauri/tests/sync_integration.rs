@@ -461,6 +461,57 @@ async fn scenario_e_long_offline_catch_up() {
 }
 
 // ============================================================================
+// Registry — non-pages table sync (entity_types).
+// ============================================================================
+#[tokio::test]
+async fn registry_entity_types_propagate() {
+    use vaelorium_lib::sync::journal::{emit_for_row, OpKind};
+    use vaelorium_lib::sync::registry::TABLES;
+
+    let backend_dir = shared_backend_dir();
+    let backend = make_backend(&backend_dir).await;
+    let salt = generate_salt();
+    let key = make_key(&salt);
+
+    let d1 = Device::new("d1").await;
+    let d2 = Device::new("d2").await;
+    d1.enable_sync(&salt).await;
+    d2.enable_sync(&salt).await;
+
+    // d1 creates an entity_type via the registry helpers.
+    let id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut tx = d1.pool.begin().await.unwrap();
+    sqlx::query(
+        "INSERT INTO entity_types (id, name, icon, color, is_builtin, sort_order, created_at, updated_at)
+         VALUES (?, 'Faction', '⚔', '#B85C5C', FALSE, 1, ?, ?)",
+    )
+    .bind(&id).bind(&now).bind(&now)
+    .execute(&mut *tx).await.unwrap();
+    let session = (TOME_ID, d1.device_id);
+    emit_for_row(&mut *tx, &TABLES.entity_types, &id, OpKind::Insert, Ulid::new(), None, Some(session))
+        .await.unwrap();
+    tx.commit().await.unwrap();
+
+    // Sync both devices.
+    d1.sync(&key, &backend).await;
+    let outcome = d2.sync(&key, &backend).await;
+    assert!(outcome.ops_applied >= 1);
+
+    // d2 should now have the entity_type.
+    let name: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM entity_types WHERE id = ?",
+    )
+    .bind(&id).fetch_optional(&d2.pool).await.unwrap();
+    assert_eq!(name.as_deref(), Some("Faction"));
+
+    // Verify other columns came through.
+    let icon: Option<String> = sqlx::query_scalar("SELECT icon FROM entity_types WHERE id = ?")
+        .bind(&id).fetch_optional(&d2.pool).await.unwrap();
+    assert_eq!(icon.as_deref(), Some("⚔"));
+}
+
+// ============================================================================
 // Defensive — schema mismatch parks instead of crashing.
 // ============================================================================
 #[tokio::test]

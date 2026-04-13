@@ -266,76 +266,97 @@ fn filter_fields(op: &Op, exclude: &std::collections::HashSet<String>) -> Op {
     filtered
 }
 
-/// Apply a remote op against the local DB. Phase 2 supports `pages` and
-/// `page_content` only. Other tables added in Phase 4.
+/// Apply a remote op against the local DB. Generic over every table in the
+/// schema registry; `page_content` is the lone special case (binary BLOB).
 ///
 /// Crucially, this writes raw SQL — it does NOT call [`journal::record_op`],
 /// so applying a remote op doesn't loop back into the journal.
 async fn apply_op(pool: &SqlitePool, op: &Op) -> SyncResult<()> {
-    match op.table.as_str() {
-        "pages" => apply_pages_op(pool, op).await,
-        "page_content" => apply_page_content_op(pool, op).await,
-        other => Err(SyncError::Journal(format!(
-            "apply_op: unknown table '{other}' in Phase 2"
-        ))),
+    if op.table == "page_content" {
+        return apply_page_content_op(pool, op).await;
     }
+
+    let schema = super::registry::schema_by_name(&op.table).ok_or_else(|| {
+        SyncError::Journal(format!("apply_op: no registry entry for table '{}'", op.table))
+    })?;
+
+    apply_op_via_schema(pool, schema, op).await
 }
 
-async fn apply_pages_op(pool: &SqlitePool, op: &Op) -> SyncResult<()> {
-    use serde_json::Value;
-    fn s(v: &Option<Value>) -> Option<String> {
-        v.as_ref().and_then(|x| x.as_str().map(|s| s.to_string()))
-    }
-    fn i(v: &Option<Value>) -> Option<i64> {
-        v.as_ref().and_then(|x| x.as_i64())
-    }
+/// Bind a JsonValue into a sqlx query. Maps JSON types to SQLite types.
+fn bind_json<'q>(
+    q: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
+    v: &'q Option<serde_json::Value>,
+) -> Result<sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>, SyncError> {
+    Ok(match v {
+        Some(serde_json::Value::String(s)) => q.bind(s),
+        Some(serde_json::Value::Number(n)) if n.is_i64() => q.bind(n.as_i64().unwrap()),
+        Some(serde_json::Value::Number(n)) if n.is_f64() => q.bind(n.as_f64().unwrap()),
+        Some(serde_json::Value::Bool(b)) => q.bind(*b),
+        Some(serde_json::Value::Null) | None => q.bind(Option::<String>::None),
+        Some(other) => {
+            return Err(SyncError::Journal(format!(
+                "unsupported JSON value type in apply_op: {other:?}"
+            )))
+        }
+    })
+}
 
+async fn apply_op_via_schema(
+    pool: &SqlitePool,
+    schema: &super::registry::TableSchema,
+    op: &Op,
+) -> SyncResult<()> {
     match op.kind {
         OpKind::Insert => {
-            sqlx::query(
-                r#"INSERT OR REPLACE INTO pages
-                     (id, title, icon, featured_image_path, parent_id,
-                      sort_order, entity_type_id, visibility,
-                      created_at, updated_at, created_by, updated_by)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
-            )
-            .bind(&op.row_id)
-            .bind(s(op.fields.get("title").unwrap_or(&None)).unwrap_or_default())
-            .bind(s(op.fields.get("icon").unwrap_or(&None)))
-            .bind(s(op.fields.get("featured_image_path").unwrap_or(&None)))
-            .bind(s(op.fields.get("parent_id").unwrap_or(&None)))
-            .bind(i(op.fields.get("sort_order").unwrap_or(&None)).unwrap_or(0))
-            .bind(s(op.fields.get("entity_type_id").unwrap_or(&None)))
-            .bind(s(op.fields.get("visibility").unwrap_or(&None)).unwrap_or_else(|| "private".to_string()))
-            .bind(s(op.fields.get("created_at").unwrap_or(&None)).unwrap_or_else(|| Utc::now().to_rfc3339()))
-            .bind(s(op.fields.get("updated_at").unwrap_or(&None)).unwrap_or_else(|| Utc::now().to_rfc3339()))
-            .bind(s(op.fields.get("created_by").unwrap_or(&None)))
-            .bind(s(op.fields.get("updated_by").unwrap_or(&None)))
-            .execute(pool)
-            .await?;
+            let cols = schema.columns.join(", ");
+            let placeholders = vec!["?"; schema.columns.len()].join(", ");
+            let sql = format!(
+                "INSERT OR REPLACE INTO {} ({}) VALUES ({})",
+                schema.name, cols, placeholders
+            );
+            // Collect owned values up front so each bind reference outlives the loop.
+            // The primary key column is always sourced from op.row_id — the
+            // emitter side may not include it in op.fields (the row id is
+            // already authoritative on the op).
+            let values: Vec<Option<serde_json::Value>> = schema
+                .columns
+                .iter()
+                .map(|c| {
+                    if *c == schema.primary_key {
+                        Some(serde_json::Value::String(op.row_id.clone()))
+                    } else {
+                        op.fields.get(*c).cloned().unwrap_or(None)
+                    }
+                })
+                .collect();
+            let mut q = sqlx::query(&sql);
+            for v in &values {
+                q = bind_json(q, v)?;
+            }
+            q.execute(pool).await?;
         }
         OpKind::Update => {
+            // Per-field UPDATE so we don't clobber columns the op didn't touch.
             for (field, value) in &op.fields {
-                let sql = format!("UPDATE pages SET {} = ? WHERE id = ?", field);
-                let q = match value {
-                    Some(v) if v.is_string() => sqlx::query(&sql).bind(v.as_str().unwrap()),
-                    Some(v) if v.is_i64() => sqlx::query(&sql).bind(v.as_i64().unwrap()),
-                    Some(v) if v.is_boolean() => sqlx::query(&sql).bind(v.as_bool().unwrap()),
-                    Some(_) => {
-                        return Err(SyncError::Journal(format!(
-                            "unsupported field value type for pages.{field}"
-                        )))
-                    }
-                    None => sqlx::query(&sql).bind(Option::<String>::None),
-                };
+                if !schema.columns.contains(&field.as_str()) {
+                    continue; // unknown field for this schema — ignore
+                }
+                let sql = format!(
+                    "UPDATE {} SET {} = ? WHERE {} = ?",
+                    schema.name, field, schema.primary_key
+                );
+                let q = sqlx::query(&sql);
+                let q = bind_json(q, value)?;
                 q.bind(&op.row_id).execute(pool).await?;
             }
         }
         OpKind::Delete => {
-            sqlx::query("DELETE FROM pages WHERE id = ?")
-                .bind(&op.row_id)
-                .execute(pool)
-                .await?;
+            let sql = format!(
+                "DELETE FROM {} WHERE {} = ?",
+                schema.name, schema.primary_key
+            );
+            sqlx::query(&sql).bind(&op.row_id).execute(pool).await?;
         }
     }
     Ok(())

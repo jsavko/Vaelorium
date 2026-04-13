@@ -166,6 +166,105 @@ pub fn delete_op(
     }
 }
 
+/// Read all the columns named in `schema` for `row_id` and return as a field
+/// map. Used by [`emit_for_row`] to capture before/after state.
+pub async fn load_row_via_schema(
+    executor: &mut sqlx::SqliteConnection,
+    schema: &super::registry::TableSchema,
+    row_id: &str,
+) -> SyncResult<std::collections::BTreeMap<String, Option<JsonValue>>> {
+    use sqlx::Row;
+
+    let cols = schema.columns.join(", ");
+    let sql = format!(
+        "SELECT {} FROM {} WHERE {} = ?",
+        cols, schema.name, schema.primary_key
+    );
+    let row_opt = sqlx::query(&sql)
+        .bind(row_id)
+        .fetch_optional(executor)
+        .await?;
+    let row = row_opt.ok_or_else(|| {
+        super::SyncError::Journal(format!("{}: row '{}' not found", schema.name, row_id))
+    })?;
+
+    let mut out = std::collections::BTreeMap::new();
+    for col in schema.columns.iter() {
+        out.insert(col.to_string(), read_col_as_json(&row, col));
+    }
+    Ok(out)
+}
+
+/// Read a single column from a sqlx Row and convert to `Option<JsonValue>`.
+/// Tries common SQLite column types in order and falls back to `None`.
+fn read_col_as_json(row: &sqlx::sqlite::SqliteRow, col: &str) -> Option<JsonValue> {
+    use sqlx::Row;
+    if let Ok(v) = row.try_get::<Option<String>, _>(col) {
+        return v.map(JsonValue::String);
+    }
+    if let Ok(v) = row.try_get::<Option<i64>, _>(col) {
+        return v.map(|n| JsonValue::from(n));
+    }
+    if let Ok(v) = row.try_get::<Option<f64>, _>(col) {
+        return v.and_then(|n| serde_json::Number::from_f64(n).map(JsonValue::Number));
+    }
+    if let Ok(v) = row.try_get::<Option<bool>, _>(col) {
+        return v.map(JsonValue::Bool);
+    }
+    if let Ok(v) = row.try_get::<Option<Vec<u8>>, _>(col) {
+        // Encode BLOB as base64 string. (Used when registry is reading a binary
+        // column; the apply path will decode it.)
+        return v.map(|bytes| {
+            use base64::{engine::general_purpose, Engine as _};
+            JsonValue::String(general_purpose::STANDARD.encode(bytes))
+        });
+    }
+    None
+}
+
+/// All-in-one helper for op-emission inside a mutation transaction.
+///
+/// - `before`: the pre-mutation row state for Update/Delete (caller fetched
+///   it before running the SQL). For Insert pass `None`.
+/// - For Insert/Update, the post-mutation row is fetched here.
+/// - No-op when `session` is None (sync not configured).
+pub async fn emit_for_row(
+    executor: &mut sqlx::SqliteConnection,
+    schema: &super::registry::TableSchema,
+    row_id: &str,
+    kind: OpKind,
+    transaction_id: Ulid,
+    before: Option<std::collections::BTreeMap<String, Option<JsonValue>>>,
+    session: Option<(&str, Uuid)>,
+) -> SyncResult<()> {
+    let Some((tome_id, device_id)) = session else { return Ok(()) };
+
+    let op = match kind {
+        OpKind::Insert => {
+            let after = load_row_via_schema(executor, schema, row_id).await?;
+            insert_op(device_id, transaction_id, schema.name, row_id, after)
+        }
+        OpKind::Update => {
+            let before = before.ok_or_else(|| {
+                super::SyncError::Journal("emit_for_row(Update) requires before state".into())
+            })?;
+            let after = load_row_via_schema(executor, schema, row_id).await?;
+            match update_op(device_id, transaction_id, schema.name, row_id, &before, &after) {
+                Some(op) => op,
+                None => return Ok(()), // nothing actually changed
+            }
+        }
+        OpKind::Delete => {
+            let before = before.ok_or_else(|| {
+                super::SyncError::Journal("emit_for_row(Delete) requires before state".into())
+            })?;
+            delete_op(device_id, transaction_id, schema.name, row_id, before)
+        }
+    };
+
+    record_op(executor, &op, tome_id).await
+}
+
 /// Persist an op into `sync_journal_local`. Atomic with the caller's transaction.
 pub async fn record_op<'e, E>(executor: E, op: &Op, tome_id: &str) -> SyncResult<()>
 where

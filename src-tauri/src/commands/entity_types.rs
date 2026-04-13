@@ -1,6 +1,10 @@
 use crate::db::{self, DbPool, ManagedDb};
+use crate::sync::journal::{self, active_sync_session, emit_for_row, load_row_via_schema};
+use crate::sync::registry::TABLES;
+use crate::sync::SessionState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use ulid::Ulid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EntityType {
@@ -76,6 +80,7 @@ pub async fn get_entity_type(
 #[tauri::command]
 pub async fn create_entity_type(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     name: String,
     icon: Option<String>,
     color: Option<String>,
@@ -84,46 +89,42 @@ pub async fn create_entity_type(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Get next sort order
     let max_sort: Option<i64> = sqlx::query_scalar(
         "SELECT MAX(sort_order) FROM entity_types",
     )
     .fetch_one(&pool)
     .await
     .map_err(|e| e.to_string())?;
-
     let sort_order = max_sort.unwrap_or(0) + 1;
+
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     sqlx::query(
         "INSERT INTO entity_types (id, name, icon, color, is_builtin, sort_order, created_at, updated_at)
          VALUES (?, ?, ?, ?, FALSE, ?, ?, ?)",
     )
-    .bind(&id)
-    .bind(&name)
-    .bind(&icon)
-    .bind(&color)
-    .bind(sort_order)
-    .bind(&now)
-    .bind(&now)
-    .execute(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    .bind(&id).bind(&name).bind(&icon).bind(&color)
+    .bind(sort_order).bind(&now).bind(&now)
+    .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.entity_types, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
 
     Ok(EntityType {
-        id,
-        name,
-        icon,
-        color,
-        is_builtin: false,
-        sort_order,
-        created_at: now.clone(),
-        updated_at: now,
+        id, name, icon, color,
+        is_builtin: false, sort_order,
+        created_at: now.clone(), updated_at: now,
     })
 }
 
 #[tauri::command]
 pub async fn update_entity_type(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     id: String,
     name: Option<String>,
     icon: Option<String>,
@@ -137,34 +138,30 @@ pub async fn update_entity_type(
     let mut has_icon = false;
     let mut has_color = false;
 
-    if name.is_some() {
-        updates.push("name = ?".to_string());
-        has_name = true;
-    }
-    if icon.is_some() {
-        updates.push("icon = ?".to_string());
-        has_icon = true;
-    }
-    if color.is_some() {
-        updates.push("color = ?".to_string());
-        has_color = true;
-    }
+    if name.is_some() { updates.push("name = ?".to_string()); has_name = true; }
+    if icon.is_some() { updates.push("icon = ?".to_string()); has_icon = true; }
+    if color.is_some() { updates.push("color = ?".to_string()); has_color = true; }
+
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.entity_types, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
 
     let query_str = format!("UPDATE entity_types SET {} WHERE id = ?", updates.join(", "));
     let mut query = sqlx::query(&query_str).bind(&now);
-
-    if has_name {
-        query = query.bind(&name);
-    }
-    if has_icon {
-        query = query.bind(&icon);
-    }
-    if has_color {
-        query = query.bind(&color);
-    }
+    if has_name { query = query.bind(&name); }
+    if has_icon { query = query.bind(&icon); }
+    if has_color { query = query.bind(&color); }
     query = query.bind(&id);
+    query.execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
-    query.execute(&pool).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.entity_types, &id, journal::OpKind::Update, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
 
     get_entity_type_by_pool(&pool, &id).await
 }
@@ -172,11 +169,11 @@ pub async fn update_entity_type(
 #[tauri::command]
 pub async fn delete_entity_type(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
 
-    // Verify type exists
     let exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM entity_types WHERE id = ?)",
     )
@@ -189,19 +186,22 @@ pub async fn delete_entity_type(
         return Err("Entity type not found".to_string());
     }
 
-    // Clear entity_type_id from pages using this type
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.entity_types, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
+
     sqlx::query("UPDATE pages SET entity_type_id = NULL WHERE entity_type_id = ?")
-        .bind(&id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Delete the type (cascades to fields and values)
+        .bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
     sqlx::query("DELETE FROM entity_types WHERE id = ?")
-        .bind(&id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        .bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.entity_types, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }

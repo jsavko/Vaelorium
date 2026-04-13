@@ -1,6 +1,10 @@
 use crate::db::{self, ManagedDb};
+use crate::sync::journal::{self, active_sync_session, emit_for_row, load_row_via_schema};
+use crate::sync::registry::TABLES;
+use crate::sync::SessionState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use ulid::Ulid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RelationType {
@@ -71,6 +75,7 @@ pub async fn create_relation_type(
 #[tauri::command]
 pub async fn create_relation(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     source_page_id: String,
     target_page_id: String,
     relation_type_id: String,
@@ -80,18 +85,41 @@ pub async fn create_relation(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
     sqlx::query("INSERT INTO relations (id, source_page_id, target_page_id, relation_type_id, description, created_at) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(&id).bind(&source_page_id).bind(&target_page_id).bind(&relation_type_id).bind(&description).bind(&now)
-        .execute(&pool).await.map_err(|e| e.to_string())?;
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.relations, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
 
     Ok(Relation { id, source_page_id, target_page_id, relation_type_id, description, created_at: now })
 }
 
 #[tauri::command]
-pub async fn delete_relation(managed: State<'_, ManagedDb>, id: String) -> Result<(), String> {
+pub async fn delete_relation(
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+    id: String,
+) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.relations, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
     sqlx::query("DELETE FROM relations WHERE id = ?")
-        .bind(&id).execute(&pool).await.map_err(|e| e.to_string())?;
+        .bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.relations, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }
 
