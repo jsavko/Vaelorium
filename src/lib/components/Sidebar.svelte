@@ -161,10 +161,9 @@
       class:sync-idle={$syncIndicator === 'idle'}
       class:sync-syncing={$syncIndicator === 'syncing'}
       class:sync-conflicts={$syncIndicator === 'conflicts'}
-      class:sync-offline={$syncIndicator === 'offline'}
+      class:sync-offline={$syncIndicator === 'offline' || $syncIndicator === 'backup-missing'}
       class:sync-error={$syncIndicator === 'error'}
       class:sync-locked={$syncIndicator === 'locked'}
-      class:sync-offline={$syncIndicator === 'backup-missing'}
       onclick={handlePillClick}
       title={$syncIndicator === 'locked' ? 'Click to unlock' : 'Open sync settings'}
       data-testid="sync-pill"
