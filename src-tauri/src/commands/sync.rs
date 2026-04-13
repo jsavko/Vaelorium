@@ -77,6 +77,12 @@ pub async fn sync_enable(
     let pool = db::get_pool(managed.inner()).await?;
     let now = chrono::Utc::now();
 
+    // Materialize the Tome's stable UUID before any op ships, so the
+    // bucket prefix is locked in from the very first upload.
+    crate::sync::tome_identity::get_or_create_uuid(&pool)
+        .await
+        .map_err(|e| format!("tome identity: {e}"))?;
+
     let existing = SyncConfig::load(&pool, &input.tome_id)
         .await
         .map_err(|e| e.to_string())?;
@@ -131,7 +137,7 @@ pub async fn sync_now(
         .find(|c| c.enabled)
         .ok_or_else(|| "sync is not enabled for any Tome".to_string())?;
 
-    let backend = build_tome_backend(&app, &tome.tome_id).await?;
+    let backend = build_tome_backend(&app, &pool).await?;
     sync_tome_once(&pool, &tome.tome_id, &active.key, backend.as_ref())
         .await
         .map_err(|e| e.to_string())
@@ -227,7 +233,7 @@ pub async fn sync_take_snapshot(
         .into_iter()
         .find(|c| c.enabled)
         .ok_or_else(|| "sync is not enabled for any Tome".to_string())?;
-    let backend = build_tome_backend(&app, &tome.tome_id).await?;
+    let backend = build_tome_backend(&app, &pool).await?;
     let info = crate::sync::snapshot::take_snapshot(&pool, &active.key, backend.as_ref())
         .await
         .map_err(|e| e.to_string())?;
@@ -349,11 +355,13 @@ pub async fn sync_resolve_conflict(
 }
 
 /// Build a Tome-prefixed backend by loading the app-global config and
-/// wrapping with `tomes/{tome_id}/`. Used by sync_now /
-/// sync_take_snapshot and the runner.
+/// wrapping with `tomes/{tome_uuid}/`. The UUID is resolved from the
+/// per-Tome `tome_metadata` table (lazy-created on first access) so the
+/// prefix is device-independent. Used by sync_now / sync_take_snapshot
+/// and the runner.
 pub async fn build_tome_backend(
     app: &AppHandle,
-    tome_id: &str,
+    pool: &sqlx::SqlitePool,
 ) -> Result<Box<dyn SyncBackend + Send + Sync>, String> {
     let app_data_dir = app
         .path()
@@ -364,5 +372,8 @@ pub async fn build_tome_backend(
         .ok_or_else(|| "no backup destination configured".to_string())?;
     let raw = backup_cmd::build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
     let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
-    Ok(Box::new(PrefixedBackend::new(raw_arc, tome_prefix(tome_id))))
+    let uuid = crate::sync::tome_identity::get_or_create_uuid(pool)
+        .await
+        .map_err(|e| format!("tome identity: {e}"))?;
+    Ok(Box::new(PrefixedBackend::new(raw_arc, tome_prefix(&uuid))))
 }

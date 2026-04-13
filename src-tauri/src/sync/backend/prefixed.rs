@@ -89,24 +89,12 @@ impl SyncBackend for PrefixedBackend {
 
 /// Build the canonical Tome prefix.
 ///
-/// `tome_id` is currently the local file path of the .tome (e.g.
-/// `/home/james/Tomes/My Campaign.tome`), which contains slashes, spaces,
-/// and leaks the user's filesystem layout. We hash it to a stable,
-/// URL-safe, filesystem-safe identifier so the bucket has one clean
-/// `tomes/<hash>/` folder per Tome regardless of local path.
-pub fn tome_prefix(tome_id: &str) -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(tome_id.as_bytes());
-    let digest = h.finalize();
-    // 16 hex chars = 64 bits of entropy: enough to dodge collisions for
-    // any realistic per-device Tome count and short enough to scan.
-    let short: String = digest
-        .iter()
-        .take(8)
-        .map(|b| format!("{:02x}", b))
-        .collect();
-    format!("tomes/{short}")
+/// `tome_uuid` is the stable per-Tome UUID stored in `tome_metadata`
+/// (see `sync::tome_identity`). Using the UUID directly (not a hash of
+/// a local path) means the same Tome produces the same prefix on every
+/// device — which is what makes cross-device restore possible.
+pub fn tome_prefix(tome_uuid: &str) -> String {
+    format!("tomes/{tome_uuid}")
 }
 
 #[cfg(test)]
@@ -149,15 +137,9 @@ mod tests {
     }
 
     #[test]
-    fn tome_prefix_hashes_and_is_stable() {
-        let a = tome_prefix("/home/user/Tomes/My Campaign.tome");
-        let b = tome_prefix("/home/user/Tomes/My Campaign.tome");
-        let c = tome_prefix("/home/user/Tomes/Other.tome");
-        assert_eq!(a, b, "must be deterministic");
-        assert_ne!(a, c, "different Tomes must hash differently");
-        assert!(a.starts_with("tomes/"));
-        assert!(!a.contains(' '));
-        // No slash beyond the single `tomes/` boundary.
+    fn tome_prefix_uses_uuid_directly() {
+        let a = tome_prefix("0199abcd12ef4567890123456789abcd");
+        assert_eq!(a, "tomes/0199abcd12ef4567890123456789abcd");
         assert_eq!(a.matches('/').count(), 1);
     }
 }

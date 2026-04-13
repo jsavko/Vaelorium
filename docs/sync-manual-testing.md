@@ -15,6 +15,13 @@ your initials when you sign off.
 - [ ] One Tome open (create or open from TomePicker)
 - [ ] Sync backend reachable (Backblaze B2 / R2 / Minio / local folder — your choice)
 
+> **Upgrade note (post Phase 5.0):** the bucket prefix for each Tome is now derived
+> from a per-Tome UUID stored in `tome_metadata`, not from the local file path.
+> Previously synced buckets still contain data under the old path-derived prefix
+> (`tomes/<old-hash>/`); those prefixes become orphaned after this upgrade.
+> Delete the old `tomes/*` entries from your bucket and re-enable sync — a new
+> `tomes/<uuid>/` prefix is created on first upload.
+
 For a B2-style smoke setup:
 - Endpoint: `https://s3.us-west-000.backblazeb2.com`
 - Region: `us-west-000`

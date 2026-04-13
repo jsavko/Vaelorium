@@ -69,7 +69,7 @@ async fn run_loop(app: AppHandle, managed: ManagedDb, session: SessionState) {
         };
 
         for cfg in configs {
-            let backend = match crate::commands::sync::build_tome_backend(&app, &cfg.tome_id).await {
+            let backend = match crate::commands::sync::build_tome_backend(&app, &pool).await {
                 Ok(b) => b,
                 Err(e) => {
                     emit_error(&app, &cfg.tome_id, format!("backend init failed: {e}"));

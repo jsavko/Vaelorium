@@ -53,6 +53,7 @@ Self-hosted, offline-first LegendKeeper alternative for worldbuilders. Cross-pla
 - **Schema registry** at `src-tauri/src/sync/registry.rs` lists every sync-tracked table. Adding one: register in `TABLES`, call `journal::emit_for_row(&mut *tx, &TABLES.<name>, ...)` from each mutation function, call `session.nudge()` after commit.
 - **Special apply paths:** `page_content` (binary BLOB) and `page_tags` (M:N pivot with composite `page_id|tag_id` row_id). Everything else goes through the generic `engine::apply_op_via_schema`.
 - **Backends:** Filesystem (local folder or Syncthing) and S3-compatible (AWS, Cloudflare R2, Minio, Backblaze B2, Wasabi, Garage) — built on `aws-sdk-s3`.
+- **Tome identity:** bucket prefix is `tomes/{tome_uuid}/`, where `tome_uuid` is a stable per-Tome UUID lazy-created in `tome_metadata` (see `sync::tome_identity::get_or_create_uuid`). Path-independent — the same Tome produces the same prefix on every device, which is what makes cross-device restore work.
 - **Intentionally NOT synced:** wiki_links (derived from page content), versions (large; local-only), images (binary blob deferred), relation_types (built-ins dominate). Don't relitigate without strong reason.
 - **S3 testing:** `docs/sync-s3-testing.md` has a Minio-in-Docker recipe; the S3 backend has unit tests but no automated integration tests (thin translation layer on top of aws-sdk-s3 that would need a real bucket to exercise meaningfully).
 
