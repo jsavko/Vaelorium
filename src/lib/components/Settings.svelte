@@ -7,7 +7,7 @@
   import { loadPageTree } from '../stores/pageStore'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import { syncStatus, refreshSyncStatus } from '../stores/syncStore'
-  import { enableSync, disableSync, syncNow, takeSnapshot } from '../api/sync'
+  import { enableSync, disableSync, syncNow, takeSnapshot, unlockSync } from '../api/sync'
   import { currentTome } from '../stores/tomeStore'
 
   interface Props {
@@ -32,6 +32,7 @@
   // --- Sync tab state ---
 
   let syncSetupOpen = $state(false)
+  let syncUnlockPassphrase = $state('')
   let syncBackendKind = $state<'filesystem' | 's3'>('filesystem')
   let syncBackendPath = $state('')
   let syncS3Endpoint = $state('')
@@ -120,6 +121,19 @@
       showToast(out.error ? `Sync error: ${out.error}` : msg, out.error ? 'error' : 'success')
     } catch (e: any) {
       showToast(`Sync failed: ${e.message || e}`, 'error')
+    } finally { syncBusy = false }
+  }
+
+  async function handleUnlock() {
+    if (!syncUnlockPassphrase) return
+    syncBusy = true
+    try {
+      await unlockSync(syncUnlockPassphrase)
+      syncUnlockPassphrase = ''
+      await refreshSyncStatus()
+      showToast('Sync unlocked', 'success')
+    } catch (e: any) {
+      showToast(`Unlock failed: ${e.message || e}`, 'error')
     } finally { syncBusy = false }
   }
 
@@ -446,6 +460,22 @@
             <h3 class="settings-section-title">Sync</h3>
             {#if !isTauri}
               <p class="data-desc">Sync is only available in the desktop app.</p>
+            {:else if $syncStatus.enabled && $syncStatus.locked}
+              <p class="data-desc">
+                Sync is configured for this Tome but locked. Enter your passphrase to unlock and resume syncing.
+              </p>
+              <div class="sync-form">
+                <label class="sync-field">
+                  <span class="sync-label">Passphrase</span>
+                  <input type="password" bind:value={syncUnlockPassphrase} class="sync-input" autocomplete="current-password"
+                    onkeydown={(e) => { if (e.key === 'Enter') handleUnlock() }} />
+                </label>
+                <div class="sync-actions">
+                  <button class="data-btn primary" onclick={handleUnlock} disabled={syncBusy || !syncUnlockPassphrase}>
+                    {syncBusy ? 'Unlocking…' : 'Unlock'}
+                  </button>
+                </div>
+              </div>
             {:else if !$syncStatus.enabled && !syncSetupOpen}
               <p class="data-desc">
                 Sync is off. Enable it to keep this Tome synchronized across devices.

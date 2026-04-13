@@ -21,7 +21,12 @@ use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
 pub struct SyncStatusPayload {
+    /// `sync_config.enabled = 1` in the local DB. Persists across app restarts.
     pub enabled: bool,
+    /// True when sync is `enabled` but the in-memory key is missing
+    /// (after Tome reopen / app restart). User must call `sync_unlock` with
+    /// the passphrase before the runner can sync.
+    pub locked: bool,
     pub tome_id: Option<String>,
     pub backend_kind: Option<String>,
     pub backend_summary: Option<String>,
@@ -214,7 +219,7 @@ pub async fn sync_status(
                 _ => kind.clone(),
             };
             (
-                *en != 0 && active.is_some(),
+                *en != 0,
                 Some(id.clone()),
                 Some(kind.clone()),
                 Some(summary),
@@ -223,6 +228,9 @@ pub async fn sync_status(
         }
         None => (false, None, None, None, None),
     };
+    // "locked" = configured-and-enabled in DB but no in-memory key cached.
+    // Happens after Tome reopen since the key derivation is process-local.
+    let locked = enabled && active.is_none();
 
     let (last_sync_at, last_error, queue_size) = match &tome_id {
         Some(id) => {
@@ -252,6 +260,7 @@ pub async fn sync_status(
 
     Ok(SyncStatusPayload {
         enabled,
+        locked,
         tome_id,
         backend_kind,
         backend_summary,

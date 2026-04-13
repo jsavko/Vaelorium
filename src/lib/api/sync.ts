@@ -2,6 +2,10 @@ import { callCommand, isTauri } from './bridge'
 
 export interface SyncStatus {
   enabled: boolean
+  /** True when sync is configured/enabled in the DB but the in-memory key
+   *  is missing (after Tome reopen). User must call `unlockSync(passphrase)`
+   *  before the runner can sync. */
+  locked: boolean
   tomeId: string | null
   backendKind: string | null
   backendSummary: string | null
@@ -35,6 +39,7 @@ export interface SyncConflict {
 
 interface RawStatus {
   enabled: boolean
+  locked: boolean
   tome_id: string | null
   backend_kind: string | null
   backend_summary: string | null
@@ -59,6 +64,7 @@ interface RawConflict {
 
 const fromRawStatus = (r: RawStatus): SyncStatus => ({
   enabled: r.enabled,
+  locked: r.locked,
   tomeId: r.tome_id,
   backendKind: r.backend_kind,
   backendSummary: r.backend_summary,
@@ -115,6 +121,7 @@ export async function getSyncStatus(): Promise<SyncStatus> {
   if (!isTauri) {
     return {
       enabled: false,
+      locked: false,
       tomeId: null,
       backendKind: null,
       backendSummary: null,

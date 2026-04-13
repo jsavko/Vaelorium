@@ -3,6 +3,7 @@ import { getSyncStatus, listConflicts, subscribeSyncStatus, type SyncStatus, typ
 
 const initial: SyncStatus = {
   enabled: false,
+  locked: false,
   tomeId: null,
   backendKind: null,
   backendSummary: null,
@@ -17,11 +18,12 @@ export const syncStatus = writable<SyncStatus>(initial)
 export const syncConflicts = writable<SyncConflict[]>([])
 export const syncRunning = writable(false)
 
-/** "idle" | "syncing" | "conflicts" | "offline" | "error" */
+/** "idle" | "syncing" | "conflicts" | "offline" | "error" | "locked" */
 export const syncIndicator = derived(
   [syncStatus, syncRunning],
   ([$status, $running]) => {
     if (!$status.enabled) return 'offline' as const
+    if ($status.locked) return 'locked' as const
     if ($running) return 'syncing' as const
     if ($status.lastError) return 'error' as const
     if ($status.pendingConflicts > 0) return 'conflicts' as const

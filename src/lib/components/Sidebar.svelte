@@ -155,6 +155,7 @@
       class:sync-conflicts={$syncIndicator === 'conflicts'}
       class:sync-offline={$syncIndicator === 'offline'}
       class:sync-error={$syncIndicator === 'error'}
+      class:sync-locked={$syncIndicator === 'locked'}
       onclick={() => onOpenSettings?.()}
       title="Open sync settings"
       data-testid="sync-pill"
@@ -165,6 +166,7 @@
         {:else if $syncIndicator === 'conflicts'}{$syncStatus.pendingConflicts} conflict{$syncStatus.pendingConflicts === 1 ? '' : 's'}
         {:else if $syncIndicator === 'error'}Sync error
         {:else if $syncIndicator === 'offline'}Sync off
+        {:else if $syncIndicator === 'locked'}Sync locked
         {:else}Synced{/if}
       </span>
     </button>
@@ -324,6 +326,8 @@
   .sync-pill.sync-error .sync-dot { background: var(--color-status-error); }
   .sync-pill.sync-error { color: var(--color-status-error); }
   .sync-pill.sync-offline .sync-dot { background: var(--color-fg-tertiary); }
+  .sync-pill.sync-locked .sync-dot { background: var(--color-status-warning); }
+  .sync-pill.sync-locked { color: var(--color-status-warning); border-color: var(--color-status-warning); }
   @keyframes sync-pulse {
     0%, 100% { opacity: 1; }
     50%      { opacity: 0.4; }
