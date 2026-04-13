@@ -33,7 +33,10 @@ pub struct SyncStatusEvent {
 }
 
 pub fn start(app: AppHandle, managed: ManagedDb, session: SessionState) {
-    tokio::spawn(async move {
+    // Use Tauri's async runtime (which is Tokio under the hood) so this
+    // works when called from the synchronous setup hook, which doesn't
+    // have a Tokio runtime context the way #[tokio::main] does.
+    tauri::async_runtime::spawn(async move {
         run_loop(app, managed, session).await;
     });
 }
