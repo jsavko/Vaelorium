@@ -46,8 +46,8 @@
       } catch {
         // No Tome open — stay on Tome Picker
       }
-      // Initialize sync store + event subscription (no-op in browser mock).
-      initSyncStore().catch(() => {})
+      // Sync store init happens in the $isTomeOpen effect below — it's
+      // only meaningful once a Tome's DB is actually open.
     } else {
       // In browser mock, a Tome is always "open"
       isTomeOpen.set(true)
@@ -57,12 +57,19 @@
     }
   })
 
-  // Load entity types when a Tome is opened
+  // Load entity types + sync store when a Tome is opened. Previously
+  // initSyncStore() only ran once in onMount, which meant the sync store
+  // never learned about a Tome opened later via TomePicker — the sidebar
+  // sync pill never appeared because $syncStatus stayed in default
+  // (enabled:false, tomeId:null). Re-running when a Tome opens fixes this.
   $effect(() => {
     if ($isTomeOpen) {
       loadEntityTypes()
       loadMaps()
       loadTimelines()
+      if (isTauri) {
+        initSyncStore().catch(() => {})
+      }
     }
   })
 
