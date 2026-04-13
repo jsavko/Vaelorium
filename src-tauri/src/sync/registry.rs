@@ -23,15 +23,21 @@ pub struct TableSchema {
 pub struct TableRegistry {
     pub pages: TableSchema,
     pub entity_types: TableSchema,
+    pub entity_type_fields: TableSchema,
+    pub entity_field_values: TableSchema,
     pub relations: TableSchema,
     pub relation_types: TableSchema,
     pub tags: TableSchema,
-    // page_tags (M:N pivot) deferred to Phase 4b — composite primary key
-    // needs custom apply logic that bypasses `apply_op_via_schema`.
+    // page_tags is M:N pivot — `engine::apply_page_tags_op` handles it
+    // specially because the composite key bypasses `apply_op_via_schema`.
+    pub page_tags: TableSchema,
     pub maps: TableSchema,
     pub map_pins: TableSchema,
     pub timelines: TableSchema,
     pub timeline_events: TableSchema,
+    pub boards: TableSchema,
+    pub board_cards: TableSchema,
+    pub board_connectors: TableSchema,
 }
 
 pub static TABLES: TableRegistry = TableRegistry {
@@ -54,6 +60,22 @@ pub static TABLES: TableRegistry = TableRegistry {
         primary_key: "id",
         meta_fields: &[],
     },
+    entity_type_fields: TableSchema {
+        name: "entity_type_fields",
+        columns: &[
+            "id", "entity_type_id", "name", "field_type",
+            "sort_order", "is_required", "default_value",
+            "options", "reference_type_id", "created_at",
+        ],
+        primary_key: "id",
+        meta_fields: &[],
+    },
+    entity_field_values: TableSchema {
+        name: "entity_field_values",
+        columns: &["id", "page_id", "field_id", "value"],
+        primary_key: "id",
+        meta_fields: &[],
+    },
     relations: TableSchema {
         name: "relations",
         columns: &[
@@ -73,6 +95,12 @@ pub static TABLES: TableRegistry = TableRegistry {
         name: "tags",
         columns: &["id", "name", "color"],
         primary_key: "id",
+        meta_fields: &[],
+    },
+    page_tags: TableSchema {
+        name: "page_tags",
+        columns: &["page_id", "tag_id"],
+        primary_key: "page_id|tag_id",
         meta_fields: &[],
     },
     maps: TableSchema {
@@ -112,6 +140,30 @@ pub static TABLES: TableRegistry = TableRegistry {
         primary_key: "id",
         meta_fields: &[],
     },
+    boards: TableSchema {
+        name: "boards",
+        columns: &["id", "name", "sort_order", "created_at", "updated_at"],
+        primary_key: "id",
+        meta_fields: &[],
+    },
+    board_cards: TableSchema {
+        name: "board_cards",
+        columns: &[
+            "id", "board_id", "page_id", "content",
+            "x", "y", "width", "height", "color", "created_at",
+        ],
+        primary_key: "id",
+        meta_fields: &[],
+    },
+    board_connectors: TableSchema {
+        name: "board_connectors",
+        columns: &[
+            "id", "board_id", "source_card_id", "target_card_id",
+            "label", "color", "created_at",
+        ],
+        primary_key: "id",
+        meta_fields: &[],
+    },
 };
 
 /// Lookup helper used by the engine apply path.
@@ -119,13 +171,19 @@ pub fn schema_by_name(name: &str) -> Option<&'static TableSchema> {
     Some(match name {
         "pages" => &TABLES.pages,
         "entity_types" => &TABLES.entity_types,
+        "entity_type_fields" => &TABLES.entity_type_fields,
+        "entity_field_values" => &TABLES.entity_field_values,
         "relations" => &TABLES.relations,
         "relation_types" => &TABLES.relation_types,
         "tags" => &TABLES.tags,
+        "page_tags" => &TABLES.page_tags,
         "maps" => &TABLES.maps,
         "map_pins" => &TABLES.map_pins,
         "timelines" => &TABLES.timelines,
         "timeline_events" => &TABLES.timeline_events,
+        "boards" => &TABLES.boards,
+        "board_cards" => &TABLES.board_cards,
+        "board_connectors" => &TABLES.board_connectors,
         _ => return None,
     })
 }

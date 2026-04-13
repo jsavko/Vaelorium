@@ -272,8 +272,10 @@ fn filter_fields(op: &Op, exclude: &std::collections::HashSet<String>) -> Op {
 /// Crucially, this writes raw SQL — it does NOT call [`journal::record_op`],
 /// so applying a remote op doesn't loop back into the journal.
 async fn apply_op(pool: &SqlitePool, op: &Op) -> SyncResult<()> {
-    if op.table == "page_content" {
-        return apply_page_content_op(pool, op).await;
+    match op.table.as_str() {
+        "page_content" => return apply_page_content_op(pool, op).await,
+        "page_tags" => return apply_page_tags_op(pool, op).await,
+        _ => {}
     }
 
     let schema = super::registry::schema_by_name(&op.table).ok_or_else(|| {
@@ -281,6 +283,26 @@ async fn apply_op(pool: &SqlitePool, op: &Op) -> SyncResult<()> {
     })?;
 
     apply_op_via_schema(pool, schema, op).await
+}
+
+/// Special-case apply for the `page_tags` M:N pivot. `op.row_id` is encoded
+/// as `"<page_id>|<tag_id>"`. The standard `apply_op_via_schema` path can't
+/// handle composite keys, so this dispatches manually.
+async fn apply_page_tags_op(pool: &SqlitePool, op: &Op) -> SyncResult<()> {
+    let (page_id, tag_id) = op.row_id.split_once('|').ok_or_else(|| {
+        SyncError::Journal(format!("page_tags op has malformed row_id '{}'", op.row_id))
+    })?;
+    match op.kind {
+        OpKind::Insert | OpKind::Update => {
+            sqlx::query("INSERT OR IGNORE INTO page_tags (page_id, tag_id) VALUES (?, ?)")
+                .bind(page_id).bind(tag_id).execute(pool).await?;
+        }
+        OpKind::Delete => {
+            sqlx::query("DELETE FROM page_tags WHERE page_id = ? AND tag_id = ?")
+                .bind(page_id).bind(tag_id).execute(pool).await?;
+        }
+    }
+    Ok(())
 }
 
 /// Bind a JsonValue into a sqlx query. Maps JSON types to SQLite types.

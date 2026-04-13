@@ -1,6 +1,10 @@
 use crate::db::{self, ManagedDb};
+use crate::sync::journal::{self, active_sync_session, emit_for_row, load_row_via_schema};
+use crate::sync::registry::TABLES;
+use crate::sync::SessionState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use ulid::Ulid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EntityTypeField {
@@ -60,6 +64,7 @@ pub async fn list_entity_type_fields(
 #[tauri::command]
 pub async fn create_entity_type_field(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     entity_type_id: String,
     name: String,
     field_type: String,
@@ -73,7 +78,6 @@ pub async fn create_entity_type_field(
     let now = chrono::Utc::now().to_rfc3339();
     let is_required = is_required.unwrap_or(false);
 
-    // Get next sort order for this type
     let max_sort: Option<i64> = sqlx::query_scalar(
         "SELECT MAX(sort_order) FROM entity_type_fields WHERE entity_type_id = ?",
     )
@@ -81,26 +85,25 @@ pub async fn create_entity_type_field(
     .fetch_one(&pool)
     .await
     .map_err(|e| e.to_string())?;
-
     let sort_order = max_sort.unwrap_or(0) + 1;
+
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
     sqlx::query(
         "INSERT INTO entity_type_fields (id, entity_type_id, name, field_type, sort_order, is_required, default_value, options, reference_type_id, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(&id)
-    .bind(&entity_type_id)
-    .bind(&name)
-    .bind(&field_type)
-    .bind(sort_order)
-    .bind(is_required)
-    .bind(&default_value)
-    .bind(&options)
-    .bind(&reference_type_id)
-    .bind(&now)
-    .execute(&pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    .bind(&id).bind(&entity_type_id).bind(&name).bind(&field_type)
+    .bind(sort_order).bind(is_required).bind(&default_value)
+    .bind(&options).bind(&reference_type_id).bind(&now)
+    .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.entity_type_fields, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
 
     Ok(EntityTypeField {
         id,
@@ -119,6 +122,7 @@ pub async fn create_entity_type_field(
 #[tauri::command]
 pub async fn update_entity_type_field(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     id: String,
     name: Option<String>,
     field_type: Option<String>,
@@ -157,6 +161,12 @@ pub async fn update_entity_type_field(
         });
     }
 
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.entity_type_fields, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
+
     let query_str = format!("UPDATE entity_type_fields SET {} WHERE id = ?", updates.join(", "));
     let mut query = sqlx::query(&query_str);
 
@@ -168,19 +178,24 @@ pub async fn update_entity_type_field(
     if let Some(ref v) = reference_type_id { query = query.bind(v); }
     query = query.bind(&id);
 
-    query.execute(&pool).await.map_err(|e| e.to_string())?;
+    query.execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
-    // Fetch and return updated field
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.entity_type_fields, &id, journal::OpKind::Update, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+
     let row = sqlx::query_as::<_, (String, String, String, String, i64, bool, Option<String>, Option<String>, Option<String>, String)>(
         "SELECT id, entity_type_id, name, field_type, sort_order, is_required,
                 default_value, options, reference_type_id, created_at
          FROM entity_type_fields WHERE id = ?",
     )
     .bind(&id)
-    .fetch_optional(&pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| e.to_string())?
     .ok_or_else(|| "Field not found".to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
 
     Ok(EntityTypeField {
         id: row.0, entity_type_id: row.1, name: row.2, field_type: row.3,
@@ -192,14 +207,22 @@ pub async fn update_entity_type_field(
 #[tauri::command]
 pub async fn delete_entity_type_field(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.entity_type_fields, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
     sqlx::query("DELETE FROM entity_type_fields WHERE id = ?")
-        .bind(&id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        .bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.entity_type_fields, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }
 

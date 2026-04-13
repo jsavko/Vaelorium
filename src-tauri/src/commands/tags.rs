@@ -1,8 +1,9 @@
 use crate::db::{self, ManagedDb};
-use crate::sync::journal::{self, active_sync_session, emit_for_row};
+use crate::sync::journal::{self, active_sync_session, delete_op, emit_for_row, insert_op, record_op};
 use crate::sync::registry::TABLES;
 use crate::sync::SessionState;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use tauri::State;
 use ulid::Ulid;
 
@@ -60,32 +61,50 @@ pub async fn list_tags(managed: State<'_, ManagedDb>) -> Result<Vec<Tag>, String
 #[tauri::command]
 pub async fn add_tag_to_page(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     page_id: String,
     tag_id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query("INSERT OR IGNORE INTO page_tags (page_id, tag_id) VALUES (?, ?)")
-        .bind(&page_id)
-        .bind(&tag_id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        .bind(&page_id).bind(&tag_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    if let Some((tome_id, device_id)) = sync_session.as_ref() {
+        let composite = format!("{}|{}", page_id, tag_id);
+        let mut fields = BTreeMap::new();
+        fields.insert("page_id".to_string(), Some(serde_json::json!(page_id)));
+        fields.insert("tag_id".to_string(), Some(serde_json::json!(tag_id)));
+        let op = insert_op(*device_id, Ulid::new(), "page_tags", &composite, fields);
+        record_op(&mut *tx, &op, tome_id).await.map_err(|e| e.to_string())?;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn remove_tag_from_page(
     managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
     page_id: String,
     tag_id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query("DELETE FROM page_tags WHERE page_id = ? AND tag_id = ?")
-        .bind(&page_id)
-        .bind(&tag_id)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        .bind(&page_id).bind(&tag_id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    if let Some((tome_id, device_id)) = sync_session.as_ref() {
+        let composite = format!("{}|{}", page_id, tag_id);
+        let mut prev = BTreeMap::new();
+        prev.insert("page_id".to_string(), Some(serde_json::json!(page_id)));
+        prev.insert("tag_id".to_string(), Some(serde_json::json!(tag_id)));
+        let op = delete_op(*device_id, Ulid::new(), "page_tags", &composite, prev);
+        record_op(&mut *tx, &op, tome_id).await.map_err(|e| e.to_string())?;
+    }
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }
 

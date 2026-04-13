@@ -512,6 +512,109 @@ async fn registry_entity_types_propagate() {
 }
 
 // ============================================================================
+// Registry — boards table (the largest of the registry-wired tables).
+// ============================================================================
+#[tokio::test]
+async fn registry_boards_propagate() {
+    use vaelorium_lib::sync::journal::{emit_for_row, OpKind};
+    use vaelorium_lib::sync::registry::TABLES;
+
+    let backend_dir = shared_backend_dir();
+    let backend = make_backend(&backend_dir).await;
+    let salt = generate_salt();
+    let key = make_key(&salt);
+
+    let d1 = Device::new("d1").await;
+    let d2 = Device::new("d2").await;
+    d1.enable_sync(&salt).await;
+    d2.enable_sync(&salt).await;
+
+    // d1 creates a board + a card on it via raw SQL + emit_for_row.
+    let board_id = Uuid::new_v4().to_string();
+    let card_id = Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let session = (TOME_ID, d1.device_id);
+
+    let mut tx = d1.pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO boards (id, name, sort_order, created_at, updated_at) VALUES (?, 'Plot Board', 0, ?, ?)")
+        .bind(&board_id).bind(&now).bind(&now)
+        .execute(&mut *tx).await.unwrap();
+    emit_for_row(&mut *tx, &TABLES.boards, &board_id, OpKind::Insert, Ulid::new(), None, Some(session))
+        .await.unwrap();
+
+    sqlx::query("INSERT INTO board_cards (id, board_id, page_id, content, x, y, width, height, color, created_at) VALUES (?, ?, NULL, 'A clue', 100, 100, 200, 120, NULL, ?)")
+        .bind(&card_id).bind(&board_id).bind(&now)
+        .execute(&mut *tx).await.unwrap();
+    emit_for_row(&mut *tx, &TABLES.board_cards, &card_id, OpKind::Insert, Ulid::new(), None, Some(session))
+        .await.unwrap();
+    tx.commit().await.unwrap();
+
+    d1.sync(&key, &backend).await;
+    let outcome = d2.sync(&key, &backend).await;
+    assert!(outcome.ops_applied >= 2);
+
+    let board_name: Option<String> = sqlx::query_scalar("SELECT name FROM boards WHERE id = ?")
+        .bind(&board_id).fetch_optional(&d2.pool).await.unwrap();
+    assert_eq!(board_name.as_deref(), Some("Plot Board"));
+
+    let card_content: Option<String> = sqlx::query_scalar("SELECT content FROM board_cards WHERE id = ?")
+        .bind(&card_id).fetch_optional(&d2.pool).await.unwrap();
+    assert_eq!(card_content.as_deref(), Some("A clue"));
+}
+
+// ============================================================================
+// Registry — M:N page_tags pivot via the special apply path.
+// ============================================================================
+#[tokio::test]
+async fn registry_page_tags_pivot_propagates() {
+    use vaelorium_lib::sync::journal::{insert_op, record_op};
+    use std::collections::BTreeMap;
+
+    let backend_dir = shared_backend_dir();
+    let backend = make_backend(&backend_dir).await;
+    let salt = generate_salt();
+    let key = make_key(&salt);
+
+    let d1 = Device::new("d1").await;
+    let d2 = Device::new("d2").await;
+    d1.enable_sync(&salt).await;
+    d2.enable_sync(&salt).await;
+
+    // d1 creates a page + a tag, then associates them (M:N pivot row).
+    let page_id = d1.create_page("Tagged Page", None).await;
+
+    let tag_id = Uuid::new_v4().to_string();
+    let mut tx = d1.pool.begin().await.unwrap();
+    sqlx::query("INSERT INTO tags (id, name, color) VALUES (?, 'mystery', '#5C7AB8')")
+        .bind(&tag_id).execute(&mut *tx).await.unwrap();
+    let mut tag_fields = BTreeMap::new();
+    tag_fields.insert("name".into(), Some(serde_json::json!("mystery")));
+    tag_fields.insert("color".into(), Some(serde_json::json!("#5C7AB8")));
+    let tag_op = insert_op(d1.device_id, Ulid::new(), "tags", &tag_id, tag_fields);
+    record_op(&mut *tx, &tag_op, TOME_ID).await.unwrap();
+
+    sqlx::query("INSERT INTO page_tags (page_id, tag_id) VALUES (?, ?)")
+        .bind(&page_id).bind(&tag_id).execute(&mut *tx).await.unwrap();
+    let composite = format!("{}|{}", page_id, tag_id);
+    let mut pt_fields = BTreeMap::new();
+    pt_fields.insert("page_id".into(), Some(serde_json::json!(page_id)));
+    pt_fields.insert("tag_id".into(), Some(serde_json::json!(tag_id)));
+    let pt_op = insert_op(d1.device_id, Ulid::new(), "page_tags", &composite, pt_fields);
+    record_op(&mut *tx, &pt_op, TOME_ID).await.unwrap();
+    tx.commit().await.unwrap();
+
+    d1.sync(&key, &backend).await;
+    d2.sync(&key, &backend).await;
+
+    // d2 should now have the page, the tag, and the association.
+    let association: Option<i64> = sqlx::query_scalar(
+        "SELECT 1 FROM page_tags WHERE page_id = ? AND tag_id = ?",
+    )
+    .bind(&page_id).bind(&tag_id).fetch_optional(&d2.pool).await.unwrap();
+    assert!(association.is_some(), "M:N pivot row should exist on d2");
+}
+
+// ============================================================================
 // Defensive — schema mismatch parks instead of crashing.
 // ============================================================================
 #[tokio::test]

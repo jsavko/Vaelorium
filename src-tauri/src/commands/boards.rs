@@ -1,6 +1,10 @@
 use crate::db::{self, ManagedDb};
+use crate::sync::journal::{self, active_sync_session, emit_for_row, load_row_via_schema};
+use crate::sync::registry::TABLES;
+use crate::sync::SessionState;
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use ulid::Ulid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Board {
@@ -37,13 +41,25 @@ pub struct BoardConnector {
 }
 
 #[tauri::command]
-pub async fn create_board(managed: State<'_, ManagedDb>, name: String) -> Result<Board, String> {
+pub async fn create_board(
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+    name: String,
+) -> Result<Board, String> {
     let pool = db::get_pool(managed.inner()).await?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
+
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query("INSERT INTO boards (id, name, sort_order, created_at, updated_at) VALUES (?, ?, 0, ?, ?)")
         .bind(&id).bind(&name).bind(&now).bind(&now)
-        .execute(&pool).await.map_err(|e| e.to_string())?;
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.boards, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(Board { id, name, sort_order: 0, created_at: now.clone(), updated_at: now })
 }
 
@@ -57,52 +73,103 @@ pub async fn list_boards(managed: State<'_, ManagedDb>) -> Result<Vec<Board>, St
 }
 
 #[tauri::command]
-pub async fn delete_board(managed: State<'_, ManagedDb>, id: String) -> Result<(), String> {
+pub async fn delete_board(
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+    id: String,
+) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
-    sqlx::query("DELETE FROM boards WHERE id = ?").bind(&id).execute(&pool).await.map_err(|e| e.to_string())?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.boards, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
+    sqlx::query("DELETE FROM boards WHERE id = ?").bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.boards, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn create_card(
-    managed: State<'_, ManagedDb>, board_id: String, x: f64, y: f64,
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+    board_id: String, x: f64, y: f64,
     content: Option<String>, page_id: Option<String>, color: Option<String>,
 ) -> Result<BoardCard, String> {
     let pool = db::get_pool(managed.inner()).await?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query("INSERT INTO board_cards (id, board_id, page_id, content, x, y, width, height, color, created_at) VALUES (?, ?, ?, ?, ?, ?, 200, 120, ?, ?)")
         .bind(&id).bind(&board_id).bind(&page_id).bind(&content).bind(x).bind(y).bind(&color).bind(&now)
-        .execute(&pool).await.map_err(|e| e.to_string())?;
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.board_cards, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(BoardCard { id, board_id, page_id, content, x, y, width: 200.0, height: 120.0, color, created_at: now })
 }
 
 #[tauri::command]
 pub async fn update_card(
-    managed: State<'_, ManagedDb>, id: String,
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+    id: String,
     x: Option<f64>, y: Option<f64>, content: Option<String>,
     page_id: Option<String>, color: Option<String>,
     width: Option<f64>, height: Option<f64>,
 ) -> Result<BoardCard, String> {
     let pool = db::get_pool(managed.inner()).await?;
-    if let Some(v) = x { sqlx::query("UPDATE board_cards SET x = ? WHERE id = ?").bind(v).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
-    if let Some(v) = y { sqlx::query("UPDATE board_cards SET y = ? WHERE id = ?").bind(v).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
-    if let Some(ref v) = content { sqlx::query("UPDATE board_cards SET content = ? WHERE id = ?").bind(v).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
-    if let Some(ref v) = page_id { sqlx::query("UPDATE board_cards SET page_id = ? WHERE id = ?").bind(v).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
-    if let Some(ref v) = color { sqlx::query("UPDATE board_cards SET color = ? WHERE id = ?").bind(v).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
-    if let Some(v) = width { sqlx::query("UPDATE board_cards SET width = ? WHERE id = ?").bind(v).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
-    if let Some(v) = height { sqlx::query("UPDATE board_cards SET height = ? WHERE id = ?").bind(v).bind(&id).execute(&pool).await.map_err(|e| e.to_string())?; }
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.board_cards, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
+
+    if let Some(v) = x { sqlx::query("UPDATE board_cards SET x = ? WHERE id = ?").bind(v).bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?; }
+    if let Some(v) = y { sqlx::query("UPDATE board_cards SET y = ? WHERE id = ?").bind(v).bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?; }
+    if let Some(ref v) = content { sqlx::query("UPDATE board_cards SET content = ? WHERE id = ?").bind(v).bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?; }
+    if let Some(ref v) = page_id { sqlx::query("UPDATE board_cards SET page_id = ? WHERE id = ?").bind(v).bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?; }
+    if let Some(ref v) = color { sqlx::query("UPDATE board_cards SET color = ? WHERE id = ?").bind(v).bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?; }
+    if let Some(v) = width { sqlx::query("UPDATE board_cards SET width = ? WHERE id = ?").bind(v).bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?; }
+    if let Some(v) = height { sqlx::query("UPDATE board_cards SET height = ? WHERE id = ?").bind(v).bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?; }
+
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.board_cards, &id, journal::OpKind::Update, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
 
     let row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, f64, f64, f64, f64, Option<String>, String)>(
         "SELECT id, board_id, page_id, content, x, y, width, height, color, created_at FROM board_cards WHERE id = ?",
-    ).bind(&id).fetch_one(&pool).await.map_err(|e| e.to_string())?;
+    ).bind(&id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(BoardCard { id: row.0, board_id: row.1, page_id: row.2, content: row.3, x: row.4, y: row.5, width: row.6, height: row.7, color: row.8, created_at: row.9 })
 }
 
 #[tauri::command]
-pub async fn delete_card(managed: State<'_, ManagedDb>, id: String) -> Result<(), String> {
+pub async fn delete_card(
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+    id: String,
+) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
-    sqlx::query("DELETE FROM board_cards WHERE id = ?").bind(&id).execute(&pool).await.map_err(|e| e.to_string())?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.board_cards, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
+    sqlx::query("DELETE FROM board_cards WHERE id = ?").bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.board_cards, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }
 
@@ -117,23 +184,46 @@ pub async fn get_board_cards(managed: State<'_, ManagedDb>, board_id: String) ->
 
 #[tauri::command]
 pub async fn create_connector(
-    managed: State<'_, ManagedDb>, board_id: String,
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+    board_id: String,
     source_card_id: String, target_card_id: String,
     label: Option<String>, color: Option<String>,
 ) -> Result<BoardConnector, String> {
     let pool = db::get_pool(managed.inner()).await?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
     sqlx::query("INSERT INTO board_connectors (id, board_id, source_card_id, target_card_id, label, color, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .bind(&id).bind(&board_id).bind(&source_card_id).bind(&target_card_id).bind(&label).bind(&color).bind(&now)
-        .execute(&pool).await.map_err(|e| e.to_string())?;
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.board_connectors, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(BoardConnector { id, board_id, source_card_id, target_card_id, label, color, created_at: now })
 }
 
 #[tauri::command]
-pub async fn delete_connector(managed: State<'_, ManagedDb>, id: String) -> Result<(), String> {
+pub async fn delete_connector(
+    managed: State<'_, ManagedDb>,
+    session: State<'_, SessionState>,
+    id: String,
+) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
-    sqlx::query("DELETE FROM board_connectors WHERE id = ?").bind(&id).execute(&pool).await.map_err(|e| e.to_string())?;
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.board_connectors, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
+    sqlx::query("DELETE FROM board_connectors WHERE id = ?").bind(&id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.board_connectors, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    session.nudge();
     Ok(())
 }
 
