@@ -23,6 +23,11 @@
     return JSON.stringify(v)
   }
 
+  function humanizeField(name: string): string {
+    const cleaned = name.replace(/_/g, ' ')
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+  }
+
   // Group by table+row so a user resolving 3 fields on one row sees them together.
   let groups = $derived.by(() => {
     const by: Record<string, SyncConflict[]> = {}
@@ -32,8 +37,8 @@
     }
     return Object.entries(by).map(([key, items]) => ({
       key,
-      tableName: items[0].tableName,
-      rowId: items[0].rowId,
+      tableLabel: items[0].tableLabel,
+      rowLabel: items[0].rowLabel,
       items,
     }))
   })
@@ -86,12 +91,12 @@
           {#each groups as g (g.key)}
             <div class="group">
               <div class="group-head">
-                <span class="group-table">{g.tableName}</span>
-                <span class="group-row">row {g.rowId}</span>
+                <span class="group-table">{g.tableLabel}</span>
+                <span class="group-row">{g.rowLabel}</span>
               </div>
               {#each g.items as c (c.conflictId)}
                 <div class="conflict-row">
-                  <div class="field">{c.fieldName}</div>
+                  <div class="field">{humanizeField(c.fieldName)}</div>
                   <label class="choice" class:selected={(choices[c.conflictId] ?? 'local') === 'local'}>
                     <input
                       type="radio"

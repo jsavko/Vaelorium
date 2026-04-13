@@ -48,6 +48,66 @@ pub struct ConflictPayload {
     pub local_op_id: String,
     pub remote_op_id: String,
     pub detected_at: String,
+    /// Human-readable label for the conflicting row (e.g. a page title or
+    /// entity-type name). Falls back to a short row_id if the row is no
+    /// longer in the local DB or the table has no natural name column.
+    pub row_label: String,
+    /// Humanized table name for UI ("Page", "Entity type", ...).
+    pub table_label: String,
+}
+
+fn humanize_table(table: &str) -> &'static str {
+    match table {
+        "pages" => "Page",
+        "entity_types" => "Entity type",
+        "entity_type_fields" => "Entity type field",
+        "entity_field_values" => "Entity field value",
+        "relations" => "Relation",
+        "relation_types" => "Relation type",
+        "tags" => "Tag",
+        "page_tags" => "Page tag",
+        "maps" => "Map",
+        "map_pins" => "Map pin",
+        "timelines" => "Timeline",
+        "timeline_events" => "Timeline event",
+        "boards" => "Board",
+        "board_cards" => "Board card",
+        "board_connectors" => "Board connector",
+        _ => "Row",
+    }
+}
+
+/// Best-effort resolution of a row's human-readable label. The column
+/// choice per table is hard-coded — only known tables get a join; anything
+/// else falls back to a truncated row_id. Safe against SQL injection
+/// because both `table` and `col` are selected from a fixed match.
+async fn resolve_row_label(pool: &sqlx::SqlitePool, table: &str, row_id: &str) -> String {
+    let (lookup_col, name_col): (&str, Option<&str>) = match table {
+        "pages" => ("id", Some("title")),
+        "entity_types" => ("id", Some("name")),
+        "entity_type_fields" => ("id", Some("label")),
+        "tags" => ("id", Some("name")),
+        "maps" => ("id", Some("name")),
+        "timelines" => ("id", Some("name")),
+        "boards" => ("id", Some("name")),
+        "relation_types" => ("id", Some("name")),
+        _ => ("id", None),
+    };
+    if let Some(col) = name_col {
+        let sql = format!("SELECT {col} FROM {table} WHERE {lookup_col} = ? LIMIT 1");
+        if let Ok(Some(name)) = sqlx::query_scalar::<_, Option<String>>(&sql)
+            .bind(row_id)
+            .fetch_optional(pool)
+            .await
+        {
+            if let Some(n) = name.filter(|s| !s.is_empty()) {
+                return n;
+            }
+        }
+    }
+    // Fallback: short prefix so the user has *something* to distinguish rows.
+    let short: String = row_id.chars().take(8).collect();
+    format!("({short}…)")
 }
 
 #[derive(Debug, Deserialize)]
@@ -258,9 +318,11 @@ pub async fn sync_list_conflicts(
     .await
     .map_err(|e| e.to_string())?;
 
-    Ok(rows
-        .into_iter()
-        .map(|r| ConflictPayload {
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let row_label = resolve_row_label(&pool, &r.1, &r.2).await;
+        let table_label = humanize_table(&r.1).to_string();
+        out.push(ConflictPayload {
             conflict_id: r.0,
             table_name: r.1,
             row_id: r.2,
@@ -270,8 +332,11 @@ pub async fn sync_list_conflicts(
             local_op_id: r.6,
             remote_op_id: r.7,
             detected_at: r.8,
-        })
-        .collect())
+            row_label,
+            table_label,
+        });
+    }
+    Ok(out)
 }
 
 #[derive(Debug, Deserialize)]

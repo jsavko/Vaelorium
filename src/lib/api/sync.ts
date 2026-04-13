@@ -37,6 +37,10 @@ export interface SyncConflict {
   localOpId: string
   remoteOpId: string
   detectedAt: string
+  /** Human-readable label for the row (title/name/etc, or truncated id fallback). */
+  rowLabel: string
+  /** Humanized table name ("Page", "Entity type", ...). */
+  tableLabel: string
 }
 
 interface RawStatus {
@@ -63,6 +67,8 @@ interface RawConflict {
   local_op_id: string
   remote_op_id: string
   detected_at: string
+  row_label: string
+  table_label: string
 }
 
 const fromRawStatus = (r: RawStatus): SyncStatus => ({
@@ -89,6 +95,8 @@ const fromRawConflict = (r: RawConflict): SyncConflict => ({
   localOpId: r.local_op_id,
   remoteOpId: r.remote_op_id,
   detectedAt: r.detected_at,
+  rowLabel: r.row_label,
+  tableLabel: r.table_label,
 })
 
 export interface EnableSyncInput {
