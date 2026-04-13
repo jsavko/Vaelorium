@@ -20,6 +20,7 @@
   import UpdateNotification from './lib/components/UpdateNotification.svelte'
   import ConflictResolver from './lib/components/ConflictResolver.svelte'
   import ConflictsModal from './lib/components/ConflictsModal.svelte'
+  import BackupSetupWizard from './lib/components/BackupSetupWizard.svelte'
   import { initSyncStore, syncStatus } from './lib/stores/syncStore'
   import { onMount } from 'svelte'
   import { createPage, currentPageId } from './lib/stores/pageStore'
@@ -77,6 +78,7 @@
   let detailsOpen = $state(false)
   let settingsOpen = $state(false)
   let conflictsModalOpen = $state(false)
+  let wizardOpen = $state(false)
   let settingsInitialTab = $state<string | undefined>(undefined)
   let newPageModalOpen = $state(false)
   let newPageInitialTypeId = $state<string | null>(null)
@@ -144,6 +146,7 @@
   <div class="app-layout">
     <Sidebar
       onOpenConflicts={() => { conflictsModalOpen = true }}
+      onOpenWizard={() => { wizardOpen = true }}
       onOpenSettings={(tab?: string) => { settingsInitialTab = tab; settingsOpen = true }}
       onNewPage={() => { newPageInitialTypeId = null; newPageModalOpen = true }}
       onSelectType={(typeId) => { activeTypeListId = typeId; activeModule = 'entity-list' }}
@@ -193,8 +196,9 @@
   <SearchOverlay open={searchOpen} onClose={() => searchOpen = false} />
   <SlashMenu />
   <MentionSuggestion />
-  <Settings open={settingsOpen} initialTab={settingsInitialTab} onClose={() => settingsOpen = false} />
+  <Settings open={settingsOpen} initialTab={settingsInitialTab} onClose={() => settingsOpen = false} onOpenWizard={() => { wizardOpen = true }} />
   <ConflictsModal open={conflictsModalOpen} onClose={() => conflictsModalOpen = false} />
+  <BackupSetupWizard open={wizardOpen} onClose={() => wizardOpen = false} />
   <NewPageModal
     open={newPageModalOpen}
     onClose={() => { newPageModalOpen = false; newPageInitialTypeId = null }}
@@ -207,13 +211,15 @@
 {:else}
   <TomePicker
     onCreateNew={() => createTomeModalOpen = true}
+    onOpenWizard={() => { wizardOpen = true }}
     onOpenSettings={(tab?: string) => { settingsInitialTab = tab; settingsOpen = true }}
   />
   <CreateTomeModal
     open={createTomeModalOpen}
     onClose={() => createTomeModalOpen = false}
   />
-  <Settings open={settingsOpen} initialTab={settingsInitialTab} onClose={() => settingsOpen = false} />
+  <Settings open={settingsOpen} initialTab={settingsInitialTab} onClose={() => settingsOpen = false} onOpenWizard={() => { wizardOpen = true }} />
+  <BackupSetupWizard open={wizardOpen} onClose={() => wizardOpen = false} />
 {/if}
 
 <ToastContainer />

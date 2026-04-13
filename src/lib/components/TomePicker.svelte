@@ -14,9 +14,10 @@
   interface Props {
     onCreateNew: () => void
     onOpenSettings?: (tab?: string) => void
+    onOpenWizard?: () => void
   }
 
-  let { onCreateNew, onOpenSettings }: Props = $props()
+  let { onCreateNew, onOpenSettings, onOpenWizard }: Props = $props()
 
   let backupConfigured = $state(false)
   let backupLocked = $state(false)
@@ -166,7 +167,7 @@
         {#if !backupConfigured}
           <button
             class="restore-prompt"
-            onclick={() => onOpenSettings?.('backup')}
+            onclick={() => onOpenWizard?.()}
             type="button"
           >
             <DownloadCloud size={16} />

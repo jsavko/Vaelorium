@@ -16,6 +16,7 @@
 
   interface Props {
     onOpenConflicts?: () => void
+    onOpenWizard?: () => void
     onOpenSettings?: (initialTab?: string) => void
     onNewPage?: () => void
     onSelectType?: (typeId: string) => void
@@ -33,7 +34,11 @@
     boardsActive?: boolean
   }
 
-  let { onOpenConflicts, onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
+  let { onOpenConflicts, onOpenWizard, onOpenSettings, onNewPage, onSelectType, activeTypeId = null, onCloseTome, onOpenGraph, graphActive = false, onOpenAtlas, atlasActive = false, onOpenChronicle, chronicleActive = false, onOpenWiki, wikiActive = true, onOpenBoards, boardsActive = false }: Props = $props()
+
+  // svelte-ignore state_referenced_locally
+  // onOpenWizard accepted in props for future "Set up sync" action; not yet used in markup.
+  void onOpenWizard
 
   // Pill routing:
   // - conflicts → navigate to the first conflicted page so ConflictResolver

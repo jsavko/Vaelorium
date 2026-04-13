@@ -15,9 +15,10 @@
     open: boolean
     initialTab?: string
     onClose: () => void
+    onOpenWizard?: () => void
   }
 
-  let { open, initialTab, onClose }: Props = $props()
+  let { open, initialTab, onClose, onOpenWizard }: Props = $props()
 
   let activeTab = $state('keybinds')
 
@@ -640,7 +641,12 @@
                 </div>
               </div>
             {:else}
-              <button class="data-btn" onclick={() => syncSetupOpen = true}>Connect a backup destination…</button>
+              <div class="setup-actions">
+                {#if onOpenWizard}
+                  <button class="data-btn primary" onclick={() => { onClose(); onOpenWizard?.() }}>Set up backup…</button>
+                {/if}
+                <button class="data-btn" onclick={() => syncSetupOpen = true}>Manual setup</button>
+              </div>
             {/if}
           </div>
         {:else if activeTab === 'sync'}
@@ -1156,6 +1162,8 @@
   .sync-status-label { color: var(--color-fg-tertiary); }
   .sync-status-value { color: var(--color-fg-primary); font-weight: 500; }
   .sync-status-value.warn { color: var(--color-status-warning); }
+
+  .setup-actions { display: flex; gap: 8px; }
 
   .activity-section { margin-top: 16px; }
   .activity-header {
