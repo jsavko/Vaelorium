@@ -74,7 +74,7 @@ pub(crate) fn should_retry(err: &super::SyncError) -> bool {
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct SyncStatusEvent {
     pub tome_id: String,
-    pub state: &'static str, // "syncing" | "idle" | "error"
+    pub state: &'static str, // "syncing" | "idle" | "error" | "unauthorized"
     pub ops_uploaded: u32,
     pub ops_applied: u32,
     pub conflicts_created: u32,
@@ -189,6 +189,14 @@ async fn run_loop(app: AppHandle, managed: ManagedDb, session: SessionState) {
                 Err(e) => {
                     let dur = t0.elapsed().as_millis() as i64;
                     let msg = e.to_string();
+                    // Hosted-cloud token revoked: route to a distinct
+                    // state so the UI can prompt re-signin instead of
+                    // showing a generic error. Activity row still logged
+                    // as error so users see what happened.
+                    let unauthorized = matches!(
+                        e,
+                        super::SyncError::Backend(super::backend::BackendError::Unauthorized(_))
+                    );
                     super::activity::record(
                         &pool,
                         &cfg.tome_id,
@@ -203,7 +211,21 @@ async fn run_loop(app: AppHandle, managed: ManagedDb, session: SessionState) {
                         state.last_error = Some(msg.clone());
                         let _ = state.save(&pool).await;
                     }
-                    emit_error(&app, &cfg.tome_id, msg);
+                    if unauthorized {
+                        let _ = app.emit(
+                            "sync:status",
+                            SyncStatusEvent {
+                                tome_id: cfg.tome_id.clone(),
+                                state: "unauthorized",
+                                ops_uploaded: 0,
+                                ops_applied: 0,
+                                conflicts_created: 0,
+                                error: Some(msg),
+                            },
+                        );
+                    } else {
+                        emit_error(&app, &cfg.tome_id, msg);
+                    }
                 }
             }
         }

@@ -15,4 +15,5 @@ pub mod boards;
 pub mod export;
 pub mod import_data;
 pub mod backup;
+pub mod cloud;
 pub mod sync;

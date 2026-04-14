@@ -185,6 +185,9 @@ pub fn run() {
             commands::sync::sync_take_snapshot,
             commands::sync::sync_list_conflicts,
             commands::sync::sync_activity_list,
+            commands::cloud::cloud_signin,
+            commands::cloud::cloud_signout,
+            commands::cloud::cloud_status,
             commands::sync::sync_resolve_conflict,
             // Boards
             commands::boards::create_board,

@@ -1,0 +1,178 @@
+//! Vaelorium Cloud (M5) — signin / signout / status Tauri commands.
+//!
+//! Session state lives in the OS keychain under service
+//! `"vaelorium-cloud"` with four named entries (see
+//! `sync::keychain::CLOUD_KEY_*`). The raw password is discarded
+//! immediately after deriving auth_hash + enc_key; only the
+//! server-returned device token and unwrapped account_key persist.
+
+use crate::sync::backend::hosted::crypto;
+use crate::sync::backend::hosted::HostedClient;
+use crate::sync::keychain;
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
+
+#[derive(Debug, Deserialize)]
+pub struct CloudSigninInput {
+    pub email: String,
+    pub password: String,
+    #[serde(default)]
+    pub device_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CloudAccountInfo {
+    pub email: String,
+    pub account_id: String,
+    pub tier: Option<String>,
+    pub signed_in_at: Option<String>,
+}
+
+/// POST salt → Argon2id(auth + crypt) → POST signin → unwrap account_key
+/// → stash four entries in the OS keychain. Raw password is never
+/// persisted.
+#[tauri::command]
+pub async fn cloud_signin(
+    _app: AppHandle,
+    input: CloudSigninInput,
+) -> Result<CloudAccountInfo, String> {
+    let email = input.email.trim();
+    if email.is_empty() {
+        return Err("email is required".to_string());
+    }
+    if input.password.is_empty() {
+        return Err("password is required".to_string());
+    }
+
+    let client = HostedClient::new().map_err(|e| e.to_string())?;
+
+    // 1. Fetch kdf_salt for this email. Server returns a decoy for
+    //    unknown emails, so we don't branch on that.
+    let kdf_salt_b64 = client.get_salt(email).await.map_err(|e| match e {
+        crate::sync::backend::BackendError::Unauthorized(_) => {
+            "email or password is incorrect".to_string()
+        }
+        other => other.to_string(),
+    })?;
+    let kdf_salt_bytes = B64
+        .decode(&kdf_salt_b64)
+        .map_err(|e| format!("salt decode: {e}"))?;
+
+    // 2. Derive locally — CPU-bound, run on the blocking pool to avoid
+    //    stalling the Tokio runtime.
+    let password = input.password.clone();
+    let salt_clone = kdf_salt_bytes.clone();
+    let auth_hash = tokio::task::spawn_blocking(move || {
+        crypto::derive_auth_hash(&password, &salt_clone)
+    })
+    .await
+    .map_err(|e| format!("kdf join: {e}"))?
+    .map_err(|e| e.to_string())?;
+
+    let password = input.password.clone();
+    let salt_clone = kdf_salt_bytes.clone();
+    let enc_key = tokio::task::spawn_blocking(move || {
+        crypto::derive_enc_key(&password, &salt_clone)
+    })
+    .await
+    .map_err(|e| format!("kdf join: {e}"))?
+    .map_err(|e| e.to_string())?;
+
+    // 3. POST signin with the auth_hash.
+    let device_name = input.device_name.unwrap_or_else(|| {
+        std::env::var("HOSTNAME").unwrap_or_else(|_| "Vaelorium Device".into())
+    });
+    let auth_hash_b64 = B64.encode(auth_hash);
+    let resp = client
+        .signin(email, &auth_hash_b64, &device_name)
+        .await
+        .map_err(|e| match e {
+            crate::sync::backend::BackendError::Unauthorized(_) => {
+                "email or password is incorrect".to_string()
+            }
+            other => other.to_string(),
+        })?;
+
+    // 4. Unwrap account_key with enc_key.
+    let wrapped = B64
+        .decode(&resp.wrapped_by_password_b64)
+        .map_err(|e| format!("wrapped decode: {e}"))?;
+    let account_key = crypto::unwrap_account_key(&wrapped, &enc_key)
+        .map_err(|e| format!("unwrap account_key: {e}"))?;
+
+    // 5. Stash in keychain. Any keychain failure is fatal — without
+    //    the device_token we can't make authenticated calls.
+    keychain::store_cloud(keychain::CLOUD_KEY_DEVICE_TOKEN, &resp.device_token)
+        .map_err(|e| format!("keychain device-token: {e}"))?;
+    keychain::store_cloud(
+        keychain::CLOUD_KEY_ACCOUNT_KEY,
+        &B64.encode(account_key),
+    )
+    .map_err(|e| format!("keychain account-key: {e}"))?;
+    keychain::store_cloud(keychain::CLOUD_KEY_KDF_SALT, &resp.kdf_salt_b64)
+        .map_err(|e| format!("keychain kdf-salt: {e}"))?;
+    keychain::store_cloud(keychain::CLOUD_KEY_EMAIL, &resp.email)
+        .map_err(|e| format!("keychain email: {e}"))?;
+    if let Some(ref tier) = resp.tier {
+        let _ = keychain::store_cloud(keychain::CLOUD_KEY_TIER, tier);
+    }
+
+    Ok(CloudAccountInfo {
+        email: resp.email,
+        account_id: resp.account_id,
+        tier: resp.tier,
+        signed_in_at: Some(chrono::Utc::now().to_rfc3339()),
+    })
+}
+
+/// POST signout (swallow failures) + clear all four keychain entries.
+#[tauri::command]
+pub async fn cloud_signout(_app: AppHandle) -> Result<(), String> {
+    let token = keychain::retrieve_cloud(keychain::CLOUD_KEY_DEVICE_TOKEN)
+        .ok()
+        .flatten();
+    if let Some(ref t) = token {
+        if let Ok(client) = HostedClient::new() {
+            let _ = client.signout(t).await; // best-effort
+        }
+    }
+    keychain::clear_all_cloud();
+    Ok(())
+}
+
+/// Read keychain, return account metadata if signed in.
+#[tauri::command]
+pub async fn cloud_status(_app: AppHandle) -> Result<Option<CloudAccountInfo>, String> {
+    let token = match keychain::retrieve_cloud(keychain::CLOUD_KEY_DEVICE_TOKEN) {
+        Ok(Some(t)) => t,
+        _ => return Ok(None),
+    };
+    if token.is_empty() {
+        return Ok(None);
+    }
+    let email = keychain::retrieve_cloud(keychain::CLOUD_KEY_EMAIL)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let tier = keychain::retrieve_cloud(keychain::CLOUD_KEY_TIER)
+        .ok()
+        .flatten();
+    Ok(Some(CloudAccountInfo {
+        email,
+        account_id: String::new(),
+        tier,
+        signed_in_at: None,
+    }))
+}
+
+/// Internal helper: return the keychain device token or an error if
+/// absent. Used by `build_tome_backend` to construct HostedBackend.
+pub fn require_device_token() -> Result<String, String> {
+    match keychain::retrieve_cloud(keychain::CLOUD_KEY_DEVICE_TOKEN) {
+        Ok(Some(t)) if !t.is_empty() => Ok(t),
+        _ => Err(
+            "not signed in to Vaelorium Cloud — sign in from Settings → Backup".to_string(),
+        ),
+    }
+}

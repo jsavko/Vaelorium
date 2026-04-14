@@ -545,10 +545,28 @@ pub async fn build_tome_backend(
     let cfg = app_backend::load(&app_data_dir)
         .await?
         .ok_or_else(|| "no backup destination configured".to_string())?;
-    let raw = backup_cmd::build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
-    let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
     let uuid = crate::sync::tome_identity::get_or_create_uuid(pool)
         .await
         .map_err(|e| format!("tome identity: {e}"))?;
-    Ok(Box::new(PrefixedBackend::new(raw_arc, tome_prefix(&uuid))))
+
+    use crate::sync::state::BackendKind;
+    match cfg.backend_kind {
+        BackendKind::Hosted => {
+            // Hosted skips the PrefixedBackend wrapper entirely — tome_uuid
+            // is baked into every URL path, not prepended to object keys.
+            // Token held in the OS keychain (signed in via cloud_signin).
+            let token = crate::commands::cloud::require_device_token()?;
+            let http = crate::sync::backend::hosted::HostedClient::new()
+                .map_err(|e| e.to_string())?;
+            Ok(Box::new(crate::sync::backend::hosted::HostedBackend::new(
+                http, uuid, token,
+            )))
+        }
+        BackendKind::Filesystem | BackendKind::S3 => {
+            let raw =
+                backup_cmd::build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
+            let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
+            Ok(Box::new(PrefixedBackend::new(raw_arc, tome_prefix(&uuid))))
+        }
+    }
 }
