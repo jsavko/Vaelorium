@@ -90,7 +90,9 @@ pub struct DeleteTomeResult {
 /// name doesn't already end with a parenthesized 4-hex disambiguator.
 /// Prevents two devices named "My Laptop" from being indistinguishable
 /// in conflict logs or activity views while keeping display names short.
-pub(crate) fn ensure_device_name_stub(name: &str, device_id: uuid::Uuid) -> String {
+/// Used both by local `backup_configure` (for sync_op attribution) and
+/// `cloud_signin` (for the server-side device registry).
+pub fn ensure_device_name_stub(name: &str, device_id: uuid::Uuid) -> String {
     let trimmed = name.trim();
     // Already has a "(xxxx)" stub at the tail? Leave alone so renames
     // don't accumulate stubs like "Laptop (a3f2) (b7c1)".

@@ -94,9 +94,25 @@ pub async fn cloud_signin(
     .map_err(|e| e.to_string())?;
 
     // 3. POST signin with the auth_hash.
-    let device_name = input.device_name.unwrap_or_else(|| {
+    // Apply the 4-char hex stub so two devices named "Laptop" show up
+    // distinctly in the cloud's device registry. Reuse a persistent
+    // device_id from the keychain if present (subsequent signins) so
+    // the same physical device keeps the same stub across signouts.
+    let raw_device_name = input.device_name.unwrap_or_else(|| {
         std::env::var("HOSTNAME").unwrap_or_else(|_| "Vaelorium Device".into())
     });
+    let cloud_device_id = keychain::retrieve_cloud(keychain::CLOUD_KEY_DEVICE_ID)
+        .ok()
+        .flatten()
+        .and_then(|s| uuid::Uuid::parse_str(&s).ok())
+        .unwrap_or_else(|| {
+            let id = uuid::Uuid::new_v4();
+            if let Err(e) = keychain::store_cloud(keychain::CLOUD_KEY_DEVICE_ID, &id.to_string()) {
+                log::warn!("could not persist cloud device_id in keychain: {e}");
+            }
+            id
+        });
+    let device_name = crate::commands::backup::ensure_device_name_stub(&raw_device_name, cloud_device_id);
     let auth_hash_b64 = B64.encode(auth_hash);
     let resp = client
         .signin(email, &auth_hash_b64, &device_name)

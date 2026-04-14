@@ -29,6 +29,12 @@ pub const CLOUD_KEY_TIER: &str = "tier";
 /// `cloud_status` so the UI can display quota / tome count without
 /// re-hitting the server.
 pub const CLOUD_KEY_USAGE: &str = "usage";
+/// Stable per-install UUID used to derive the 4-char stub appended to
+/// the cloud-registered device name. Minted on first signin; reused on
+/// subsequent signins so the cloud sees the same "Laptop (a3f2)" stub
+/// each time. Independent of the local app_backend.device_id (which
+/// attributes sync ops) — they can differ and that's fine.
+pub const CLOUD_KEY_DEVICE_ID: &str = "device-id";
 pub const CLOUD_KEYS: &[&str] = &[
     CLOUD_KEY_DEVICE_TOKEN,
     CLOUD_KEY_ACCOUNT_KEY,
@@ -36,6 +42,7 @@ pub const CLOUD_KEYS: &[&str] = &[
     CLOUD_KEY_EMAIL,
     CLOUD_KEY_TIER,
     CLOUD_KEY_USAGE,
+    CLOUD_KEY_DEVICE_ID,
 ];
 
 #[derive(Debug, thiserror::Error)]
