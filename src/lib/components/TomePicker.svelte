@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BookOpen, FolderOpen, Plus, Map as MapIcon, DownloadCloud, Lock, Trash2 } from 'lucide-svelte'
+  import { BookOpen, FolderOpen, Plus, Map as MapIcon, DownloadCloud, Lock, Trash2, Cloud } from 'lucide-svelte'
   import { recentTomes, openTome, loadRecentTomes } from '../stores/tomeStore'
   import { isTauri } from '../api/bridge'
   import { onMount } from 'svelte'
@@ -39,6 +39,21 @@
   // only refetch when the configured+unlocked state transitions from
   // false → true.
   let lastListKey = $state('')
+
+  // Set of tome_uuids that have a backup on the configured destination.
+  // Derived from `restorable`; recomputed reactively so any refresh
+  // updates the card badges + restore-list dedup.
+  let backedUpUuids = $derived(new Set(restorable.map((t) => t.tomeUuid)))
+  // Filter out recent-tome UUIDs from the restore panel so users don't
+  // see duplicates of Tomes they already have locally and are actively
+  // syncing — the Trash button is still reachable on the card itself
+  // (future enhancement) or via delete-while-restoring.
+  let localUuids = $derived(
+    new Set($recentTomes.map((t) => t.tome_uuid).filter((u): u is string => !!u)),
+  )
+  let restorableFiltered = $derived(
+    restorable.filter((t) => !localUuids.has(t.tomeUuid)),
+  )
 
   onMount(async () => {
     loadRecentTomes()
@@ -166,7 +181,13 @@
         <span class="section-label">RECENT TOMES</span>
         <div class="tome-grid">
           {#each $recentTomes as tome (tome.path)}
+            {@const backed = tome.tome_uuid && backedUpUuids.has(tome.tome_uuid)}
             <button class="tome-card" onclick={() => handleOpenRecent(tome)}>
+              {#if backed}
+                <span class="card-cloud-badge" title="Backed up to your configured destination">
+                  <Cloud size={14} />
+                </span>
+              {/if}
               <div class="card-cover">
                 <BookOpen size={32} />
               </div>
@@ -223,11 +244,17 @@
           <p class="restore-status">Looking for Tomes on backup…</p>
         {:else if restorableError}
           <p class="restore-error">Could not list backup: {restorableError}</p>
-        {:else if restorable.length === 0}
-          <p class="restore-status">No Tomes found on this backend.</p>
+        {:else if restorableFiltered.length === 0}
+          <p class="restore-status">
+            {#if restorable.length > 0}
+              All backed-up Tomes are already on this device.
+            {:else}
+              No Tomes found on this backend.
+            {/if}
+          </p>
         {:else}
           <div class="restore-list">
-            {#each restorable as t (t.tomeUuid)}
+            {#each restorableFiltered as t (t.tomeUuid)}
               <div class="restore-row">
                 <DownloadCloud size={20} class="restore-icon" />
                 <div class="restore-meta">
@@ -342,6 +369,7 @@
   }
 
   .tome-card {
+    position: relative;
     background: var(--color-surface-card);
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-md);
@@ -365,6 +393,7 @@
     color: var(--color-accent-gold);
     opacity: 0.3;
   }
+  .tome-card:hover .card-cover { opacity: 0.6; }
 
   .card-body {
     padding: 14px;
@@ -581,6 +610,22 @@
   .restore-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .card-cloud-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(200, 165, 92, 0.85);
+    color: var(--color-fg-inverse);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+    pointer-events: auto;
   }
 
   .restore-delete {

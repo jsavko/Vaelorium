@@ -750,7 +750,7 @@ pub async fn backup_restore_tome(
         pool.close().await;
     }
 
-    crate::app_state::add_recent_tome(&app, &path_str, &name, description.as_deref());
+    crate::app_state::add_recent_tome(&app, &path_str, &name, description.as_deref(), Some(&input.tome_uuid));
 
     Ok(RestoredTome {
         path: path_str,

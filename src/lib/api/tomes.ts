@@ -5,6 +5,10 @@ export interface RecentTome {
   name: string
   description: string | null
   last_opened: string
+  /** Per-Tome stable UUID from tome_metadata; populated when the Tome
+   *  is opened / created / restored. `null` on legacy entries from
+   *  pre-M5 launches. */
+  tome_uuid: string | null
 }
 
 export interface AppState {

@@ -8,6 +8,13 @@ pub struct RecentTome {
     pub name: String,
     pub description: Option<String>,
     pub last_opened: String,
+    /// Per-Tome stable UUID from `tome_metadata.tome_uuid`. Populated
+    /// when the Tome is opened or created (M5 added this so TomePicker
+    /// can cross-reference recent cards against the backup listing
+    /// to show a cloud badge and to de-dup restore entries). `None`
+    /// on legacy entries written before this field existed.
+    #[serde(default)]
+    pub tome_uuid: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -39,7 +46,13 @@ pub fn save_app_state(app: &AppHandle, state: &AppState) -> Result<(), String> {
     Ok(())
 }
 
-pub fn add_recent_tome(app: &AppHandle, path: &str, name: &str, description: Option<&str>) {
+pub fn add_recent_tome(
+    app: &AppHandle,
+    path: &str,
+    name: &str,
+    description: Option<&str>,
+    tome_uuid: Option<&str>,
+) {
     let mut state = load_app_state(app);
     // Remove existing entry for this path
     state.recent_tomes.retain(|t| t.path != path);
@@ -51,6 +64,7 @@ pub fn add_recent_tome(app: &AppHandle, path: &str, name: &str, description: Opt
             name: name.to_string(),
             description: description.map(|s| s.to_string()),
             last_opened: chrono::Utc::now().to_rfc3339(),
+            tome_uuid: tome_uuid.map(|s| s.to_string()),
         },
     );
     // Keep at most 10

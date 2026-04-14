@@ -58,6 +58,12 @@ pub async fn create_tome(
         .await
         .map_err(|e| e.to_string())?;
 
+    // Materialize the stable per-Tome UUID at creation time so
+    // RecentTome can carry it for backup cross-referencing.
+    let tome_uuid = crate::sync::tome_identity::get_or_create_uuid(&pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     // Set as active pool
     {
         let mut guard = managed.write().await;
@@ -65,7 +71,7 @@ pub async fn create_tome(
     }
 
     // Add to recent tomes
-    app_state::add_recent_tome(&app, &path, &name, description.as_deref());
+    app_state::add_recent_tome(&app, &path, &name, description.as_deref(), Some(&tome_uuid));
 
     Ok(TomeInfo {
         path,
@@ -113,6 +119,11 @@ pub async fn open_tome(
             .to_string()
     });
 
+    // Read the tome_uuid for recent-tomes cross-referencing.
+    let tome_uuid = crate::sync::tome_identity::get_or_create_uuid(&pool)
+        .await
+        .ok();
+
     // Set as active pool
     {
         let mut guard = managed.write().await;
@@ -120,7 +131,7 @@ pub async fn open_tome(
     }
 
     // Add to recent tomes
-    app_state::add_recent_tome(&app, &path, &name, description.as_deref());
+    app_state::add_recent_tome(&app, &path, &name, description.as_deref(), tome_uuid.as_deref());
 
     Ok(TomeInfo {
         path,

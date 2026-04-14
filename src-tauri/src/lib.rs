@@ -65,7 +65,7 @@ async fn migrate_legacy_db(app: &tauri::AppHandle, managed: &ManagedDb) {
             }
 
             // Add to recent tomes
-            app_state::add_recent_tome(app, &tome_path_str, "My Campaign", None);
+            app_state::add_recent_tome(app, &tome_path_str, "My Campaign", None, None);
 
             log::info!("Legacy database migrated to: {}", tome_path_str);
         }
