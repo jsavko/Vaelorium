@@ -6599,7 +6599,7 @@ dependencies = [
 
 [[package]]
 name = "vaelorium"
-version = "0.3.0"
+version = "0.2.5"
 dependencies = [
  "argon2",
  "async-trait",

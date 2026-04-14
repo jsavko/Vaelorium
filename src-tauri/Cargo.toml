@@ -1,6 +1,6 @@
 [package]
 name = "vaelorium"
-version = "0.3.0"
+version = "0.2.5"
 description = "Self-hosted offline-first worldbuilding and RPG campaign manager"
 authors = ["Vaelorium"]
 license = "GPL-3.0-or-later"
