@@ -11,6 +11,9 @@
 
   let choices = $state<Record<string, 'local' | 'remote'>>({})
   let busy = $state(false)
+  // Modal-scrim close-only-on-genuine-scrim-clicks pattern (see
+  // feedback_modal_scrim_close).
+  let scrimMouseDown = $state(false)
 
   function parse(json: string | null) {
     if (json === null) return null
@@ -68,7 +71,8 @@
 {#if open}
   <div
     class="scrim"
-    onclick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    onmousedown={(e) => { scrimMouseDown = e.target === e.currentTarget }}
+    onclick={(e) => { if (scrimMouseDown && e.target === e.currentTarget) onClose() }}
     onkeydown={(e) => e.key === 'Escape' && onClose()}
     role="presentation"
   >

@@ -16,6 +16,10 @@
   let step = $state<Step>(1)
   let busy = $state(false)
   let error = $state<string | null>(null)
+  // Tracks whether the most recent mousedown started on the scrim itself
+  // — guards against drag-from-input-overshooting-modal-edge closing the
+  // modal. Cleared when the click resolves either way.
+  let scrimMouseDown = $state(false)
 
   // Form state — same fields as the inline Settings → Backup form.
   let backendKind = $state<'filesystem' | 's3' | 'hosted'>('hosted')
@@ -160,8 +164,8 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
     class="scrim"
-    onclick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    onmousedown={(e) => { if (e.target === e.currentTarget) e.preventDefault() }}
+    onmousedown={(e) => { scrimMouseDown = e.target === e.currentTarget }}
+    onclick={(e) => { if (scrimMouseDown && e.target === e.currentTarget) onClose() }}
     role="presentation"
   >
     <!-- svelte-ignore a11y_click_events_have_key_events -->
