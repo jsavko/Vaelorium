@@ -11,6 +11,7 @@
     removeCard,
     addConnector,
     updateCardContent,
+    renameBoard,
   } from '../stores/boardStore'
   import { loadPage, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
@@ -190,7 +191,26 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
       </button>
       <Layout size={20} />
-      <h2 class="header-title">{$currentBoard?.name || 'Board'}</h2>
+      <input
+        class="header-title-input"
+        value={$currentBoard?.name || 'Board'}
+        onblur={async (e) => {
+          const input = e.target as HTMLInputElement
+          const val = input.value.trim()
+          if (val && $currentBoard && val !== $currentBoard.name) {
+            await renameBoard($currentBoard.id, val)
+          } else if (!val && $currentBoard) {
+            input.value = $currentBoard.name
+          }
+        }}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          if (e.key === 'Escape' && $currentBoard) {
+            (e.target as HTMLInputElement).value = $currentBoard.name
+            ;(e.target as HTMLInputElement).blur()
+          }
+        }}
+      />
     </div>
     <div class="header-hint">Double-click canvas to add card · Double-click card to edit · @-type to link a page · Shift+drag a card to connect</div>
   </header>
@@ -308,6 +328,9 @@
   .back-btn { background: none; border: none; color: var(--color-fg-tertiary); cursor: pointer; padding: 4px; border-radius: var(--radius-sm); }
   .back-btn:hover { background: var(--color-surface-tertiary); color: var(--color-fg-primary); }
   .header-title { font-family: var(--font-heading); font-size: 18px; font-weight: 600; color: var(--color-fg-primary); margin: 0; }
+  .header-title-input { font-family: var(--font-heading); font-size: 18px; font-weight: 600; color: var(--color-fg-primary); background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); padding: 2px 6px; min-width: 200px; outline: none; }
+  .header-title-input:hover { border-color: var(--color-border-subtle); }
+  .header-title-input:focus { border-color: var(--color-accent-gold); background: var(--color-surface-primary); }
   .header-hint { font-family: var(--font-ui); font-size: 11px; color: var(--color-fg-tertiary); opacity: 0.6; }
 
   .board-canvas { flex: 1; position: relative; overflow: hidden; background: var(--color-surface-primary); }

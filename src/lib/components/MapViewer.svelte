@@ -1,6 +1,6 @@
 <script lang="ts">
   import { MapPin as MapPinIcon } from 'lucide-svelte'
-  import { currentMap, currentMapPins, loadMap, addPin, removePin } from '../stores/mapStore'
+  import { currentMap, currentMapPins, loadMap, addPin, removePin, renameMap } from '../stores/mapStore'
   import type { MapPin } from '../api/maps'
   import { loadPage, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
@@ -211,12 +211,19 @@
         class="header-title-input"
         value={$currentMap?.title || 'Map'}
         onblur={async (e) => {
-          const val = (e.target as HTMLInputElement).value.trim()
+          const input = e.target as HTMLInputElement
+          const val = input.value.trim()
           if (val && $currentMap && val !== $currentMap.title) {
-            const { callCommand } = await import('../api/bridge')
-            // Update map title via direct SQL — no dedicated command yet
-            // For now just update local state
-            currentMap.update(m => m ? { ...m, title: val } : m)
+            await renameMap($currentMap.id, val)
+          } else if (!val && $currentMap) {
+            input.value = $currentMap.title
+          }
+        }}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          if (e.key === 'Escape' && $currentMap) {
+            (e.target as HTMLInputElement).value = $currentMap.title
+            ;(e.target as HTMLInputElement).blur()
           }
         }}
       />

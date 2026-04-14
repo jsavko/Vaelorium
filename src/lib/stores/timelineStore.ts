@@ -49,6 +49,20 @@ export async function deleteTimeline(id: string) {
   currentTimeline.update((cur) => (cur && cur.id === id ? null : cur))
 }
 
+export async function editEvent(
+  id: string,
+  updates: { title?: string; date?: string; description?: string | null; pageId?: string | null },
+) {
+  const apiUpdates: { title?: string; date?: string; description?: string; pageId?: string } = {}
+  if (updates.title !== undefined) apiUpdates.title = updates.title
+  if (updates.date !== undefined) apiUpdates.date = updates.date
+  if (updates.description !== undefined) apiUpdates.description = updates.description ?? ''
+  if (updates.pageId !== undefined) apiUpdates.pageId = updates.pageId ?? ''
+  const updated = await api.updateTimelineEvent(id, apiUpdates)
+  currentEvents.update((events) => events.map((e) => (e.id === id ? updated : e)).sort((a, b) => a.date.localeCompare(b.date)))
+  return updated
+}
+
 export async function removeEvent(id: string, timelineId: string) {
   await api.deleteTimelineEvent(id)
   currentEvents.update((events) => events.filter((e) => e.id !== id))

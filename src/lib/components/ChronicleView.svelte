@@ -3,7 +3,8 @@
   import InputModal from './InputModal.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
   import ContextMenu from './ContextMenu.svelte'
-  import { timelines, currentTimeline, currentEvents, loadTimelines, loadTimeline, createTimeline, addEvent, removeEvent, renameTimeline, deleteTimeline } from '../stores/timelineStore'
+  import BoardCardEditor from './BoardCardEditor.svelte'
+  import { timelines, currentTimeline, currentEvents, loadTimelines, loadTimeline, createTimeline, addEvent, removeEvent, renameTimeline, deleteTimeline, editEvent } from '../stores/timelineStore'
   import { loadPage, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
   import { onMount } from 'svelte'
@@ -24,6 +25,32 @@
   let newDesc = $state('')
   let newPageId = $state('')
   let searchQuery = $state('')
+  let editingEventId = $state<string | null>(null)
+  let editTitle = $state('')
+  let editDate = $state('')
+  let editDesc = $state('')
+
+  function startEditEvent(evt: { id: string; title: string; date: string; description: string | null }) {
+    editingEventId = evt.id
+    editTitle = evt.title
+    editDate = evt.date
+    editDesc = evt.description || ''
+  }
+
+  async function saveEditEvent() {
+    if (!editingEventId) return
+    const id = editingEventId
+    editingEventId = null
+    await editEvent(id, {
+      title: editTitle.trim() || undefined,
+      date: editDate.trim() || undefined,
+      description: editDesc,
+    })
+  }
+
+  function cancelEditEvent() {
+    editingEventId = null
+  }
 
   onMount(async () => {
     await loadTimelines()
@@ -133,7 +160,27 @@
           {/each}
         </select>
       {:else if $currentTimeline}
-        <span class="timeline-name">{$currentTimeline.name}</span>
+        {@const tl = $currentTimeline}
+        <input
+          class="timeline-name-input"
+          value={tl.name}
+          onblur={async (e) => {
+            const input = e.target as HTMLInputElement
+            const val = input.value.trim()
+            if (val && val !== tl.name) {
+              await renameTimeline(tl.id, val)
+            } else if (!val) {
+              input.value = tl.name
+            }
+          }}
+          onkeydown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+            if (e.key === 'Escape') {
+              (e.target as HTMLInputElement).value = tl.name
+              ;(e.target as HTMLInputElement).blur()
+            }
+          }}
+        />
       {/if}
       {#if $currentTimeline}
         <button class="tl-menu-btn" onclick={openTimelineMenu} aria-label="Timeline actions">
@@ -170,7 +217,13 @@
             <input class="form-input date-input" bind:value={newDate} placeholder="Date (e.g. 1420-03-15)" />
             <input class="form-input" bind:value={newTitle} placeholder="Event title..." style="flex:1" />
           </div>
-          <textarea class="form-textarea" bind:value={newDesc} placeholder="Description (optional)..." rows="2"></textarea>
+          <div class="form-editor">
+            <BoardCardEditor
+              initialHtml={newDesc}
+              onSave={(html) => { newDesc = html }}
+              placeholder="Description (optional) — markdown supported, @mention pages..."
+            />
+          </div>
           <div class="form-row">
             <div class="search-wrapper" style="flex:1">
               <input class="form-input" bind:value={searchQuery} placeholder="Link to page (optional)..." />
@@ -195,15 +248,34 @@
               <span class="date-label">{group.date}</span>
             </div>
             {#each group.events as evt (evt.id)}
-              <div class="event-card">
+              <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+              <div class="event-card" ondblclick={() => startEditEvent(evt)}>
+                {#if editingEventId === evt.id}
+                  <div class="event-edit">
+                    <div class="form-row">
+                      <input class="form-input date-input" bind:value={editDate} placeholder="Date" />
+                      <input class="form-input" bind:value={editTitle} placeholder="Event title" style="flex:1" />
+                    </div>
+                    <BoardCardEditor
+                      initialHtml={editDesc}
+                      onSave={(html) => { editDesc = html }}
+                      placeholder="Description — markdown supported, @mention pages..."
+                    />
+                    <div class="form-row" style="justify-content:flex-end">
+                      <button class="cancel-btn" onclick={cancelEditEvent}>Cancel</button>
+                      <button class="save-btn" onclick={saveEditEvent} disabled={!editTitle.trim() || !editDate.trim()}>Save</button>
+                    </div>
+                  </div>
+                {:else}
                 <div class="event-header">
                   <h3 class="event-title">{evt.title}</h3>
                   <button class="event-delete" onclick={() => handleDeleteEvent(evt.id)} title="Delete">
                     <Trash2 size={12} />
                   </button>
                 </div>
-                {#if evt.description}
-                  <p class="event-desc">{evt.description}</p>
+                {#if evt.description && evt.description.trim() !== '' && evt.description !== '<p></p>'}
+                  <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+                  <div class="event-desc">{@html evt.description}</div>
                 {/if}
                 {#if evt.page_id}
                   {@const page = $pageTree.find((p) => p.id === evt.page_id)}
@@ -213,6 +285,7 @@
                       {page.title} →
                     </button>
                   {/if}
+                {/if}
                 {/if}
               </div>
             {/each}
@@ -274,6 +347,9 @@
     border-bottom: 1px solid var(--color-border-subtle); flex-shrink: 0;
   }
   .header-left { display: flex; align-items: center; gap: 10px; color: var(--color-fg-tertiary); }
+  .timeline-name-input { font-family: var(--font-heading); font-size: 18px; font-weight: 600; color: var(--color-fg-primary); background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm); padding: 2px 6px; min-width: 160px; outline: none; }
+  .timeline-name-input:hover { border-color: var(--color-border-subtle); }
+  .timeline-name-input:focus { border-color: var(--color-accent-gold); background: var(--color-surface-primary); }
   .tl-menu-btn { background: none; border: none; color: var(--color-fg-tertiary); cursor: pointer; padding: 4px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; }
   .tl-menu-btn:hover { background: var(--color-surface-tertiary); color: var(--color-fg-primary); }
   .header-right { display: flex; gap: 8px; }
@@ -303,6 +379,9 @@
   .search-result:hover { background: var(--color-surface-tertiary); }
   .save-btn { padding: 6px 16px; background: var(--color-accent-gold); border: none; border-radius: var(--radius-sm); font-family: var(--font-ui); font-size: 13px; font-weight: 600; color: var(--color-fg-inverse); cursor: pointer; }
   .save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .cancel-btn { padding: 6px 14px; background: var(--color-surface-tertiary); border: 1px solid var(--color-border-default); border-radius: var(--radius-sm); font-family: var(--font-ui); font-size: 13px; color: var(--color-fg-secondary); cursor: pointer; }
+  .form-editor, .event-edit > :global(.card-editor-wrap) { border: 1px solid var(--color-border-default); border-radius: var(--radius-sm); overflow: hidden; }
+  .event-edit { display: flex; flex-direction: column; gap: 8px; }
 
   .timeline-line { position: relative; padding-left: 24px; border-left: 2px solid var(--color-border-default); margin-left: 12px; }
 
@@ -318,6 +397,16 @@
   .event-delete { background: none; border: none; color: var(--color-fg-tertiary); cursor: pointer; opacity: 0; transition: opacity 0.1s; }
   .event-delete:hover { color: var(--color-status-error); }
   .event-desc { font-family: var(--font-body); font-size: 13px; color: var(--color-fg-secondary); margin: 6px 0 0; }
+  .event-desc :global(p) { margin: 0 0 4px; }
+  .event-desc :global(p:last-child) { margin-bottom: 0; }
+  .event-desc :global(h1), .event-desc :global(h2), .event-desc :global(h3) { font-family: var(--font-heading); color: var(--color-fg-primary); margin: 6px 0 4px; }
+  .event-desc :global(h1) { font-size: 16px; }
+  .event-desc :global(h2) { font-size: 14px; }
+  .event-desc :global(h3) { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .event-desc :global(ul), .event-desc :global(ol) { margin: 4px 0; padding-left: 18px; }
+  .event-desc :global(code) { font-family: var(--font-mono, monospace); font-size: 12px; padding: 1px 4px; background: var(--color-surface-tertiary); border-radius: 3px; }
+  .event-desc :global(a) { color: var(--color-accent-gold); text-decoration: underline; }
+  .event-card { cursor: default; }
   .event-link { display: flex; align-items: center; gap: 6px; background: none; border: none; font-family: var(--font-ui); font-size: 12px; color: var(--color-accent-gold); cursor: pointer; padding: 0; margin-top: 8px; }
   .event-link:hover { text-decoration: underline; }
   .link-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
