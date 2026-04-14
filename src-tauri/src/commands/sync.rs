@@ -225,6 +225,10 @@ pub async fn sync_enable(
         updated_at: now,
     };
     cfg.save(&pool).await.map_err(|e| e.to_string())?;
+    // Mirror sync-enabled state into recent_tomes so TomePicker's
+    // cloud badge + restore-list filter flip immediately, not on next
+    // Tome close. `tome_id` is the Tome path by convention.
+    crate::app_state::set_sync_enabled_for_path(&app, &input.tome_id, true);
     session.nudge();
     sync_status(app, managed, session).await
 }
@@ -243,6 +247,7 @@ pub async fn sync_disable(
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
+    crate::app_state::set_sync_enabled_for_path(&app, &tome_id, false);
     sync_status(app, managed, session).await
 }
 

@@ -71,7 +71,7 @@ pub async fn create_tome(
     }
 
     // Add to recent tomes
-    app_state::add_recent_tome(&app, &path, &name, description.as_deref(), Some(&tome_uuid));
+    app_state::add_recent_tome(&app, &path, &name, description.as_deref(), Some(&tome_uuid), false);
 
     Ok(TomeInfo {
         path,
@@ -125,6 +125,17 @@ pub async fn open_tome(
         .await
         .ok();
 
+    // Probe sync_config so the recent_tomes entry reflects whether
+    // this Tome is currently syncing. Drives TomePicker's cloud badge
+    // + restore-list filter without needing to open each Tome's DB
+    // from the picker.
+    let sync_enabled = crate::sync::state::SyncConfig::load(&pool, &path)
+        .await
+        .ok()
+        .flatten()
+        .map(|c| c.enabled)
+        .unwrap_or(false);
+
     // Set as active pool
     {
         let mut guard = managed.write().await;
@@ -132,7 +143,14 @@ pub async fn open_tome(
     }
 
     // Add to recent tomes
-    app_state::add_recent_tome(&app, &path, &name, description.as_deref(), tome_uuid.as_deref());
+    app_state::add_recent_tome(
+        &app,
+        &path,
+        &name,
+        description.as_deref(),
+        tome_uuid.as_deref(),
+        sync_enabled,
+    );
 
     // Nudge the sync runner to pull any remote changes for this Tome
     // right away. Replaces the per-typing nudge model with discrete

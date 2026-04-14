@@ -15,6 +15,14 @@ pub struct RecentTome {
     /// on legacy entries written before this field existed.
     #[serde(default)]
     pub tome_uuid: Option<String>,
+    /// Whether this Tome has `sync_config.enabled = 1` in its own
+    /// SQLite DB. Mirrored here so TomePicker can decide whether to
+    /// draw the cloud badge and whether to offer the Tome in the
+    /// restore list (stop-sync → Tome re-appears for deletion)
+    /// without opening each Tome's DB. Kept in sync by
+    /// `sync_enable` / `sync_disable` / `open_tome` / restore flows.
+    #[serde(default)]
+    pub sync_enabled: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -52,6 +60,7 @@ pub fn add_recent_tome(
     name: &str,
     description: Option<&str>,
     tome_uuid: Option<&str>,
+    sync_enabled: bool,
 ) {
     let mut state = load_app_state(app);
     // Remove existing entry for this path
@@ -65,9 +74,29 @@ pub fn add_recent_tome(
             description: description.map(|s| s.to_string()),
             last_opened: chrono::Utc::now().to_rfc3339(),
             tome_uuid: tome_uuid.map(|s| s.to_string()),
+            sync_enabled,
         },
     );
     // Keep at most 10
     state.recent_tomes.truncate(10);
     save_app_state(app, &state).ok();
+}
+
+/// Update the `sync_enabled` flag on an existing recent_tomes entry
+/// matched by `path`. No-op if the path isn't in the list — the next
+/// `add_recent_tome` will carry the correct flag forward. Called
+/// from `sync_enable` / `sync_disable` so TomePicker's cloud badge
+/// flips in-session without waiting for Tome close.
+pub fn set_sync_enabled_for_path(app: &AppHandle, path: &str, sync_enabled: bool) {
+    let mut state = load_app_state(app);
+    let mut changed = false;
+    for t in state.recent_tomes.iter_mut() {
+        if t.path == path && t.sync_enabled != sync_enabled {
+            t.sync_enabled = sync_enabled;
+            changed = true;
+        }
+    }
+    if changed {
+        save_app_state(app, &state).ok();
+    }
 }

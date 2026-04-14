@@ -48,15 +48,20 @@
   // Derived from `restorable`; recomputed reactively so any refresh
   // updates the card badges + restore-list dedup.
   let backedUpUuids = $derived(new Set(restorable.map((t) => t.tomeUuid)))
-  // Filter out recent-tome UUIDs from the restore panel so users don't
-  // see duplicates of Tomes they already have locally and are actively
-  // syncing — the Trash button is still reachable on the card itself
-  // (future enhancement) or via delete-while-restoring.
-  let localUuids = $derived(
-    new Set($recentTomes.map((t) => t.tome_uuid).filter((u): u is string => !!u)),
+  // Tomes the user is *actively syncing* locally. Previously keyed on
+  // any local presence; now gated on `sync_enabled` so a Tome that has
+  // been stop-synced drops its cloud badge AND re-surfaces in the
+  // restore list, where the trash button can delete the cloud copy.
+  let syncingUuids = $derived(
+    new Set(
+      $recentTomes
+        .filter((t) => t.sync_enabled)
+        .map((t) => t.tome_uuid)
+        .filter((u): u is string => !!u),
+    ),
   )
   let restorableFiltered = $derived(
-    restorable.filter((t) => !localUuids.has(t.tomeUuid)),
+    restorable.filter((t) => !syncingUuids.has(t.tomeUuid)),
   )
 
   onMount(async () => {
@@ -166,7 +171,7 @@
         <span class="section-label">RECENT TOMES</span>
         <div class="tome-grid">
           {#each $recentTomes as tome (tome.path)}
-            {@const backed = tome.tome_uuid && backedUpUuids.has(tome.tome_uuid)}
+            {@const backed = tome.sync_enabled && tome.tome_uuid && backedUpUuids.has(tome.tome_uuid)}
             <button class="tome-card" onclick={() => handleOpenRecent(tome)}>
               {#if backed}
                 <span class="card-cloud-badge" title="Backed up to your configured destination">

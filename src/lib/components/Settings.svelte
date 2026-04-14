@@ -6,12 +6,12 @@
   import { showToast } from '../stores/toastStore'
   import { loadPageTree } from '../stores/pageStore'
   import ConfirmDialog from './ConfirmDialog.svelte'
-  import { syncStatus, backupStatus, syncActivity, refreshSyncStatus, refreshBackupStatus, refreshActivity } from '../stores/syncStore'
+  import { syncStatus, backupStatus, syncActivity, restorableTomes, refreshSyncStatus, refreshBackupStatus, refreshActivity } from '../stores/syncStore'
   import { enableSync, disableSync, syncNow, takeSnapshot } from '../api/sync'
   import { configureBackup, disconnectBackup, unlockBackup } from '../api/backup'
   import { cloudSignout } from '../api/cloud'
   import { cloudAccount, refreshCloudAccount, atTomeQuota } from '../stores/cloudStore'
-  import { currentTome } from '../stores/tomeStore'
+  import { currentTome, recentTomes } from '../stores/tomeStore'
 
   interface Props {
     open: boolean
@@ -145,6 +145,17 @@
   // --- Cloud account (Account tab) ---
 
   let cloudBusy = $state(false)
+
+  // UUID-aware quota check for the "Back up this Tome" CTA: if this
+  // Tome's UUID is already on the backend (user stop-synced earlier
+  // and is re-enabling), quota shouldn't reject it. Falls back to the
+  // plain `atTomeQuota` when the UUID isn't yet known.
+  let currentTomeUuid = $derived(
+    $recentTomes.find((t) => t.path === $currentTome?.path)?.tome_uuid ?? null,
+  )
+  let currentTomeAtQuota = $derived(
+    $atTomeQuota && !(currentTomeUuid && $restorableTomes.some((t) => t.tomeUuid === currentTomeUuid)),
+  )
 
   // Cloud reports quotas as SI decimal bytes (1 GB = 1,000,000,000)
   // matching the "1 GB / 10 GB" marketing copy on plan cards.
@@ -777,14 +788,14 @@
                 Sync is off for this Tome. Enable it to back up and sync this Tome to the configured destination
                 ({$syncStatus.backendKind} — {$syncStatus.backendSummary}).
               </p>
-              {#if $atTomeQuota && $cloudAccount?.usage}
+              {#if currentTomeAtQuota && $cloudAccount?.usage}
                 <div class="quota-banner">
                   <strong>You're at your Vaelorium Cloud plan's Tome limit ({$cloudAccount.usage.tomeCount} of {$cloudAccount.usage.tomeLimit}).</strong>
                   <span>Enabling backup for this Tome will fail until you upgrade your plan or remove an existing Tome from backup.</span>
                 </div>
               {/if}
               <div class="sync-actions">
-                <button class="data-btn primary" onclick={handleEnableSync} disabled={syncBusy || $atTomeQuota}>
+                <button class="data-btn primary" onclick={handleEnableSync} disabled={syncBusy || currentTomeAtQuota}>
                   {syncBusy ? 'Enabling…' : 'Back up this Tome'}
                 </button>
               </div>

@@ -9,6 +9,11 @@ export interface RecentTome {
    *  is opened / created / restored. `null` on legacy entries from
    *  pre-M5 launches. */
   tome_uuid: string | null
+  /** Whether this Tome currently has local sync enabled. Mirrored
+   *  from its own `sync_config.enabled` at open / sync-toggle time.
+   *  Drives the TomePicker cloud badge + restore-list membership so
+   *  stop-sync produces coherent UX without opening each Tome's DB. */
+  sync_enabled: boolean
 }
 
 export interface AppState {
