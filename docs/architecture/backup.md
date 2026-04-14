@@ -13,7 +13,7 @@ Backend-agnostic storage layer the sync engine writes to. Three implementations 
 - `backend::prefixed::PrefixedBackend` — wraps a raw backend with `tomes/<uuid>/` prefix. Applied to filesystem + S3; hosted does prefixing server-side.
 
 ### Commands (`src-tauri/src/commands/backup/` — split into submodules)
-- **`config.rs`** — `backup_configure`, `backup_disconnect`, `backup_status`, `backup_set_device_name`, plus the `build_raw_backend` factory.
+- **`config.rs`** — `backup_configure`, `backup_disconnect`, `backup_status`, `backup_set_device_name`, `backup_probe_bucket_has_data` (wizard-time first-device inference for FS/S3), plus the `build_raw_backend` factory.
 - **`unlock.rs`** — `backup_unlock`, `backup_try_auto_unlock` (OS keychain).
 - **`restore.rs`** — `backup_list_restorable_tomes` (+ hosted variant), `backup_restore_tome`. Pulls latest snapshot, decrypts, writes `.tome` file, registers in recent_tomes, seeds `sync_config.enabled=true`.
 - **`delete.rs`** — `backup_delete_tome` — hosted: `DELETE /v1/tomes/<uuid>`; filesystem/S3: `list_prefix + delete`. Called from TomePicker trash button.

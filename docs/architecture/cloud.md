@@ -26,7 +26,8 @@ Hosted SaaS backup tier. Third `SyncBackend` implementation behind Vaelorium-iss
 1. Wizard → `cloud_signin({email, password})` → cloud computes Argon2id(password, salt) auth hash → returns device token.
 2. Rust stores device token in OS keychain; returns `CloudAccountInfo` (email, tier, usage).
 3. Frontend seeds `cloudAccount` store directly from response (no second round-trip).
-4. `configure_backup({kind: hosted, ...})` then writes `app_backend.json` with `BackendKind::Hosted`.
+4. `BackupSetupWizard.svelte` also reads `info.usage.tomeCount` + `bytesUsed` from the same response to infer "first device" vs "adding to existing setup" — step 4 skips the radio prompt entirely when the answer is derivable from the account ledger. FS/S3 gets the same behavior via `backup_probe_bucket_has_data` (see backup.md).
+5. `configure_backup({kind: hosted, ...})` then writes `app_backend.json` with `BackendKind::Hosted`.
 
 ## Quota / Tome limits
 - `CloudUsage.tomeCount` + `tomeLimit` (null = Author tier unlimited).

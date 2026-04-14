@@ -175,6 +175,7 @@ pub fn run() {
             commands::backup::unlock::backup_unlock,
             commands::backup::unlock::backup_try_auto_unlock,
             commands::backup::config::backup_set_device_name,
+            commands::backup::config::backup_probe_bucket_has_data,
             commands::backup::restore::backup_list_restorable_tomes,
             commands::backup::restore::backup_restore_tome,
             commands::backup::delete::backup_delete_tome,

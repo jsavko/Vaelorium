@@ -1,6 +1,6 @@
 <script lang="ts">
   import { isTauri } from '../api/bridge'
-  import { configureBackup } from '../api/backup'
+  import { configureBackup, probeBucketHasData } from '../api/backup'
   import { cloudSignin } from '../api/cloud'
   import { refreshBackupStatus, refreshSyncStatus } from '../stores/syncStore'
   import { cloudAccount } from '../stores/cloudStore'
@@ -40,13 +40,15 @@
   let passphrase = $state('')
   let passphraseConfirm = $state('')
   let deviceName = $state('')
-  // Second-device vs first-device intent on step 4. Default "new" for
-  // filesystem/S3 (probe will catch passphrase mismatch anyway) and for
-  // hosted when the user has no reason to think an existing account has
-  // data yet. The user flips this to "existing" when adding a device
-  // to an account already in use — switches the passphrase form from
-  // new+confirm to a single entry field (same value they used elsewhere).
+  // Second-device vs first-device intent on step 4. When we can infer
+  // it (hosted: CloudAccountInfo.usage from signin; FS/S3: list-probe
+  // the bucket on step-3 completion) we hide the radio and render only
+  // the relevant form. `inferredIntent` holds the inference;
+  // `showIntentOverride` lets the user re-expose the radio as an
+  // escape hatch for edge cases (e.g. intentional passphrase rotation).
   let passphraseIntent = $state<'new' | 'existing'>('new')
+  let inferredIntent = $state<'new' | 'existing' | null>(null)
+  let showIntentOverride = $state(false)
 
   // Reset wizard each time it opens so a re-launch starts fresh.
   $effect(() => {
@@ -54,6 +56,8 @@
       step = 1
       error = null
       cloudAccountInfo = null
+      inferredIntent = null
+      showIntentOverride = false
     }
   })
 
@@ -109,6 +113,35 @@
     const v = validateStep(step)
     if (v) { error = v; return }
     error = null
+    // Stepping from 3 → 4 on FS/S3 is the moment we can cheaply probe
+    // whether the chosen backend already has Tome data. Result drives
+    // step 4's form shape. Hosted is already inferred from the signin
+    // response so skip the probe there.
+    if (step === 3 && (backendKind === 'filesystem' || backendKind === 's3')) {
+      busy = true
+      try {
+        const backendConfig = backendKind === 'filesystem'
+          ? { path: backendPath }
+          : {
+              endpoint: s3Endpoint || null,
+              region: s3Region,
+              bucket: s3Bucket,
+              access_key: s3AccessKey,
+              secret_key: s3SecretKey,
+              prefix: s3Prefix || null,
+            }
+        const hasData = await probeBucketHasData(backendKind, backendConfig)
+        inferredIntent = hasData ? 'existing' : 'new'
+        passphraseIntent = inferredIntent
+        showIntentOverride = false
+      } catch (e: any) {
+        error = `Couldn't reach the backend to check for existing data: ${e?.message || e}`
+        busy = false
+        return
+      } finally {
+        busy = false
+      }
+    }
     if (step < 5) step = (step + 1) as Step
   }
 
@@ -129,6 +162,13 @@
       // Seed the shared cloud-account store so quota banners reflect
       // fresh usage without waiting for the next app-init refresh.
       cloudAccount.set(info)
+      // Infer first-device vs existing-setup from the account ledger:
+      // any encrypted tome on the backend means this is a second+
+      // device. Drives step-4 UI so the user doesn't have to pick.
+      const hasData = !!(info.usage && (info.usage.tomeCount > 0 || info.usage.bytesUsed > 0))
+      inferredIntent = hasData ? 'existing' : 'new'
+      passphraseIntent = inferredIntent
+      showIntentOverride = false
       // Drop the account password from memory as soon as signin succeeds
       // — we don't need it again; the device token is in the keychain.
       cloudPassword = ''
@@ -311,44 +351,91 @@
             </div>
           {/if}
         {:else if step === 4}
-          <h3>Encryption passphrase</h3>
-          {#if backendKind === 'hosted'}
-            <p class="sub">
-              This is <strong>separate</strong> from your Vaelorium account password. It encrypts your
-              data on-device before upload, so even Vaelorium Cloud can't read it.
+          {#if inferredIntent && !showIntentOverride}
+            <h3>
+              {#if inferredIntent === 'new'}
+                Create an encryption passphrase
+              {:else}
+                Enter your encryption passphrase
+              {/if}
+            </h3>
+            {#if backendKind === 'hosted'}
+              <p class="sub">
+                This is <strong>separate</strong> from your Vaelorium account password. It encrypts your
+                data on-device before upload, so even Vaelorium Cloud can't read it.
+              </p>
+            {/if}
+            <p class="sub inferred-note">
+              {#if inferredIntent === 'new'}
+                {#if backendKind === 'hosted'}
+                  Your Vaelorium Cloud account is empty — this looks like your first device.
+                {:else}
+                  The backup destination is empty — this looks like your first device.
+                {/if}
+              {:else}
+                {#if backendKind === 'hosted'}
+                  Your Vaelorium Cloud account already has data — enter the same passphrase you used on your first device.
+                {:else}
+                  The backup destination already has data — enter the same passphrase you used on your first device.
+                {/if}
+              {/if}
+              <button class="link" type="button" onclick={() => { showIntentOverride = true }}>Not what you expected? Change</button>
             </p>
-          {/if}
 
-          <div class="intent-row">
-            <label class="intent-option" class:selected={passphraseIntent === 'new'}>
-              <input type="radio" name="passphrase-intent" value="new" checked={passphraseIntent === 'new'} onchange={() => passphraseIntent = 'new'} />
-              <div>
-                <div class="intent-title">First device — create a new passphrase</div>
-                <div class="intent-desc">Use this if you haven't set up backup + sync anywhere else yet.</div>
+            {#if inferredIntent === 'new'}
+              <div class="warning">
+                <strong>This passphrase encrypts everything</strong>. There is no recovery if you lose it.
+                Write it down somewhere safe before continuing.
               </div>
-            </label>
-            <label class="intent-option" class:selected={passphraseIntent === 'existing'}>
-              <input type="radio" name="passphrase-intent" value="existing" checked={passphraseIntent === 'existing'} onchange={() => passphraseIntent = 'existing'} />
-              <div>
-                <div class="intent-title">Adding this device to an existing setup</div>
-                <div class="intent-desc">Enter the same passphrase you used on your first device. There's no recovery; it has to match.</div>
-              </div>
-            </label>
-          </div>
-
-          {#if passphraseIntent === 'new'}
-            <div class="warning">
-              <strong>This passphrase encrypts everything</strong>. There is no recovery if you lose it.
-              Write it down somewhere safe before continuing.
-            </div>
-            <label>New passphrase <input class="text" type="password" bind:value={passphrase} autocomplete="new-password" /></label>
-            <label>Confirm passphrase <input class="text" type="password" bind:value={passphraseConfirm} autocomplete="new-password" /></label>
+              <label>New passphrase <input class="text" type="password" bind:value={passphrase} autocomplete="new-password" /></label>
+              <label>Confirm passphrase <input class="text" type="password" bind:value={passphraseConfirm} autocomplete="new-password" /></label>
+            {:else}
+              <label>Existing passphrase <input class="text" type="password" bind:value={passphrase} autocomplete="current-password" /></label>
+              <p class="sub">
+                If this doesn't match what you used before, the first sync will fail with a decryption error
+                and you can come back and re-enter. Your data on the backend stays safe either way.
+              </p>
+            {/if}
           {:else}
-            <label>Existing passphrase <input class="text" type="password" bind:value={passphrase} autocomplete="current-password" /></label>
-            <p class="sub">
-              If this doesn't match what you used before, the first sync will fail with a decryption error
-              and you can come back and re-enter. Your data on the backend stays safe either way.
-            </p>
+            <h3>Encryption passphrase</h3>
+            {#if backendKind === 'hosted'}
+              <p class="sub">
+                This is <strong>separate</strong> from your Vaelorium account password. It encrypts your
+                data on-device before upload, so even Vaelorium Cloud can't read it.
+              </p>
+            {/if}
+
+            <div class="intent-row">
+              <label class="intent-option" class:selected={passphraseIntent === 'new'}>
+                <input type="radio" name="passphrase-intent" value="new" checked={passphraseIntent === 'new'} onchange={() => passphraseIntent = 'new'} />
+                <div>
+                  <div class="intent-title">First device — create a new passphrase</div>
+                  <div class="intent-desc">Use this if you haven't set up backup + sync anywhere else yet.</div>
+                </div>
+              </label>
+              <label class="intent-option" class:selected={passphraseIntent === 'existing'}>
+                <input type="radio" name="passphrase-intent" value="existing" checked={passphraseIntent === 'existing'} onchange={() => passphraseIntent = 'existing'} />
+                <div>
+                  <div class="intent-title">Adding this device to an existing setup</div>
+                  <div class="intent-desc">Enter the same passphrase you used on your first device. There's no recovery; it has to match.</div>
+                </div>
+              </label>
+            </div>
+
+            {#if passphraseIntent === 'new'}
+              <div class="warning">
+                <strong>This passphrase encrypts everything</strong>. There is no recovery if you lose it.
+                Write it down somewhere safe before continuing.
+              </div>
+              <label>New passphrase <input class="text" type="password" bind:value={passphrase} autocomplete="new-password" /></label>
+              <label>Confirm passphrase <input class="text" type="password" bind:value={passphraseConfirm} autocomplete="new-password" /></label>
+            {:else}
+              <label>Existing passphrase <input class="text" type="password" bind:value={passphrase} autocomplete="current-password" /></label>
+              <p class="sub">
+                If this doesn't match what you used before, the first sync will fail with a decryption error
+                and you can come back and re-enter. Your data on the backend stays safe either way.
+              </p>
+            {/if}
           {/if}
         {:else if step === 5}
           <h3>Review and connect</h3>
@@ -559,4 +646,9 @@
     cursor: pointer; text-decoration: underline;
   }
   .link:hover { text-decoration: none; }
+
+  .inferred-note {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+  }
+  .inferred-note .link { font-size: 12px; }
 </style>

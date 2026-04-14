@@ -307,6 +307,35 @@ pub async fn build_raw_backend(
     }
 }
 
+/// Cheap pre-connect check: does this backend already have `tomes/*/` data?
+/// Used by the setup wizard to infer "first device" vs "second+ device"
+/// without making the user pick manually. No session / passphrase needed —
+/// just lists the bucket root and looks for any encrypted op or snapshot.
+///
+/// Hosted isn't supported here (the client should read `CloudAccountInfo.usage`
+/// from the signin response instead — no bucket listing required). Calling
+/// this for `backend_kind = "hosted"` returns an error.
+#[tauri::command]
+pub async fn backup_probe_bucket_has_data(
+    backend_kind: String,
+    backend_config: serde_json::Value,
+) -> Result<bool, String> {
+    let kind = BackendKind::from_str(&backend_kind)
+        .ok_or_else(|| format!("unknown backend_kind: {backend_kind}"))?;
+    if matches!(kind, BackendKind::Hosted) {
+        return Err("hosted inference uses CloudAccountInfo.usage, not bucket probing".to_string());
+    }
+    let raw = build_raw_backend(kind, &backend_config).await?;
+    let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
+    let objects = raw_arc
+        .list_prefix("tomes")
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(objects
+        .iter()
+        .any(|o| o.key.contains(".snap.enc") || o.key.contains(".op.enc")))
+}
+
 fn parse_s3_config(config: &serde_json::Value) -> Result<S3Config, String> {
     fn s(v: &serde_json::Value, k: &str) -> Result<String, String> {
         v.get(k)

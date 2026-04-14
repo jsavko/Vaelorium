@@ -31,6 +31,21 @@ export interface ConfigureBackupInput {
   deviceName?: string
 }
 
+/** Does this backend already contain encrypted Tome data? Lets the setup
+ *  wizard pre-select the "first device" vs "adding to existing" branch
+ *  without asking the user. Not meaningful for hosted — callers should
+ *  read `CloudAccountInfo.usage` from the signin response instead. */
+export async function probeBucketHasData(
+  backendKind: 'filesystem' | 's3',
+  backendConfig: Record<string, unknown>,
+): Promise<boolean> {
+  if (!isTauri) return false
+  return callCommand<boolean>('backup_probe_bucket_has_data', {
+    backendKind,
+    backendConfig,
+  })
+}
+
 export async function configureBackup(input: ConfigureBackupInput): Promise<BackupStatus> {
   const raw = await callCommand<RawBackupStatus>('backup_configure', {
     input: {
