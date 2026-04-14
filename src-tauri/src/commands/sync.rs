@@ -554,8 +554,10 @@ pub async fn build_tome_backend(
         BackendKind::Hosted => {
             // Hosted skips the PrefixedBackend wrapper entirely — tome_uuid
             // is baked into every URL path, not prepended to object keys.
-            // Token held in the OS keychain (signed in via cloud_signin).
-            let token = crate::commands::cloud::require_device_token()?;
+            // Token held in the OS keychain (signed in via cloud_signin),
+            // with fallback to sync-backend.json for persistence on
+            // platforms without a working keychain.
+            let token = crate::commands::cloud::require_device_token_with_app(app)?;
             let http = crate::sync::backend::hosted::HostedClient::new()
                 .map_err(|e| e.to_string())?;
             Ok(Box::new(crate::sync::backend::hosted::HostedBackend::new(

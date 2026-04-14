@@ -160,6 +160,9 @@ pub async fn backup_configure(
         input.backend_config.clone()
     };
 
+    // Preserve any existing device_token on reconnect / reconfigure;
+    // only cloud_signin / cloud_signout mutate it.
+    let device_token = existing.as_ref().and_then(|c| c.device_token.clone());
     let cfg = AppBackendConfig {
         backend_kind,
         backend_config,
@@ -167,6 +170,7 @@ pub async fn backup_configure(
         device_id,
         device_name,
         created_at: existing.as_ref().map(|c| c.created_at).unwrap_or_else(chrono::Utc::now),
+        device_token,
     };
     let app_data_dir = app
         .path()

@@ -34,9 +34,10 @@ pub struct CloudAccountInfo {
 /// persisted.
 #[tauri::command]
 pub async fn cloud_signin(
-    _app: AppHandle,
+    app: AppHandle,
     input: CloudSigninInput,
 ) -> Result<CloudAccountInfo, String> {
+    use tauri::Manager;
     let email = input.email.trim();
     if email.is_empty() {
         return Err("email is required".to_string());
@@ -118,6 +119,18 @@ pub async fn cloud_signin(
         let _ = keychain::store_cloud(keychain::CLOUD_KEY_TIER, tier);
     }
 
+    // Also persist the device token into sync-backend.json if the user
+    // has configured hosted backup already. This gives us a second
+    // durable source of truth — `require_device_token` checks the
+    // keychain first, then falls back to AppBackendConfig. Belt + braces
+    // for platforms where the keychain fallback file is also missing.
+    if let Ok(dir) = app.path().app_data_dir() {
+        if let Ok(Some(mut cfg)) = crate::sync::app_backend::load(&dir).await {
+            cfg.device_token = Some(resp.device_token.clone());
+            let _ = crate::sync::app_backend::save(&dir, &cfg).await;
+        }
+    }
+
     Ok(CloudAccountInfo {
         email: resp.email,
         account_id: resp.account_id,
@@ -128,16 +141,37 @@ pub async fn cloud_signin(
 
 /// POST signout (swallow failures) + clear all four keychain entries.
 #[tauri::command]
-pub async fn cloud_signout(_app: AppHandle) -> Result<(), String> {
+pub async fn cloud_signout(app: AppHandle) -> Result<(), String> {
+    use tauri::Manager;
     let token = keychain::retrieve_cloud(keychain::CLOUD_KEY_DEVICE_TOKEN)
         .ok()
-        .flatten();
+        .flatten()
+        .or_else(|| {
+            // Fall back to AppBackendConfig if the keychain has nothing
+            // (e.g. mismatched / stale state). Best-effort — a signout
+            // that can't reach the server should still clear local state.
+            let dir = app.path().app_data_dir().ok()?;
+            // Can't .await inside an Option chain — use blocking read.
+            let bytes = std::fs::read(dir.join("sync-backend.json")).ok()?;
+            let cfg: crate::sync::app_backend::AppBackendConfig =
+                serde_json::from_slice(&bytes).ok()?;
+            cfg.device_token
+        });
     if let Some(ref t) = token {
         if let Ok(client) = HostedClient::new() {
             let _ = client.signout(t).await; // best-effort
         }
     }
     keychain::clear_all_cloud();
+    // Also strip the token from sync-backend.json.
+    if let Ok(dir) = app.path().app_data_dir() {
+        if let Ok(Some(mut cfg)) = crate::sync::app_backend::load(&dir).await {
+            if cfg.device_token.is_some() {
+                cfg.device_token = None;
+                let _ = crate::sync::app_backend::save(&dir, &cfg).await;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -166,8 +200,39 @@ pub async fn cloud_status(_app: AppHandle) -> Result<Option<CloudAccountInfo>, S
     }))
 }
 
-/// Internal helper: return the keychain device token or an error if
-/// absent. Used by `build_tome_backend` to construct HostedBackend.
+/// Internal helper: return a device token for authenticated requests.
+/// Checks in order: OS keychain (primary), file-backed keychain
+/// fallback (for platforms without a working secure store, handled
+/// transparently by `sync::keychain`), then AppBackendConfig as a
+/// last-resort source. Missing from all three = user must sign in.
+pub fn require_device_token_with_app(app: &AppHandle) -> Result<String, String> {
+    use tauri::Manager;
+    if let Ok(Some(t)) = keychain::retrieve_cloud(keychain::CLOUD_KEY_DEVICE_TOKEN) {
+        if !t.is_empty() {
+            return Ok(t);
+        }
+    }
+    // Fall back to AppBackendConfig (sync-backend.json) — durable across
+    // restarts on every platform regardless of keychain availability.
+    if let Ok(dir) = app.path().app_data_dir() {
+        let path = dir.join("sync-backend.json");
+        if let Ok(bytes) = std::fs::read(&path) {
+            if let Ok(cfg) =
+                serde_json::from_slice::<crate::sync::app_backend::AppBackendConfig>(&bytes)
+            {
+                if let Some(t) = cfg.device_token.filter(|s| !s.is_empty()) {
+                    return Ok(t);
+                }
+            }
+        }
+    }
+    Err("not signed in to Vaelorium Cloud — sign in from Settings → Backup".to_string())
+}
+
+/// Thin shim that doesn't need an AppHandle — kept for call sites that
+/// don't plumb it through yet. Consults keychain only. Prefer
+/// `require_device_token_with_app` where the handle is available.
+#[allow(dead_code)]
 pub fn require_device_token() -> Result<String, String> {
     match keychain::retrieve_cloud(keychain::CLOUD_KEY_DEVICE_TOKEN) {
         Ok(Some(t)) if !t.is_empty() => Ok(t),

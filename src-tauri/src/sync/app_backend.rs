@@ -31,6 +31,17 @@ pub struct AppBackendConfig {
     #[serde(default = "default_device_name")]
     pub device_name: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Hosted-cloud device token (JWT-equivalent). Only populated when
+    /// `backend_kind == Hosted` and the user is signed in. Persists
+    /// alongside the rest of backup config so a sign-in survives
+    /// process restarts on any platform, even those without a working
+    /// OS keychain. Trusted-local-device posture (same as the
+    /// S3 access keys already stored in this file).
+    ///
+    /// Mirrors the `device-token` keychain entry — whichever source
+    /// has a value is authoritative. Cleared on `cloud_signout`.
+    #[serde(default)]
+    pub device_token: Option<String>,
 }
 
 fn default_device_name() -> String {
@@ -99,6 +110,7 @@ mod tests {
             device_id: uuid::Uuid::new_v4(),
             device_name: "Test Device".to_string(),
             created_at: Utc::now(),
+            device_token: None,
         }
     }
 
