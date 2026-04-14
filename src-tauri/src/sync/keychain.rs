@@ -73,15 +73,66 @@ pub fn delete() -> Result<(), KeychainError> {
 
 // ----- Vaelorium Cloud (M5) -----
 
-/// In-memory fallback for cloud entries when the OS keychain is
-/// unavailable (e.g. WSL without gnome-keyring). Persists for the
-/// lifetime of the process — user re-signs-in on next launch. Same
-/// trade-off the existing backup-passphrase path makes implicitly via
-/// "log and continue" on store failure.
+/// File-backed fallback for cloud entries when the OS keychain is
+/// unavailable (e.g. WSL without gnome-keyring). Survives process
+/// restart so users don't re-sign-in every launch. Stored plaintext
+/// at `<app_data_dir>/cloud-fallback.json` under the same
+/// trusted-local-device posture already used for S3 access keys in
+/// `sync-backend.json`. Loaded on first use, kept in sync in-memory
+/// to avoid re-reading the file on every keychain call.
+fn fallback_path() -> Option<std::path::PathBuf> {
+    // Tauri's AppHandle isn't reachable from this module, so we resolve
+    // the same data dir Tauri would via XDG env vars. macOS and Linux
+    // use $XDG_DATA_HOME (else $HOME/.local/share). Windows uses
+    // %APPDATA%. These match the `app_data_dir` that
+    // `sync::app_backend` uses, so the fallback lives alongside
+    // sync-backend.json.
+    let base: std::path::PathBuf = if cfg!(target_os = "windows") {
+        std::env::var_os("APPDATA").map(std::path::PathBuf::from)?
+    } else if cfg!(target_os = "macos") {
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from)?;
+        home.join("Library").join("Application Support")
+    } else {
+        std::env::var_os("XDG_DATA_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share"))
+            })?
+    };
+    Some(base.join("com.vaelorium.app").join("cloud-fallback.json"))
+}
+
+fn fallback_load() -> std::collections::HashMap<String, String> {
+    let Some(path) = fallback_path() else { return Default::default() };
+    match std::fs::read_to_string(&path) {
+        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
+        Err(e) => {
+            log::warn!("keychain fallback: read {path:?}: {e}");
+            Default::default()
+        }
+    }
+}
+
+fn fallback_save(map: &std::collections::HashMap<String, String>) {
+    let Some(path) = fallback_path() else { return };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match serde_json::to_string(map) {
+        Ok(s) => {
+            if let Err(e) = std::fs::write(&path, s) {
+                log::warn!("keychain fallback: write {path:?}: {e}");
+            }
+        }
+        Err(e) => log::warn!("keychain fallback: serialize: {e}"),
+    }
+}
+
 fn fallback_map() -> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
     static MAP: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, String>>> =
         std::sync::OnceLock::new();
-    MAP.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+    MAP.get_or_init(|| std::sync::Mutex::new(fallback_load()))
 }
 
 fn fallback_get(key: &str) -> Option<String> {
@@ -91,12 +142,14 @@ fn fallback_get(key: &str) -> Option<String> {
 fn fallback_set(key: &str, value: &str) {
     if let Ok(mut m) = fallback_map().lock() {
         m.insert(key.to_string(), value.to_string());
+        fallback_save(&m);
     }
 }
 
 fn fallback_remove(key: &str) {
     if let Ok(mut m) = fallback_map().lock() {
         m.remove(key);
+        fallback_save(&m);
     }
 }
 
