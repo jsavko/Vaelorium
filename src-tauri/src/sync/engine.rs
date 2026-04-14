@@ -4,6 +4,7 @@
 //! Other tables follow the same shape (Phase 4).
 
 use chrono::Utc;
+use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use sqlx::SqlitePool;
 use ulid::Ulid;
@@ -15,6 +16,13 @@ use super::journal::{self, Op, OpKind, StoredOp};
 use super::snapshot::{self, SnapshotInfo, should_snapshot};
 use super::state::SyncRuntimeState;
 use super::{SyncError, SyncResult, SCHEMA_VERSION};
+
+/// How many PUT/GET journal operations to fly concurrently against the
+/// backend. HTTP/2 multiplexes on a single TLS connection so 8 sequential
+/// round-trips collapse to roughly one-round-trip worth of wall time.
+/// Kept bounded so a huge backlog doesn't trample Cloudflare Worker
+/// concurrency budgets.
+const JOURNAL_CONCURRENCY: usize = 8;
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct SyncOutcome {
@@ -36,29 +44,85 @@ pub async fn sync_tome_once(
     let mut outcome = SyncOutcome::default();
     let mut state = SyncRuntimeState::load(pool, tome_id).await?;
 
-    // 1. Upload local pending ops.
+    // 1. Upload local pending ops. Encrypt in-order (cheap, CPU-bound),
+    //    then fire PUTs concurrently so HTTP/2 multiplexing pipelines
+    //    them over one TLS connection. `buffer_unordered` caps in-flight
+    //    requests so a large backlog doesn't hammer the backend.
     let to_upload = journal::pending_ops(pool, tome_id, state.last_uploaded_op_id.as_deref()).await?;
-    for stored in &to_upload {
-        let bytes = stored.op.to_bytes()?;
-        let ciphertext = crypto::encrypt(key, &bytes)?;
-        let key_path = format!("journal/{}.op.enc", stored.op.op_id);
-        backend.put_object(&key_path, &ciphertext).await?;
-        outcome.ops_uploaded += 1;
-        state.last_uploaded_op_id = Some(stored.op.op_id.to_string());
+    let prepared: Vec<(String, Vec<u8>)> = to_upload
+        .iter()
+        .map(|s| -> SyncResult<_> {
+            let bytes = s.op.to_bytes()?;
+            let ciphertext = crypto::encrypt(key, &bytes)?;
+            let path = format!("journal/{}.op.enc", s.op.op_id);
+            Ok((path, ciphertext))
+        })
+        .collect::<SyncResult<_>>()?;
+    let max_uploaded_id = to_upload
+        .iter()
+        .map(|s| s.op.op_id.to_string())
+        .max();
+    let uploaded_count = to_upload.len() as u32;
+    let upload_results: Vec<Result<(), SyncError>> =
+        stream::iter(prepared.into_iter().map(|(path, ct)| async move {
+            backend
+                .put_object(&path, &ct)
+                .await
+                .map(|_| ())
+                .map_err(SyncError::from)
+        }))
+        .buffer_unordered(JOURNAL_CONCURRENCY)
+        .collect()
+        .await;
+    // Propagate the first upload error; if everything succeeded, advance
+    // the uploaded-op pointer past the largest ULID we just shipped.
+    for r in upload_results {
+        r?;
+    }
+    if let Some(id) = max_uploaded_id {
+        state.last_uploaded_op_id = Some(id);
+        outcome.ops_uploaded = uploaded_count;
     }
 
-    // 2. List remote journal newer than what we've applied.
+    // 2. List remote journal newer than what we've applied. Download
+    //    ciphertexts concurrently (same HTTP/2-multiplexing story as
+    //    uploads); decrypt + validate happen after the batch resolves
+    //    since they're CPU-bound and cheap relative to the network hop.
     let remote_objects = backend.list_prefix("journal").await?;
-    let mut remote_ops: Vec<(String, Op)> = Vec::new();
-    for obj in remote_objects {
-        let Some(name) = obj.key.rsplit('/').next() else { continue };
-        let Some(id_str) = name.strip_suffix(".op.enc") else { continue };
-        if let Some(last) = &state.last_applied_op_id {
-            if id_str <= last.as_str() {
-                continue;
+    let candidate_keys: Vec<String> = remote_objects
+        .into_iter()
+        .filter_map(|obj| {
+            let name = obj.key.rsplit('/').next()?;
+            let id_str = name.strip_suffix(".op.enc")?;
+            if let Some(last) = &state.last_applied_op_id {
+                if id_str <= last.as_str() {
+                    return None;
+                }
             }
-        }
-        let (ciphertext, _etag) = backend.get_object(&obj.key).await?;
+            Some(obj.key)
+        })
+        .collect();
+
+    let downloaded: Vec<SyncResult<(String, Vec<u8>)>> =
+        stream::iter(candidate_keys.into_iter().map(|full_key| async move {
+            let (ciphertext, _etag) = backend.get_object(&full_key).await?;
+            Ok((full_key, ciphertext))
+        }))
+        .buffer_unordered(JOURNAL_CONCURRENCY)
+        .collect()
+        .await;
+
+    let mut remote_ops: Vec<(String, Op)> = Vec::new();
+    for r in downloaded {
+        let (full_key, ciphertext) = r?;
+        let name = match full_key.rsplit('/').next() {
+            Some(n) => n,
+            None => continue,
+        };
+        let id_str = match name.strip_suffix(".op.enc") {
+            Some(s) => s,
+            None => continue,
+        };
         let plaintext = crypto::decrypt(key, &ciphertext)?;
         let op = Op::from_bytes(&plaintext)?;
 
