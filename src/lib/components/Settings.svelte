@@ -9,7 +9,8 @@
   import { syncStatus, backupStatus, syncActivity, refreshSyncStatus, refreshBackupStatus, refreshActivity } from '../stores/syncStore'
   import { enableSync, disableSync, syncNow, takeSnapshot } from '../api/sync'
   import { configureBackup, disconnectBackup, unlockBackup } from '../api/backup'
-  import { cloudSignout, cloudStatus, cloudAccountRefresh, type CloudAccountInfo } from '../api/cloud'
+  import { cloudSignout } from '../api/cloud'
+  import { cloudAccount, refreshCloudAccount, atTomeQuota } from '../stores/cloudStore'
   import { currentTome } from '../stores/tomeStore'
 
   interface Props {
@@ -143,22 +144,7 @@
 
   // --- Cloud account (Account tab) ---
 
-  let cloudAccount = $state<CloudAccountInfo | null>(null)
   let cloudBusy = $state(false)
-
-  async function refreshCloudAccount() {
-    try {
-      // Prefer a live /api/account call when signed in — picks up
-      // out-of-band plan / usage changes without waiting for sync.
-      // Falls back to the cached cloud_status if the refresh errors
-      // (e.g. offline) so the UI shows stale-but-present data.
-      const fresh = await cloudAccountRefresh().catch(() => null)
-      cloudAccount = fresh ?? (await cloudStatus())
-    } catch (e) {
-      console.warn('[cloud] status failed:', e)
-      cloudAccount = null
-    }
-  }
 
   // Cloud reports quotas as SI decimal bytes (1 GB = 1,000,000,000)
   // matching the "1 GB / 10 GB" marketing copy on plan cards.
@@ -630,34 +616,34 @@
 
               {#if $backupStatus.backendKind === 'hosted'}
                 <h3 class="settings-section-title" style="margin-top: 20px">Vaelorium Cloud account</h3>
-                {#if cloudAccount}
+                {#if $cloudAccount}
                   <div class="sync-status-card">
                     <div class="sync-status-row">
                       <span class="sync-status-label">Email</span>
-                      <span class="sync-status-value">{cloudAccount.email}</span>
+                      <span class="sync-status-value">{$cloudAccount.email}</span>
                     </div>
-                    {#if cloudAccount.tier}
+                    {#if $cloudAccount.tier}
                       <div class="sync-status-row">
                         <span class="sync-status-label">Plan</span>
                         <span class="sync-status-value">
-                          {cloudAccount.tier}
-                          {#if cloudAccount.usage?.subscriptionStatus && cloudAccount.usage.subscriptionStatus !== 'active'}
-                            <span class="sync-status-value warn">· {cloudAccount.usage.subscriptionStatus}</span>
+                          {$cloudAccount.tier}
+                          {#if $cloudAccount.usage?.subscriptionStatus && $cloudAccount.usage.subscriptionStatus !== 'active'}
+                            <span class="sync-status-value warn">· {$cloudAccount.usage.subscriptionStatus}</span>
                           {/if}
                         </span>
                       </div>
                     {/if}
-                    {#if cloudAccount.usage}
+                    {#if $cloudAccount.usage}
                       <div class="sync-status-row">
                         <span class="sync-status-label">Storage</span>
                         <span class="sync-status-value">
-                          {formatBytes(cloudAccount.usage.bytesUsed)} of {formatBytes(cloudAccount.usage.quotaBytes)}
+                          {formatBytes($cloudAccount.usage.bytesUsed)} of {formatBytes($cloudAccount.usage.quotaBytes)}
                         </span>
                       </div>
                       <div class="sync-status-row">
                         <span class="sync-status-label">Tomes</span>
                         <span class="sync-status-value">
-                          {cloudAccount.usage.tomeCount}{cloudAccount.usage.tomeLimit !== null ? ` of ${cloudAccount.usage.tomeLimit}` : ' (unlimited)'}
+                          {$cloudAccount.usage.tomeCount}{$cloudAccount.usage.tomeLimit !== null ? ` of ${$cloudAccount.usage.tomeLimit}` : ' (unlimited)'}
                         </span>
                       </div>
                     {:else}
@@ -791,8 +777,14 @@
                 Sync is off for this Tome. Enable it to back up and sync this Tome to the configured destination
                 ({$syncStatus.backendKind} — {$syncStatus.backendSummary}).
               </p>
+              {#if $atTomeQuota && $cloudAccount?.usage}
+                <div class="quota-banner">
+                  <strong>You're at your Vaelorium Cloud plan's Tome limit ({$cloudAccount.usage.tomeCount} of {$cloudAccount.usage.tomeLimit}).</strong>
+                  <span>Enabling backup for this Tome will fail until you upgrade your plan or remove an existing Tome from backup.</span>
+                </div>
+              {/if}
               <div class="sync-actions">
-                <button class="data-btn primary" onclick={handleEnableSync} disabled={syncBusy}>
+                <button class="data-btn primary" onclick={handleEnableSync} disabled={syncBusy || $atTomeQuota}>
                   {syncBusy ? 'Enabling…' : 'Back up this Tome'}
                 </button>
               </div>
@@ -1193,6 +1185,21 @@
   }
   .data-btn:hover { border-color: var(--color-accent-gold); }
   .data-desc { font-family: var(--font-ui); font-size: 12px; color: var(--color-fg-tertiary); margin: 0; }
+
+  .quota-banner {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    margin: 8px 0;
+    background: color-mix(in srgb, var(--color-warning, #c58b3a) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-warning, #c58b3a) 45%, transparent);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--color-fg-secondary);
+  }
+  .quota-banner strong { color: var(--color-fg-primary); font-weight: 600; }
 
   .account-row {
     display: flex;

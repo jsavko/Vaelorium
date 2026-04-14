@@ -3,6 +3,7 @@
   import { configureBackup } from '../api/backup'
   import { cloudSignin } from '../api/cloud'
   import { refreshBackupStatus, refreshSyncStatus } from '../stores/syncStore'
+  import { cloudAccount } from '../stores/cloudStore'
   import { showToast } from '../stores/toastStore'
 
   interface Props {
@@ -125,6 +126,9 @@
         deviceName: deviceName || undefined,
       })
       cloudAccountInfo = { email: info.email, tier: info.tier }
+      // Seed the shared cloud-account store so quota banners reflect
+      // fresh usage without waiting for the next app-init refresh.
+      cloudAccount.set(info)
       // Drop the account password from memory as soon as signin succeeds
       // — we don't need it again; the device token is in the keychain.
       cloudPassword = ''

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createTome } from '../stores/tomeStore'
   import { isTauri } from '../api/bridge'
+  import { cloudAccount, atTomeQuota, refreshCloudAccount } from '../stores/cloudStore'
 
   interface Props {
     open: boolean
@@ -8,6 +9,13 @@
   }
 
   let { open, onClose }: Props = $props()
+
+  // Pull a fresh usage snapshot each time the modal opens so the banner
+  // reflects any Tome adds / removes that happened out-of-band since
+  // the user last saw Settings → Backup.
+  $effect(() => {
+    if (open) refreshCloudAccount()
+  })
 
   let name = $state('')
   let description = $state('')
@@ -61,6 +69,13 @@
     <div class="modal" onclick={(e) => e.stopPropagation()}>
       <h2 class="modal-title">Create New Tome</h2>
       <p class="modal-desc">A Tome is a self-contained world — all your pages, maps, and settings in one file.</p>
+
+      {#if $atTomeQuota && $cloudAccount?.usage}
+        <div class="quota-banner">
+          <strong>You're at your Vaelorium Cloud plan's Tome limit ({$cloudAccount.usage.tomeCount} of {$cloudAccount.usage.tomeLimit}).</strong>
+          <span>You can still create this Tome locally, but it won't back up to the cloud until you upgrade your plan or remove an existing Tome from backup.</span>
+        </div>
+      {/if}
 
       <div class="form-field">
         <label class="field-label" for="tome-name">Name</label>
@@ -216,4 +231,18 @@
     opacity: 0.4;
     cursor: not-allowed;
   }
+
+  .quota-banner {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--color-warning, #c58b3a) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-warning, #c58b3a) 45%, transparent);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    color: var(--color-fg-secondary);
+  }
+  .quota-banner strong { color: var(--color-fg-primary); font-weight: 600; }
 </style>

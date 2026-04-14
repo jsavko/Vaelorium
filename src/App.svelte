@@ -22,6 +22,7 @@
   import ConflictsModal from './lib/components/ConflictsModal.svelte'
   import BackupSetupWizard from './lib/components/BackupSetupWizard.svelte'
   import { initSyncStore, syncStatus } from './lib/stores/syncStore'
+  import { refreshCloudAccount } from './lib/stores/cloudStore'
   import { onMount } from 'svelte'
   import { createPage, currentPageId } from './lib/stores/pageStore'
   import { settings } from './lib/stores/settingsStore'
@@ -70,6 +71,7 @@
       loadTimelines()
       if (isTauri) {
         initSyncStore().catch(() => {})
+        refreshCloudAccount().catch(() => {})
       }
     }
   })
