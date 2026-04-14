@@ -5,7 +5,7 @@ Self-hosted, offline-first LegendKeeper alternative for worldbuilders. Cross-pla
 - **Domain:** vaelorium.com
 - **Theme:** arcane library; dark walnut palette is the default
 - **Tome file extension:** `.tome`
-- **Status:** v0.2.0 released; milestones M0–M7, M9, M10 complete; M8 (collaboration) remaining
+- **Status:** v0.3.0 released; milestones M0–M7 + M9 + M10 complete, Vaelorium Cloud hosted tier (M5) shipped; M8 (collaboration) remaining
 - **Marketing site:** [vaelorium-website](https://github.com/jsavko/vaelorium-website) (private repo, sibling directory; see Marketing Website section below)
 
 ## Stack
