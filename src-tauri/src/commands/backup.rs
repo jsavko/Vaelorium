@@ -53,45 +53,70 @@ pub async fn backup_configure(
     let backend_kind = BackendKind::from_str(&input.backend_kind)
         .ok_or_else(|| format!("unknown backend_kind: {}", input.backend_kind))?;
 
-    // Build the raw backend (no prefix; sync-meta.json is at root).
-    let raw = build_raw_backend(backend_kind, &input.backend_config).await?;
-    let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
-
-    // Look for existing sync-meta.json (returning device or fresh bucket).
-    let remote = remote_meta::fetch(raw_arc.as_ref()).await?;
-    let salt: Vec<u8> = match &remote {
-        Some(meta) => meta.salt()?,
-        None => generate_salt().to_vec(),
-    };
-
-    let key = KeyMaterial::derive(&input.passphrase, &salt).map_err(|e| e.to_string())?;
-
-    // Validate passphrase against any existing Tome's data on the bucket.
-    // We probe per-Tome subtrees because the new layout puts everything
-    // under tomes/*/{snapshots,journal}/.
-    let probe_objects = raw_arc
-        .list_prefix("tomes")
+    // Hosted (Vaelorium Cloud) takes a different validation path — it
+    // has no shared bucket root to probe. Auth lives in the keychain
+    // (set by cloud_signin); the blob passphrase still derives a
+    // KeyMaterial exactly as for Filesystem/S3, but we generate a fresh
+    // salt (or reuse the existing app-global one) without a backend
+    // round-trip.
+    let (salt, key, remote_for_meta) = if matches!(backend_kind, BackendKind::Hosted) {
+        // Require a signed-in cloud session.
+        let _token = crate::commands::cloud::require_device_token()?;
+        let existing = app_backend::load(
+            &app.path().app_data_dir().map_err(|e| format!("app data dir: {e}"))?,
+        )
         .await
-        .map_err(|e| e.to_string())?;
-    if let Some(probe) = probe_objects
-        .iter()
-        .find(|o| o.key.contains(".snap.enc") || o.key.contains(".op.enc"))
-    {
-        let (ciphertext, _etag) = raw_arc
-            .get_object(&probe.key)
+        .ok()
+        .flatten();
+        let salt: Vec<u8> = match existing.as_ref() {
+            Some(e) => B64
+                .decode(&e.salt_b64)
+                .map_err(|e| format!("existing salt decode: {e}"))?,
+            None => generate_salt().to_vec(),
+        };
+        let key = KeyMaterial::derive(&input.passphrase, &salt).map_err(|e| e.to_string())?;
+        (salt, key, None)
+    } else {
+        // Build the raw backend (no prefix; sync-meta.json is at root).
+        let raw = build_raw_backend(backend_kind, &input.backend_config).await?;
+        let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
+
+        // Look for existing sync-meta.json (returning device or fresh bucket).
+        let remote = remote_meta::fetch(raw_arc.as_ref()).await?;
+        let salt: Vec<u8> = match &remote {
+            Some(meta) => meta.salt()?,
+            None => generate_salt().to_vec(),
+        };
+
+        let key = KeyMaterial::derive(&input.passphrase, &salt).map_err(|e| e.to_string())?;
+
+        // Validate passphrase against any existing Tome's data on the bucket.
+        let probe_objects = raw_arc
+            .list_prefix("tomes")
             .await
             .map_err(|e| e.to_string())?;
-        crate::sync::crypto::decrypt(&key, &ciphertext).map_err(|_| {
-            "passphrase does not match the existing backup data — \
-             the passphrase is wrong."
-                .to_string()
-        })?;
-    }
+        if let Some(probe) = probe_objects
+            .iter()
+            .find(|o| o.key.contains(".snap.enc") || o.key.contains(".op.enc"))
+        {
+            let (ciphertext, _etag) = raw_arc
+                .get_object(&probe.key)
+                .await
+                .map_err(|e| e.to_string())?;
+            crate::sync::crypto::decrypt(&key, &ciphertext).map_err(|_| {
+                "passphrase does not match the existing backup data — \
+                 the passphrase is wrong."
+                    .to_string()
+            })?;
+        }
 
-    // First-ever connection to this bucket → publish meta.
-    if remote.is_none() {
-        remote_meta::put(raw_arc.as_ref(), &RemoteMeta::new(&salt)).await?;
-    }
+        // First-ever connection to this bucket → publish meta.
+        if remote.is_none() {
+            remote_meta::put(raw_arc.as_ref(), &RemoteMeta::new(&salt)).await?;
+        }
+        (salt, key, Some(remote))
+    };
+    let _ = remote_for_meta; // suppress unused; only useful above
 
     // Persist the app-global config. Reuse the existing device_id if the
     // user is reconnecting to the same bucket — otherwise ops from this
@@ -110,9 +135,34 @@ pub async fn backup_configure(
     });
     let device_id = existing.as_ref().map(|c| c.device_id).unwrap_or_else(uuid::Uuid::new_v4);
     let device_name = ensure_device_name_stub(&raw_name, device_id);
+    // Hosted: decorate backend_config with email + tier from keychain
+    // so backup_status can render "Cloud <tier> — <email>" without
+    // touching the keychain on every status call.
+    let backend_config = if matches!(backend_kind, BackendKind::Hosted) {
+        let email = keychain::retrieve_cloud(keychain::CLOUD_KEY_EMAIL)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let tier = keychain::retrieve_cloud(keychain::CLOUD_KEY_TIER)
+            .ok()
+            .flatten();
+        let mut obj = serde_json::Map::new();
+        if !email.is_empty() {
+            obj.insert("email".to_string(), serde_json::Value::String(email));
+        }
+        if let Some(t) = tier {
+            if !t.is_empty() {
+                obj.insert("tier".to_string(), serde_json::Value::String(t));
+            }
+        }
+        serde_json::Value::Object(obj)
+    } else {
+        input.backend_config.clone()
+    };
+
     let cfg = AppBackendConfig {
         backend_kind,
-        backend_config: input.backend_config.clone(),
+        backend_config,
         salt_b64: B64.encode(&salt),
         device_id,
         device_name,

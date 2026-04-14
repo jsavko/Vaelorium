@@ -9,6 +9,7 @@
   import { syncStatus, backupStatus, syncActivity, refreshSyncStatus, refreshBackupStatus, refreshActivity } from '../stores/syncStore'
   import { enableSync, disableSync, syncNow, takeSnapshot } from '../api/sync'
   import { configureBackup, disconnectBackup, unlockBackup } from '../api/backup'
+  import { cloudSignout } from '../api/cloud'
   import { currentTome } from '../stores/tomeStore'
 
   interface Props {
@@ -143,6 +144,12 @@
   async function handleDisconnectBackup() {
     syncBusy = true
     try {
+      // Hosted: also sign out of the cloud so the device token is
+      // revoked server-side, not just locally. Best-effort — a network
+      // failure here shouldn't block the local disconnect.
+      if ($backupStatus.backendKind === 'hosted') {
+        try { await cloudSignout() } catch (e) { console.warn('[cloud] signout failed:', e) }
+      }
       await disconnectBackup()
       await refreshBackupStatus()
       await refreshSyncStatus()

@@ -29,13 +29,17 @@ export const backupStatus = writable<BackupStatus>(initialBackup)
 export const syncConflicts = writable<SyncConflict[]>([])
 export const syncActivity = writable<ActivityRow[]>([])
 export const syncRunning = writable(false)
+/** Hosted-cloud device token revoked / expired. Until the user
+ *  re-signs in from Settings → Backup, the runner will keep failing. */
+export const syncUnauthorized = writable(false)
 
-/** "idle" | "syncing" | "conflicts" | "offline" | "error" | "locked" | "backup-missing" */
+/** "idle" | "syncing" | "conflicts" | "offline" | "error" | "locked" | "backup-missing" | "unauthorized" */
 export const syncIndicator = derived(
-  [syncStatus, backupStatus, syncRunning],
-  ([$status, $backup, $running]) => {
+  [syncStatus, backupStatus, syncRunning, syncUnauthorized],
+  ([$status, $backup, $running, $unauthorized]) => {
     if (!$backup.configured) return 'backup-missing' as const
     if ($backup.locked) return 'locked' as const
+    if ($unauthorized) return 'unauthorized' as const
     if (!$status.enabled) return 'offline' as const
     if ($status.locked) return 'locked' as const
     if ($running) return 'syncing' as const
@@ -99,6 +103,13 @@ export async function initSyncStore() {
   if (!unsubscribed) {
     unsubscribed = await subscribeSyncStatus((e) => {
       syncRunning.set(e.state === 'syncing')
+      // Hosted-cloud token revoked → pill jumps to "unauthorized" state.
+      // Cleared on successful signin (see cloud_signin handler).
+      if (e.state === 'unauthorized') {
+        syncUnauthorized.set(true)
+      } else if (e.state === 'idle' || e.state === 'syncing') {
+        syncUnauthorized.set(false)
+      }
       refreshSyncStatus()
       refreshActivity()
     })

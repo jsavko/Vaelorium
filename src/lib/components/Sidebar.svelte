@@ -50,9 +50,10 @@
     const indicator = get(syncIndicator)
     // Locked / backup-missing always goes to Settings — conflicts can't be
     // resolved without an active session, and the state prompt belongs there.
-    if (indicator === 'locked' || indicator === 'backup-missing') {
-      // Both states are resolved in Backup tab — that's where the passphrase
-      // lives under the app-global model. Sync tab just shows per-Tome toggle.
+    if (indicator === 'locked' || indicator === 'backup-missing' || indicator === 'unauthorized') {
+      // All three resolve in the Backup tab: backup-missing → set it up,
+      // locked → enter passphrase, unauthorized → re-sign-in to Cloud.
+      // Sync tab is per-Tome toggle only and can't resolve any of these.
       onOpenSettings?.('backup')
       return
     }
@@ -190,16 +191,17 @@
       class:sync-syncing={$syncIndicator === 'syncing'}
       class:sync-conflicts={$syncIndicator === 'conflicts'}
       class:sync-offline={$syncIndicator === 'offline' || $syncIndicator === 'backup-missing'}
-      class:sync-error={$syncIndicator === 'error'}
+      class:sync-error={$syncIndicator === 'error' || $syncIndicator === 'unauthorized'}
       class:sync-locked={$syncIndicator === 'locked'}
       onclick={handlePillClick}
-      title={$syncIndicator === 'locked' ? 'Click to unlock' : $syncIndicator === 'conflicts' ? 'Resolve sync conflicts' : 'Open sync settings'}
+      title={$syncIndicator === 'locked' ? 'Click to unlock' : $syncIndicator === 'conflicts' ? 'Resolve sync conflicts' : $syncIndicator === 'unauthorized' ? 'Sign in to Vaelorium Cloud again' : 'Open sync settings'}
       data-testid="sync-pill"
     >
       <span class="sync-dot"></span>
       <span class="sync-pill-label">
         {#if $syncIndicator === 'syncing'}Syncing…
         {:else if $syncIndicator === 'conflicts'}{$syncStatus.pendingConflicts} conflict{$syncStatus.pendingConflicts === 1 ? '' : 's'}
+        {:else if $syncIndicator === 'unauthorized'}Sign in needed
         {:else if $syncIndicator === 'error'}Sync error
         {:else if $syncIndicator === 'backup-missing'}No backup
         {:else if $syncIndicator === 'offline'}Sync off

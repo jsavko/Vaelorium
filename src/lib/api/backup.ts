@@ -25,7 +25,7 @@ const fromRaw = (r: RawBackupStatus): BackupStatus => ({
 })
 
 export interface ConfigureBackupInput {
-  backendKind: 'filesystem' | 's3'
+  backendKind: 'filesystem' | 's3' | 'hosted'
   backendConfig: Record<string, unknown>
   passphrase: string
   deviceName?: string

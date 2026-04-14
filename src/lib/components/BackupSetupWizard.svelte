@@ -1,6 +1,7 @@
 <script lang="ts">
   import { isTauri } from '../api/bridge'
   import { configureBackup } from '../api/backup'
+  import { cloudSignin } from '../api/cloud'
   import { refreshBackupStatus, refreshSyncStatus } from '../stores/syncStore'
   import { showToast } from '../stores/toastStore'
 
@@ -17,7 +18,7 @@
   let error = $state<string | null>(null)
 
   // Form state — same fields as the inline Settings → Backup form.
-  let backendKind = $state<'filesystem' | 's3'>('filesystem')
+  let backendKind = $state<'filesystem' | 's3' | 'hosted'>('hosted')
   let backendPath = $state('')
   let s3Endpoint = $state('')
   let s3Region = $state('us-east-1')
@@ -25,6 +26,12 @@
   let s3AccessKey = $state('')
   let s3SecretKey = $state('')
   let s3Prefix = $state('vaelorium')
+  // Hosted (Vaelorium Cloud) signin fields. Distinct from `passphrase`
+  // — cloud password authenticates to the account; passphrase encrypts
+  // your data before upload.
+  let cloudEmail = $state('')
+  let cloudPassword = $state('')
+  let cloudAccountInfo = $state<{ email: string; tier: string | null } | null>(null)
   let passphrase = $state('')
   let passphraseConfirm = $state('')
   let deviceName = $state('')
@@ -34,8 +41,16 @@
     if (open) {
       step = 1
       error = null
+      cloudAccountInfo = null
     }
   })
+
+  async function openExternal(url: string) {
+    // In web preview mode we can just use window.open. In the Tauri
+    // desktop window, WebKitGTK will intercept target=_blank links
+    // and hand them off to the OS default browser.
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 
   async function pickFolder() {
     if (!isTauri) { error = 'Folder picker only available in the desktop app'; return }
@@ -52,6 +67,9 @@
         if (!s3Region) return 'Region is required'
         if (!s3AccessKey || !s3SecretKey) return 'Access key and secret key are required'
       }
+      if (backendKind === 'hosted') {
+        if (!cloudAccountInfo) return 'Sign in to Vaelorium Cloud to continue'
+      }
     }
     if (s === 4) {
       if (passphrase.length < 8) return 'Passphrase must be at least 8 characters'
@@ -60,11 +78,36 @@
     return null
   }
 
-  function next() {
+  async function next() {
     const v = validateStep(step)
     if (v) { error = v; return }
     error = null
     if (step < 5) step = (step + 1) as Step
+  }
+
+  async function handleCloudSignin() {
+    error = null
+    if (!cloudEmail || !cloudPassword) {
+      error = 'Email and password are required'
+      return
+    }
+    busy = true
+    try {
+      const info = await cloudSignin({
+        email: cloudEmail.trim(),
+        password: cloudPassword,
+        deviceName: deviceName || undefined,
+      })
+      cloudAccountInfo = { email: info.email, tier: info.tier }
+      // Drop the account password from memory as soon as signin succeeds
+      // — we don't need it again; the device token is in the keychain.
+      cloudPassword = ''
+      showToast(`Signed in as ${info.email}`, 'success')
+    } catch (e: any) {
+      error = e?.message || String(e)
+    } finally {
+      busy = false
+    }
   }
 
   function back() {
@@ -76,17 +119,23 @@
     error = null
     busy = true
     try {
-      const backendConfig =
-        backendKind === 'filesystem'
-          ? { path: backendPath }
-          : {
-              endpoint: s3Endpoint || null,
-              region: s3Region,
-              bucket: s3Bucket,
-              access_key: s3AccessKey,
-              secret_key: s3SecretKey,
-              prefix: s3Prefix || null,
-            }
+      let backendConfig: Record<string, unknown>
+      if (backendKind === 'filesystem') {
+        backendConfig = { path: backendPath }
+      } else if (backendKind === 's3') {
+        backendConfig = {
+          endpoint: s3Endpoint || null,
+          region: s3Region,
+          bucket: s3Bucket,
+          access_key: s3AccessKey,
+          secret_key: s3SecretKey,
+          prefix: s3Prefix || null,
+        }
+      } else {
+        // hosted: no user-supplied backend_config; the Rust side fills
+        // in email + tier from keychain.
+        backendConfig = {}
+      }
       await configureBackup({ backendKind, backendConfig, passphrase, deviceName: deviceName || undefined })
       await refreshBackupStatus()
       await refreshSyncStatus()
@@ -96,6 +145,7 @@
       passphraseConfirm = ''
       s3AccessKey = ''
       s3SecretKey = ''
+      cloudPassword = ''
       onComplete?.()
       onClose()
     } catch (e: any) {
@@ -123,16 +173,28 @@
         {#if step === 1}
           <h3>Welcome</h3>
           <p>
-            Vaelorium can back up your Tomes to your own storage and sync them across
-            devices. Everything is end-to-end encrypted with a passphrase only you know.
+            Vaelorium can back up your Tomes and sync them across devices.
+            Everything is end-to-end encrypted — even on Vaelorium Cloud,
+            your data is encrypted before upload with a passphrase only you know.
           </p>
           <ul class="bullets">
-            <li>Use a folder on your disk — your live Tome stays local; the folder only receives immutable encrypted ops and snapshots, safe to share with Syncthing or a cloud-folder agent</li>
-            <li>Or any S3-compatible bucket: AWS, Cloudflare R2, Backblaze B2, Minio…</li>
-            <li>One backup destination is shared across every Tome you sync</li>
+            <li><strong>Vaelorium Cloud</strong> — hosted, paid, zero-config. Sign in and sync across any number of devices.</li>
+            <li><strong>A folder</strong> on your disk or mounted NAS share — works with Syncthing / Dropbox / iCloud for cross-device sync.</li>
+            <li><strong>S3-compatible bucket</strong> — AWS, Cloudflare R2, Backblaze B2, Minio…</li>
+            <li>One backup destination is shared across every Tome you sync.</li>
           </ul>
         {:else if step === 2}
           <h3>Where should backups go?</h3>
+          <label class="kind-card" class:selected={backendKind === 'hosted'}>
+            <input type="radio" name="kind" value="hosted" checked={backendKind === 'hosted'} onchange={() => backendKind = 'hosted'} />
+            <div class="kind-body">
+              <div class="kind-title">Vaelorium Cloud <span class="pill">recommended</span></div>
+              <p class="kind-desc">
+                Hosted, encrypted, paid. Sign in with your Vaelorium account — no bucket config, no credentials to manage.
+                Zero-knowledge: your data is encrypted on-device before upload.
+              </p>
+            </div>
+          </label>
           <label class="kind-card" class:selected={backendKind === 'filesystem'}>
             <input type="radio" name="kind" value="filesystem" checked={backendKind === 'filesystem'} onchange={() => backendKind = 'filesystem'} />
             <div class="kind-body">
@@ -148,11 +210,42 @@
             <input type="radio" name="kind" value="s3" checked={backendKind === 's3'} onchange={() => backendKind = 's3'} />
             <div class="kind-body">
               <div class="kind-title">S3-compatible bucket</div>
-              <p class="kind-desc">AWS, Cloudflare R2, Backblaze B2, Wasabi, Minio, Garage. Best for many devices.</p>
+              <p class="kind-desc">AWS, Cloudflare R2, Backblaze B2, Wasabi, Minio, Garage. Best for BYO-cloud setups.</p>
             </div>
           </label>
         {:else if step === 3}
-          {#if backendKind === 'filesystem'}
+          {#if backendKind === 'hosted'}
+            <h3>Sign in to Vaelorium Cloud</h3>
+            {#if cloudAccountInfo}
+              <div class="review">
+                <dl>
+                  <dt>Signed in as</dt>
+                  <dd>{cloudAccountInfo.email}</dd>
+                  {#if cloudAccountInfo.tier}
+                    <dt>Plan</dt>
+                    <dd>{cloudAccountInfo.tier}</dd>
+                  {/if}
+                </dl>
+                <button class="ghost" type="button" onclick={() => { cloudAccountInfo = null; cloudPassword = '' }}>Sign in as a different account</button>
+              </div>
+            {:else}
+              <p class="sub">
+                Use your Vaelorium account password. Need an account?
+                <button class="link" type="button" onclick={() => openExternal('https://cloud.vaelorium.com/signup')}>Create one →</button>
+              </p>
+              <label>Email
+                <input class="text" type="email" autocomplete="username" bind:value={cloudEmail} />
+              </label>
+              <label>Password
+                <input class="text" type="password" autocomplete="current-password" bind:value={cloudPassword} />
+              </label>
+              <div class="row">
+                <button class="primary" type="button" onclick={handleCloudSignin} disabled={busy}>
+                  {busy ? 'Signing in…' : 'Sign in'}
+                </button>
+              </div>
+            {/if}
+          {:else if backendKind === 'filesystem'}
             <h3>Pick a folder</h3>
             <p class="sub">
               Any local directory, a Syncthing/Dropbox folder, or a mounted network share (SMB/UNC, NFS, AFP)
@@ -179,7 +272,13 @@
             </div>
           {/if}
         {:else if step === 4}
-          <h3>Passphrase</h3>
+          <h3>Encryption passphrase</h3>
+          {#if backendKind === 'hosted'}
+            <p class="sub">
+              This is <strong>separate</strong> from your Vaelorium account password. It encrypts your
+              data on-device before upload, so even Vaelorium Cloud can't read it.
+            </p>
+          {/if}
           <div class="warning">
             <strong>This passphrase encrypts everything</strong>. There is no recovery if you lose it.
             Write it down somewhere safe before continuing.
@@ -193,13 +292,26 @@
           </label>
           <dl class="review">
             <dt>Destination</dt>
-            <dd>{backendKind === 'filesystem' ? `Folder: ${backendPath}` : `S3: ${s3Bucket}${s3Endpoint ? ' on ' + s3Endpoint : ''}`}</dd>
+            <dd>
+              {#if backendKind === 'hosted'}
+                Vaelorium Cloud{cloudAccountInfo ? ` — ${cloudAccountInfo.email}` : ''}{cloudAccountInfo?.tier ? ` (${cloudAccountInfo.tier})` : ''}
+              {:else if backendKind === 'filesystem'}
+                Folder: {backendPath}
+              {:else}
+                S3: {s3Bucket}{s3Endpoint ? ' on ' + s3Endpoint : ''}
+              {/if}
+            </dd>
             <dt>Encryption</dt>
             <dd>End-to-end (passphrase-derived key, ChaCha20-Poly1305)</dd>
           </dl>
           <p class="sub">
-            We'll talk to the backend and verify your passphrase against any existing data.
-            On a fresh destination this is instantaneous.
+            {#if backendKind === 'hosted'}
+              Ready to connect. We'll persist the encryption passphrase in your OS keychain
+              so you won't need to re-enter it every launch.
+            {:else}
+              We'll talk to the backend and verify your passphrase against any existing data.
+              On a fresh destination this is instantaneous.
+            {/if}
           </p>
         {/if}
 
@@ -329,4 +441,36 @@
     color: var(--color-fg-inverse); cursor: pointer;
   }
   .foot button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .body .primary {
+    padding: 7px 14px; background: var(--color-accent-gold); border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+    color: var(--color-fg-inverse); cursor: pointer;
+  }
+  .body .primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .body .ghost {
+    padding: 6px 10px; background: transparent;
+    border: 1px solid var(--color-border-default); border-radius: var(--radius-sm);
+    font-family: var(--font-ui); font-size: 12px; color: var(--color-fg-secondary);
+    cursor: pointer;
+  }
+  .body .ghost:hover { color: var(--color-fg-primary); border-color: var(--color-accent-gold); }
+
+  .pill {
+    display: inline-block; margin-left: 6px;
+    padding: 1px 8px; background: var(--color-accent-gold);
+    color: var(--color-fg-inverse);
+    border-radius: 9999px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+    vertical-align: middle;
+  }
+
+  .link {
+    background: none; border: none; padding: 0;
+    color: var(--color-accent-gold);
+    font-family: inherit; font-size: inherit;
+    cursor: pointer; text-decoration: underline;
+  }
+  .link:hover { text-decoration: none; }
 </style>
