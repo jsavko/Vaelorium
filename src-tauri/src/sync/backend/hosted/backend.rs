@@ -19,42 +19,12 @@ pub struct HostedBackend {
 
 impl HostedBackend {
     pub fn new(http: Client, tome_uuid: String, token: String) -> Self {
-        // Cloud validator requires the hyphenated 8-4-4-4-12 UUID form.
-        // The app's `tome_metadata.tome_uuid` is stored as the simple
-        // (32-char unhyphenated) form because the filesystem + S3 bucket
-        // layouts use it that way (`tomes/<32hex>/...`). Hyphenate here
-        // at the URL boundary so the app storage format stays stable
-        // and cloud requests pass validation.
-        let canonical = hyphenate_uuid(&tome_uuid);
         Self {
             http,
-            tome_uuid: canonical,
+            tome_uuid,
             token,
         }
     }
-}
-
-/// Accept either the hyphenated or simple UUID form and emit the
-/// canonical hyphenated `8-4-4-4-12` form. Falls back to the input
-/// string if it's neither shape (no-op, lets the server reject it).
-fn hyphenate_uuid(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if trimmed.len() == 36 && trimmed.as_bytes().iter().filter(|&&b| b == b'-').count() == 4 {
-        return trimmed.to_ascii_lowercase();
-    }
-    // Simple form: 32 lowercase hex chars, no hyphens.
-    if trimmed.len() == 32 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
-        let s = trimmed.to_ascii_lowercase();
-        return format!(
-            "{}-{}-{}-{}-{}",
-            &s[0..8],
-            &s[8..12],
-            &s[12..16],
-            &s[16..20],
-            &s[20..32]
-        );
-    }
-    trimmed.to_ascii_lowercase()
 }
 
 fn obj_info(key: String, size: u64, etag: String, last_modified_ms: i64) -> ObjectInfo {
@@ -135,34 +105,3 @@ impl SyncBackend for HostedBackend {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::hyphenate_uuid;
-
-    #[test]
-    fn hyphenates_simple_form() {
-        assert_eq!(
-            hyphenate_uuid("abcdef0123456789abcdef0123456789"),
-            "abcdef01-2345-6789-abcd-ef0123456789"
-        );
-    }
-
-    #[test]
-    fn preserves_hyphenated_form() {
-        let s = "abcdef01-2345-6789-abcd-ef0123456789";
-        assert_eq!(hyphenate_uuid(s), s);
-    }
-
-    #[test]
-    fn lowercases_uppercase_input() {
-        assert_eq!(
-            hyphenate_uuid("ABCDEF0123456789ABCDEF0123456789"),
-            "abcdef01-2345-6789-abcd-ef0123456789"
-        );
-    }
-
-    #[test]
-    fn passes_through_invalid_shapes_for_server_rejection() {
-        assert_eq!(hyphenate_uuid("not-a-uuid"), "not-a-uuid");
-    }
-}
