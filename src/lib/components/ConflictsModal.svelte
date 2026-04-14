@@ -66,10 +66,15 @@
 </script>
 
 {#if open}
-  <div class="scrim" onclick={onClose} onkeydown={(e) => e.key === 'Escape' && onClose()} role="presentation">
+  <div
+    class="scrim"
+    onclick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    onkeydown={(e) => e.key === 'Escape' && onClose()}
+    role="presentation"
+  >
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_interactive_supports_focus -->
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div class="modal" role="dialog" aria-modal="true">
       <header class="modal-head">
         <h2>Resolve sync conflicts</h2>
         <button class="close-btn" onclick={onClose} aria-label="Close">×</button>

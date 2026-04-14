@@ -157,10 +157,16 @@
 </script>
 
 {#if open}
-  <div class="scrim" onclick={onClose} role="presentation">
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div
+    class="scrim"
+    onclick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    onmousedown={(e) => { if (e.target === e.currentTarget) e.preventDefault() }}
+    role="presentation"
+  >
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_interactive_supports_focus -->
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+    <div class="modal" role="dialog" aria-modal="true">
       <header class="head">
         <div class="head-text">
           <h2>Set up backup</h2>
