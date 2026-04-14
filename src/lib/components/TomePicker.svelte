@@ -5,12 +5,12 @@
   import { onMount } from 'svelte'
   import type { RecentTome } from '../api/tomes'
   import {
-    getBackupStatus,
     listRestorableTomes,
     restoreTomeFromBackup,
     deleteTomeFromBackup,
     type RestorableTome,
   } from '../api/backup'
+  import { backupStatus, refreshBackupStatus } from '../stores/syncStore'
   import ConfirmDialog from './ConfirmDialog.svelte'
 
   interface Props {
@@ -21,8 +21,13 @@
 
   let { onCreateNew, onOpenSettings, onOpenWizard }: Props = $props()
 
-  let backupConfigured = $state(false)
-  let backupLocked = $state(false)
+  // Derive from the shared store so unlock / sign-in actions on the
+  // Settings modal reactively update this panel. Previously we
+  // snapshot'd to local state on mount and never re-read — after
+  // unlocking via Settings the picker kept saying "Backup is locked".
+  let backupConfigured = $derived($backupStatus.configured)
+  let backupLocked = $derived($backupStatus.locked)
+
   let restorable = $state<RestorableTome[]>([])
   let restorableLoading = $state(false)
   let restorableError = $state<string | null>(null)
@@ -30,25 +35,30 @@
   let deletingUuid = $state<string | null>(null)
   let confirmDeleteOpen = $state(false)
   let pendingDelete = $state<RestorableTome | null>(null)
+  // Guard against firing loadRestorable every time the store emits;
+  // only refetch when the configured+unlocked state transitions from
+  // false → true.
+  let lastListKey = $state('')
 
   onMount(async () => {
     loadRecentTomes()
-    await refreshBackupSection()
+    if (isTauri) await refreshBackupStatus()
   })
 
-  async function refreshBackupSection() {
-    if (!isTauri) return
-    try {
-      const status = await getBackupStatus()
-      backupConfigured = status.configured
-      backupLocked = status.locked
-      if (status.configured && !status.locked) {
-        await loadRestorable()
+  // React to unlock / sign-in / configure happening in Settings:
+  // whenever backup becomes configured+unlocked, refresh the list.
+  $effect(() => {
+    const key = backupConfigured && !backupLocked ? 'ready' : 'not-ready'
+    if (key !== lastListKey) {
+      lastListKey = key
+      if (key === 'ready') {
+        loadRestorable()
+      } else {
+        restorable = []
+        restorableError = null
       }
-    } catch (e) {
-      console.warn('backup status fetch failed', e)
     }
-  }
+  })
 
   async function loadRestorable() {
     restorableLoading = true
