@@ -171,6 +171,14 @@
 
   async function handleCloudSignin() {
     error = null
+    // Device name must be set BEFORE signin — it's what the cloud
+    // registers as this device's display name. Step-3→4 "Next"
+    // already validates this, but the Sign in button bypasses that
+    // transition, so guard here too.
+    if (!deviceName.trim()) {
+      error = 'Enter a device name first — the cloud uses it to identify this install'
+      return
+    }
     if (!cloudEmail || !cloudPassword) {
       error = 'Email and password are required'
       return
@@ -180,7 +188,7 @@
       const info = await cloudSignin({
         email: cloudEmail.trim(),
         password: cloudPassword,
-        deviceName: deviceName || undefined,
+        deviceName: deviceName.trim(),
       })
       cloudAccountInfo = { email: info.email, tier: info.tier }
       // Seed the shared cloud-account store so quota banners reflect
@@ -352,7 +360,7 @@
                   <input class="text" type="password" autocomplete="current-password" bind:value={cloudPassword} />
                 </label>
                 <div class="row">
-                  <button class="primary" type="submit" disabled={busy}>
+                  <button class="primary" type="submit" disabled={busy || !deviceName.trim() || !cloudEmail || !cloudPassword}>
                     {busy ? 'Signing in…' : 'Sign in'}
                   </button>
                 </div>
