@@ -32,6 +32,31 @@ Self-hosted, offline-first LegendKeeper alternative for worldbuilders. Cross-pla
 - `src-tauri/src/` — Rust backend
 - `src-tauri/tauri.conf.json` — version, updater config
 - `tests/` — Playwright e2e
+- `docs/architecture/` — **subsystem pointer briefs** (see Codebase Map)
+
+## Codebase Map
+
+When a task names a subsystem, **read its brief first** before grepping or spawning Explore agents. Briefs are pointer docs (file:symbol pairs + gotchas), not architecture essays.
+
+| Subsystem | What it covers | Brief | Key files |
+|---|---|---|---|
+| Sync engine | Schema registry, journal, runner, apply paths | `docs/architecture/sync.md` | `src-tauri/src/sync/` (registry, engine, journal, runner) |
+| Backup destination | Filesystem / S3 / hosted dispatch, snapshots, encryption, restore, delete | `docs/architecture/backup.md` | `src-tauri/src/commands/backup.rs`, `src-tauri/src/sync/backend/`, `src-tauri/src/sync/snapshot.rs` |
+| Vaelorium Cloud (hosted) | `cloud_*` commands, account / quota, sign-in, HostedBackend (M5) | `docs/architecture/cloud.md` | `src-tauri/src/commands/cloud.rs`, `src/lib/stores/cloudStore.ts`, `src/lib/components/BackupSetupWizard.svelte` |
+| Tomes & registry | `tome_metadata`, stable `tome_uuid`, recent_tomes, picker, create/restore | `docs/architecture/tomes.md` | `src-tauri/src/app_state.rs`, `src-tauri/src/commands/tomes.rs`, `src/lib/components/TomePicker.svelte`, `src/lib/components/CreateTomeModal.svelte` |
+| Pages & editor | TipTap, page_content BLOB, wiki links, mention, slash menu | `docs/architecture/pages-editor.md` | `src/lib/components/Editor.svelte`, `src-tauri/src/commands/pages.rs`, `src/lib/yjs/` |
+| UI / theming | Design tokens, theme switching, ConfirmDialog / Toast | `docs/architecture/ui-theming.md` | `src/lib/styles/`, `src/lib/components/ConfirmDialog.svelte`, `src/lib/stores/toastStore.ts` |
+| Tauri command bridge | `#[tauri::command]` registration, callCommand, camelCase rule | `docs/architecture/commands-registry.md` | `src-tauri/src/lib.rs`, `src/lib/api/bridge.ts`, `src/lib/api/*.ts` |
+
+**Monolith files** (read with `Read offset/limit`, never the whole file): see `docs/architecture/file-section-map.md` for line ranges in `Settings.svelte` (1,341 lines), `commands/backup.rs` (986), `Editor.svelte` (894), `TomePicker.svelte` (637), `Sidebar.svelte` (634).
+
+## Before exploring
+
+1. **Auto-memory first.** Check `MEMORY.md` for `feedback_*` and `project_*` entries on the subsystem — past gotchas already captured.
+2. **Brief second.** Read the relevant `docs/architecture/*.md` brief. It's <120 lines and has the file:symbol pointers you'd otherwise grep for.
+3. **Grep third.** Use `Grep` for the specific symbol named in the brief.
+4. **Read with offset/limit** for monoliths — never `Read` a 1,000-line file in full to find a 20-line section.
+5. **Explore agents are last resort** — they cost a lot. Only spawn one when the brief and Grep can't answer the question.
 
 ## Updater
 
