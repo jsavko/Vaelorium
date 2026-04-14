@@ -169,8 +169,12 @@
       {/if}
     </div>
     <div class="sync-actions">
-      <button class="data-btn" onclick={handleSyncNow} disabled={syncBusy}>Sync now</button>
-      <button class="data-btn" onclick={handleTakeSnapshot} disabled={syncBusy}>Take snapshot</button>
+      <button class="data-btn" onclick={handleSyncNow} disabled={syncBusy}>
+        {#if syncBusy}<span class="spinner" aria-hidden="true"></span>Syncing…{:else}Sync now{/if}
+      </button>
+      <button class="data-btn" onclick={handleTakeSnapshot} disabled={syncBusy}>
+        {#if syncBusy}<span class="spinner" aria-hidden="true"></span>Working…{:else}Take snapshot{/if}
+      </button>
       <button class="data-btn danger" onclick={handleDisableSync} disabled={syncBusy}>Stop syncing this Tome</button>
     </div>
 
@@ -272,4 +276,16 @@
   .activity-row.error .activity-icon { color: var(--color-status-error, #d97474); }
   .activity-row .activity-icon { color: var(--color-status-success, #6fb37e); width: 12px; }
   .activity-time { color: var(--color-fg-tertiary); width: 90px; }
+  .spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    margin-right: 6px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-right-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: -1px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
