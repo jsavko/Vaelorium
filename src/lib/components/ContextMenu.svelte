@@ -14,6 +14,30 @@
 
   let { x, y, items, onClose }: Props = $props()
 
+  // Clamp the menu inside the viewport. Right-clicking near the right
+  // or bottom edge used to push the menu off-screen with items
+  // unreachable. `measured` is the post-layout clamped position; the
+  // template falls back to the raw click coords for the initial frame
+  // so the menu appears immediately (effects run after DOM commit).
+  let menuEl: HTMLDivElement | undefined = $state()
+  let measured = $state<{ x: number; y: number } | null>(null)
+  let adjX = $derived(measured?.x ?? x)
+  let adjY = $derived(measured?.y ?? y)
+  const EDGE_MARGIN = 6
+
+  $effect(() => {
+    // Re-measure whenever the incoming click coords change. Svelte 5
+    // effects run after the DOM is updated, so the menu element is
+    // laid out by the time we read it.
+    if (!menuEl) return
+    const rect = menuEl.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const nx = Math.max(EDGE_MARGIN, Math.min(x, vw - rect.width - EDGE_MARGIN))
+    const ny = Math.max(EDGE_MARGIN, Math.min(y, vh - rect.height - EDGE_MARGIN))
+    measured = { x: nx, y: ny }
+  })
+
   function handleClick(item: MenuItem) {
     item.action()
     onClose()
@@ -24,7 +48,13 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="context-menu" style:left="{x}px" style:top="{y}px" onclick={(e) => e.stopPropagation()}>
+<div
+  bind:this={menuEl}
+  class="context-menu"
+  style:left="{adjX}px"
+  style:top="{adjY}px"
+  onclick={(e) => e.stopPropagation()}
+>
   {#each items as item}
     <button
       class="menu-item"

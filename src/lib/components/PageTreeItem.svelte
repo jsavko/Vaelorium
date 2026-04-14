@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getChildren, currentPageId, loadPage, reorderPages, pageTree } from '../stores/pageStore'
+  import { currentPageId, loadPage, reorderPages, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
   import type { PageTreeNode } from '../api/pages'
   import { get } from 'svelte/store'
@@ -14,7 +14,16 @@
   let { node, depth = 0, onContextMenu }: Props = $props()
 
   let expanded = $state(false)
-  let children = $derived(getChildren(node.id))
+  // Derive children from $pageTree directly. Using `getChildren(node.id)`
+  // here (which calls get(pageTree) internally) doesn't register a
+  // reactive dependency — see feedback_derived_plus_get_is_not_reactive.
+  // Deleting a nested page updated the root-level list fine but left
+  // expanded parents showing stale children until re-mount.
+  let children = $derived(
+    $pageTree
+      .filter((n) => n.parent_id === node.id)
+      .sort((a, b) => a.sort_order - b.sort_order),
+  )
   let isActive = $derived($currentPageId === node.id)
   let dropPosition = $state<'before' | 'inside' | 'after' | null>(null)
 

@@ -27,13 +27,6 @@ export const nestedTree = derived(pageTree, ($pageTree) => {
   return roots.sort((a, b) => a.sort_order - b.sort_order)
 })
 
-export function getChildren(parentId: string): PageTreeNode[] {
-  const tree = get(pageTree)
-  return tree
-    .filter((n) => n.parent_id === parentId)
-    .sort((a, b) => a.sort_order - b.sort_order)
-}
-
 // Actions
 export async function loadPageTree() {
   const tree = await pagesApi.getPageTree()
