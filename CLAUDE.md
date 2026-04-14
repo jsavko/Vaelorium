@@ -41,14 +41,14 @@ When a task names a subsystem, **read its brief first** before grepping or spawn
 | Subsystem | What it covers | Brief | Key files |
 |---|---|---|---|
 | Sync engine | Schema registry, journal, runner, apply paths | `docs/architecture/sync.md` | `src-tauri/src/sync/` (registry, engine, journal, runner) |
-| Backup destination | Filesystem / S3 / hosted dispatch, snapshots, encryption, restore, delete | `docs/architecture/backup.md` | `src-tauri/src/commands/backup.rs`, `src-tauri/src/sync/backend/`, `src-tauri/src/sync/snapshot.rs` |
+| Backup destination | Filesystem / S3 / hosted dispatch, snapshots, encryption, restore, delete | `docs/architecture/backup.md` | `src-tauri/src/commands/backup/` (submodules: config, unlock, restore, delete), `src-tauri/src/sync/backend/`, `src-tauri/src/sync/snapshot.rs` |
 | Vaelorium Cloud (hosted) | `cloud_*` commands, account / quota, sign-in, HostedBackend (M5) | `docs/architecture/cloud.md` | `src-tauri/src/commands/cloud.rs`, `src/lib/stores/cloudStore.ts`, `src/lib/components/BackupSetupWizard.svelte` |
 | Tomes & registry | `tome_metadata`, stable `tome_uuid`, recent_tomes, picker, create/restore | `docs/architecture/tomes.md` | `src-tauri/src/app_state.rs`, `src-tauri/src/commands/tomes.rs`, `src/lib/components/TomePicker.svelte`, `src/lib/components/CreateTomeModal.svelte` |
 | Pages & editor | TipTap, page_content BLOB, wiki links, mention, slash menu | `docs/architecture/pages-editor.md` | `src/lib/components/Editor.svelte`, `src-tauri/src/commands/pages.rs`, `src/lib/yjs/` |
 | UI / theming | Design tokens, theme switching, ConfirmDialog / Toast | `docs/architecture/ui-theming.md` | `src/lib/styles/`, `src/lib/components/ConfirmDialog.svelte`, `src/lib/stores/toastStore.ts` |
 | Tauri command bridge | `#[tauri::command]` registration, callCommand, camelCase rule | `docs/architecture/commands-registry.md` | `src-tauri/src/lib.rs`, `src/lib/api/bridge.ts`, `src/lib/api/*.ts` |
 
-**Monolith files** (read with `Read offset/limit`, never the whole file): see `docs/architecture/file-section-map.md` for line ranges in `Settings.svelte` (1,341 lines), `commands/backup.rs` (986), `Editor.svelte` (894), `TomePicker.svelte` (637), `Sidebar.svelte` (634).
+**Monolith files** (read with `Read offset/limit`, never the whole file): see `docs/architecture/file-section-map.md` for line ranges in `Editor.svelte` (894), `TomePicker.svelte` (637), `Sidebar.svelte` (634), `BackupSetupWizard.svelte` (562). `Settings.svelte` and `commands/backup.rs` were split 2026-04-14 — see the "Completed splits" section of the file-section map.
 
 ## Before exploring
 
@@ -98,6 +98,10 @@ When a task names a subsystem, **read its brief first** before grepping or spawn
 - **Auto-rebuild:** `.github/workflows/website-rebuild.yml` in this repo fires on `release.published` and pings the `CF_DEPLOY_HOOK` secret. The site re-fetches the GitHub Releases API at build time and updates download links automatically
 - **Per-release upkeep:** add a Markdown file at `src/content/changelog/<version>.md` in the website repo. **Do not** bump version constants — the API fetch handles that
 - The `website/` directory in this repo is gitignored as a safety net; never commit website code here
+
+## Git hooks
+
+- Run `git config core.hooksPath .githooks` once per clone to enable the pre-commit architecture-docs validator (`scripts/check-architecture-docs.sh`). Blocks commits that leave `docs/architecture/*.md` pointing at paths or symbols that no longer exist.
 
 ## System Dependencies
 

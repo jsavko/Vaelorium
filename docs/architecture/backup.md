@@ -12,12 +12,14 @@ Backend-agnostic storage layer the sync engine writes to. Three implementations 
 - `backend::hosted::*` — Vaelorium Cloud client (see cloud.md).
 - `backend::prefixed::PrefixedBackend` — wraps a raw backend with `tomes/<uuid>/` prefix. Applied to filesystem + S3; hosted does prefixing server-side.
 
-### Commands (`src-tauri/src/commands/backup.rs` — 986 lines, see file-section-map.md)
-- `configure_backup` / `disconnect_backup` — app-global backup config (`app_backend.json` + keychain).
-- `unlock_backup` / `try_auto_unlock_backup` — passphrase → key material unlock.
-- `list_restorable_tomes` / `list_hosted_restorable_tomes` — enumerate `tomes/<uuid>/snapshots/*.snap.enc`, decrypt peek at `tome_metadata.name`.
-- `restore_tome_from_backup` — pulls latest snapshot, decrypts, writes `.tome` file, registers in recent_tomes, seeds `sync_config.enabled=true`.
-- `backup_delete_tome(tome_uuid)` — hosted: `DELETE /v1/tomes/<uuid>`; filesystem/S3: `list_prefix + delete`. Called from TomePicker trash button.
+### Commands (`src-tauri/src/commands/backup/` — split into submodules)
+- **`config.rs`** — `backup_configure`, `backup_disconnect`, `backup_status`, `backup_set_device_name`, plus the `build_raw_backend` factory.
+- **`unlock.rs`** — `backup_unlock`, `backup_try_auto_unlock` (OS keychain).
+- **`restore.rs`** — `backup_list_restorable_tomes` (+ hosted variant), `backup_restore_tome`. Pulls latest snapshot, decrypts, writes `.tome` file, registers in recent_tomes, seeds `sync_config.enabled=true`.
+- **`delete.rs`** — `backup_delete_tome` — hosted: `DELETE /v1/tomes/<uuid>`; filesystem/S3: `list_prefix + delete`. Called from TomePicker trash button.
+- **`mod.rs`** — shared payload types (`BackupStatusPayload`, `RestorableTome`, etc.) + the `ensure_device_name_stub` helper + its unit tests.
+
+All command fns are registered via their explicit submodule path in `lib.rs`'s `invoke_handler![]` (Tauri's macro keys on the module the fn lives in, so re-exports aren't enough).
 
 ### App-global state
 - `sync::app_backend::{load, save}` (`src-tauri/src/sync/app_backend.rs`) — serializes `AppBackupConfig` to disk.
@@ -27,7 +29,7 @@ Backend-agnostic storage layer the sync engine writes to. Three implementations 
 ### Snapshots
 - `sync::snapshot::take_snapshot` (`src-tauri/src/sync/snapshot.rs`) — gzip-encrypted SQLite dump.
 - `sync::snapshot::list_tome_snapshots` — backend listing + metadata peek (filesystem/S3 variant).
-- `sync::snapshot::apply_snapshot` — on restore.
+- `sync::snapshot::restore_snapshot_to_file` / `restore_snapshot_by_key` — on restore.
 
 ## Encryption boundary
 - `sync::crypto::KeyMaterial` + `derive_key` — Argon2id KDF from passphrase + device salt.
@@ -47,4 +49,4 @@ Backend-agnostic storage layer the sync engine writes to. Three implementations 
 
 ## Where NOT to look
 - `src/lib/api/backup.ts` is a thin wrapper — actual logic is Rust-side.
-- `commands/export.rs` handles JSON/Markdown export; unrelated to encrypted backups.
+- `src-tauri/src/commands/export.rs` handles JSON/Markdown export; unrelated to encrypted backups.

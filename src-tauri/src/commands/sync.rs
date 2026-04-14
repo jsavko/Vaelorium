@@ -5,7 +5,7 @@
 //! sync and report its status. The runner picks up enabled Tomes
 //! automatically.
 
-use crate::commands::backup as backup_cmd;
+use crate::commands::backup::config as backup_cmd;
 use crate::db::{self, ManagedDb};
 use crate::sync::app_backend;
 use crate::sync::backend::prefixed::{tome_prefix, PrefixedBackend};

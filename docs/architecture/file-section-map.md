@@ -2,44 +2,7 @@
 
 Use with `Read offset/limit` so large files don't pull their whole body into context.
 
-## `src/lib/components/Settings.svelte` (1,341 lines)
-
-Tab-routed modal; the six tabs are defined at ~line 34 and rendered in one big `{#if activeTab === ...}` chain:
-
-| Section | Lines | Notes |
-|---|---|---|
-| `<script>` imports + tab definition | 1–90 | Stores, API wrappers, tab list |
-| Sync-tab helpers (state, handlers) | 90–270 | `configureBackup`, `handleEnableSync`, `handleDisableSync` |
-| Cloud account helpers | 145–220 | `refreshCloudAccount` (shim), `handleCloudSignoutOnly`, `handleDisconnectBackup` |
-| Other tab handlers (appearance, data, keybinds) | 270–500 | Theme set, export/import, keybind editor |
-| **Template: Keybinds tab** | 508–536 | |
-| **Template: Appearance tab** | 537–572 | |
-| **Template: Data tab** | 573–588 | Export / import buttons |
-| **Template: Backup tab** | 589–769 | Configure, unlock, cloud account card, disconnect. Longest section. |
-| **Template: Sync tab** | 770–868 | Per-Tome enable / disable / sync-now / activity |
-| **Template: About tab** | 869–915 | Version, links |
-| `<style>` | 915–end | Dense; includes `.quota-banner`, `.sync-status-card`, `.account-row` |
-
-Planned split (separate follow-up plan): `SettingsKeybinds.svelte`, `SettingsBackup.svelte`, `SettingsSync.svelte`, etc.
-
-## `src-tauri/src/commands/backup.rs` (986 lines)
-
-Groupings (functions at approximate line anchors — verify with `grep -n 'pub async fn' ...` if moved):
-
-| Function group | Line | Purpose |
-|---|---|---|
-| `backup_configure` | ~49 | Write `app_backend.json`, set up keychain |
-| `backup_disconnect` | ~197 | Tear down backup config |
-| `backup_status` | ~214 | App-global status payload |
-| `backup_set_device_name` | ~286 | Rename device |
-| `backup_unlock` | ~304 | Passphrase → `SessionState` |
-| `backup_try_auto_unlock` | ~365 | OS keychain auto-unlock |
-| `build_raw_backend` / `parse_s3_config` | ~390 / ~424 | Backend factory |
-| `backup_list_restorable_tomes` | ~537 | Filesystem/S3 restore listing |
-| `backup_restore_tome` | ~614 | Pull snapshot → write `.tome` → seed sync_config |
-| `list_hosted_restorable_tomes` | ~767 | Hosted-specific restore listing (via `GET /v1/tomes`) |
-| `backup_delete_tome` | ~882 | Delete cloud copy |
-| `peek_tome_metadata` / `sanitize_filename` | ~950 / ~971 | Helpers |
+**Status (2026-04-14):** `Settings.svelte` (1,341 → 205) and `commands/backup.rs` (986 → 5 submodules ≤378 each) have been split along natural fault lines. Remaining monoliths below are tracked for potential follow-up splits; for now their section maps let targeted reads avoid full-file loads.
 
 ## `src/lib/components/Editor.svelte` (894 lines)
 
@@ -51,6 +14,8 @@ Groupings (functions at approximate line anchors — verify with `grep -n 'pub a
 | Template | 430–438 |
 | `<style>` | 438–end |
 
+High-risk to split (TipTap + Y.js lifecycle is tightly coupled). Read with offset/limit targeted at the section you need.
+
 ## `src/lib/components/TomePicker.svelte` (637 lines)
 
 | Section | Lines |
@@ -59,9 +24,20 @@ Groupings (functions at approximate line anchors — verify with `grep -n 'pub a
 | Template — recent cards + restore panel | 145–430 |
 | `<style>` | 430–end |
 
+Medium-risk split candidate: the `syncingUuids` derivation is shared across the recents grid and the restore-filter, so extraction would pass it as a prop.
+
 ## `src/lib/components/Sidebar.svelte` (634 lines)
 
 Single-file: nav + page tree + context menu. No internal tab routing. Split by template section headers when editing.
+
+## `src/lib/components/BackupSetupWizard.svelte` (562 lines)
+
+Five-step wizard with a shared state object; plausible split but moderate risk.
+
+## Completed splits
+
+- **`src/lib/components/Settings.svelte`** — split into `Settings.svelte` (shell, ~200 lines) + per-tab components: `SettingsKeybinds`, `SettingsAppearance`, `SettingsData`, `SettingsBackup`, `SettingsSync`, `SettingsAbout`. Shell holds sidebar nav + shared controls CSS (as `:global()`); each tab component owns its state, handlers, and specific styles. See `src/lib/components/Settings*.svelte`.
+- **The former `commands/backup` monolith** — split into `src-tauri/src/commands/backup/` submodules: `config.rs` (connect/disconnect/status/factory), `unlock.rs`, `restore.rs`, `delete.rs`. `mod.rs` holds shared payload types + `ensure_device_name_stub`. Registration paths in `lib.rs` updated to `commands::backup::<submodule>::<fn>`.
 
 ## Update policy
 
@@ -69,4 +45,4 @@ If you move a function, grep this file for its name before committing:
 ```
 grep -n "<fn_name>" docs/architecture/file-section-map.md
 ```
-Otherwise the anchors rot.
+Otherwise the anchors rot. The `scripts/check-architecture-docs.sh` validator catches missing file paths + namespaced symbols, but not renamed sections.

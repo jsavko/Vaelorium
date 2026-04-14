@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run the architecture-docs staleness check.
+# Enable with:  git config core.hooksPath .githooks
+set -e
+if [ -x scripts/check-architecture-docs.sh ]; then
+  scripts/check-architecture-docs.sh
+fi

@@ -19,7 +19,7 @@ Incremental sync of per-Tome SQLite state to a pluggable backup backend (filesys
 - `take_snapshot` — forces a new snapshot outside normal cadence.
 
 ## Data flow
-1. Mutation command (e.g. `pages::save_page`) opens a tx, writes row, calls `journal::emit_for_row(&mut *tx, &TABLES.pages, &op)`, commits.
+1. Mutation command (e.g. `pages::update_page`) opens a tx, writes row, calls `journal::emit_for_row(&mut *tx, &TABLES.pages, &op)`, commits.
 2. `session.nudge()` wakes the runner.
 3. Runner loads `pending_ops`, encrypts, `PUT`s delta to backend, updates `sync-meta.json` via CAS.
 4. On pull: decrypt peer deltas, call `engine::apply_op_via_schema` to upsert into local DB.
@@ -45,5 +45,5 @@ Incremental sync of per-Tome SQLite state to a pluggable backup backend (filesys
 - `docs/sync-s3-testing.md` — Minio recipe for S3 backend manual tests.
 
 ## Where NOT to look
-- `src/lib/yjs/` — Y.js is for local realtime editor state, not sync.
+- `src/lib/editor/YjsProvider.ts` — Y.js is for local realtime editor state, not sync.
 - `src-tauri/src/commands/export.rs` — one-shot JSON/Markdown export, unrelated to sync.

@@ -21,3 +21,17 @@ Start here for a new task: find the subsystem your task touches, read its brief,
 - If a brief grows past ~120 lines, that's a signal the subsystem needs splitting — not that the brief needs expanding.
 - Every paragraph that isn't a pointer rots. Prefer a 1-line bullet over a paragraph.
 - If you land a refactor that moves a named function, grep the briefs for the old name before committing.
+
+## Validator
+
+`scripts/check-architecture-docs.sh` enforces that every file path and namespaced symbol (`mod::fn`) referenced in a brief still resolves in the working tree. It runs automatically via a `PreToolUse` Bash hook on `git commit` (see `.claude/settings.json`) and will fail the commit on first miss.
+
+**Limits:**
+- Only catches *missing* references, not *incorrect* ones (a renamed fn with the wrong description still passes).
+- Symbol check is presence-only (`grep -w`) — it won't notice if the symbol exists but in the wrong subsystem.
+- Not a substitute for human review when a brief becomes misleading.
+
+Run manually:
+```
+bash scripts/check-architecture-docs.sh
+```

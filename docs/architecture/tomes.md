@@ -41,5 +41,5 @@ A **Tome** is a `.tome` file = a self-contained SQLite DB for one worldbuilding 
 - `sync_enabled` flag mirrors but does NOT own `sync_config.enabled`; the Tome's own SQLite is the source of truth.
 
 ## Where NOT to look
-- `src-tauri/src/commands/backup.rs` — that's the backup destination, not Tome lifecycle (except `restore_tome_from_backup` which straddles both).
+- `src-tauri/src/commands/backup/` — that's the backup destination, not Tome lifecycle (except `backup/restore.rs::backup_restore_tome` which straddles both).
 - `tome_metadata` is not `tome_metadata_kv` — they're the same table, just an informal naming thing.
