@@ -38,6 +38,7 @@
     { id: 'backup', label: 'Backup' },
     { id: 'sync', label: 'Sync' },
     { id: 'account', label: 'Account' },
+    { id: 'about', label: 'About' },
   ]
 
   // --- Sync tab state ---
@@ -823,8 +824,10 @@
                 </div>
               {/if}
             {/if}
-
-            <h3 class="settings-section-title" style="margin-top: 24px">About</h3>
+          </div>
+        {:else if activeTab === 'about'}
+          <div class="settings-section">
+            <h3 class="settings-section-title">About</h3>
             <div class="account-row">
               <span class="account-label">App</span>
               <span class="account-value">Vaelorium</span>
