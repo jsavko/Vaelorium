@@ -99,6 +99,11 @@
 
   function validateStep(s: Step): string | null {
     if (s === 3) {
+      // Device name must be set BEFORE cloud signin — it's sent to the
+      // cloud as part of signin and becomes the device's registered
+      // display name there. Collecting it at step 5 was too late; the
+      // cloud would receive the HOSTNAME / "Vaelorium Device" fallback.
+      if (!deviceName.trim()) return 'Give this device a name — it shows up in conflict logs'
       if (backendKind === 'filesystem' && !backendPath) return 'Folder path is required'
       if (backendKind === 's3') {
         if (!s3Bucket) return 'Bucket name is required'
@@ -114,9 +119,6 @@
       if (passphraseIntent === 'new' && passphrase !== passphraseConfirm) {
         return 'Passphrases do not match'
       }
-    }
-    if (s === 5) {
-      if (!deviceName.trim()) return 'Give this device a name — it shows up in conflict logs'
     }
     return null
   }
@@ -317,6 +319,12 @@
             </div>
           </label>
         {:else if step === 3}
+          <!-- Device name is collected here (not step 5) because for
+               hosted backups it's sent to the cloud as part of signin
+               and becomes the device's registered display name. -->
+          <label>Device name <span class="opt">how this machine will appear in conflict logs</span>
+            <input class="text" type="text" placeholder="My Laptop" bind:value={deviceName} />
+          </label>
           {#if backendKind === 'hosted'}
             <h3>Sign in to Vaelorium Cloud</h3>
             {#if cloudAccountInfo}
@@ -466,9 +474,6 @@
           {/if}
         {:else if step === 5}
           <h3>Review and connect</h3>
-          <label>Device name <span class="opt">how this machine will appear in conflict logs</span>
-            <input class="text" type="text" placeholder="My Laptop" bind:value={deviceName} />
-          </label>
           <dl class="review">
             <dt>Destination</dt>
             <dd>
@@ -480,6 +485,8 @@
                 S3: {s3Bucket}{s3Endpoint ? ' on ' + s3Endpoint : ''}
               {/if}
             </dd>
+            <dt>Device name</dt>
+            <dd>{deviceName}</dd>
             <dt>Encryption</dt>
             <dd>End-to-end (passphrase-derived key, ChaCha20-Poly1305)</dd>
           </dl>
