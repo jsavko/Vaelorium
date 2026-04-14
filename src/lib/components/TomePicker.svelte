@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BookOpen, FolderOpen, Plus, Map as MapIcon, DownloadCloud, Lock } from 'lucide-svelte'
+  import { BookOpen, FolderOpen, Plus, Map as MapIcon, DownloadCloud, Lock, Trash2 } from 'lucide-svelte'
   import { recentTomes, openTome, loadRecentTomes } from '../stores/tomeStore'
   import { isTauri } from '../api/bridge'
   import { onMount } from 'svelte'
@@ -8,8 +8,10 @@
     getBackupStatus,
     listRestorableTomes,
     restoreTomeFromBackup,
+    deleteTomeFromBackup,
     type RestorableTome,
   } from '../api/backup'
+  import ConfirmDialog from './ConfirmDialog.svelte'
 
   interface Props {
     onCreateNew: () => void
@@ -25,6 +27,9 @@
   let restorableLoading = $state(false)
   let restorableError = $state<string | null>(null)
   let restoringUuid = $state<string | null>(null)
+  let deletingUuid = $state<string | null>(null)
+  let confirmDeleteOpen = $state(false)
+  let pendingDelete = $state<RestorableTome | null>(null)
 
   onMount(async () => {
     loadRecentTomes()
@@ -67,6 +72,28 @@
       restorableError = e instanceof Error ? e.message : String(e)
     } finally {
       restoringUuid = null
+    }
+  }
+
+  function askDelete(t: RestorableTome) {
+    pendingDelete = t
+    confirmDeleteOpen = true
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return
+    const t = pendingDelete
+    confirmDeleteOpen = false
+    deletingUuid = t.tomeUuid
+    try {
+      await deleteTomeFromBackup(t.tomeUuid)
+      // Refresh the list so the deleted entry disappears.
+      await loadRestorable()
+    } catch (e) {
+      restorableError = e instanceof Error ? e.message : String(e)
+    } finally {
+      deletingUuid = null
+      pendingDelete = null
     }
   }
 
@@ -202,10 +229,20 @@
                 <button
                   class="restore-btn"
                   onclick={() => handleRestore(t)}
-                  disabled={restoringUuid !== null}
+                  disabled={restoringUuid !== null || deletingUuid !== null}
                   type="button"
                 >
                   {restoringUuid === t.tomeUuid ? 'Restoring…' : 'Restore'}
+                </button>
+                <button
+                  class="restore-delete"
+                  onclick={() => askDelete(t)}
+                  disabled={restoringUuid !== null || deletingUuid !== null}
+                  type="button"
+                  title="Remove this Tome from backup"
+                  aria-label="Delete {t.name} from backup"
+                >
+                  {#if deletingUuid === t.tomeUuid}…{:else}<Trash2 size={14} />{/if}
                 </button>
               </div>
             {/each}
@@ -223,6 +260,17 @@
     </div>
   </div>
 </div>
+
+<ConfirmDialog
+  open={confirmDeleteOpen}
+  title="Delete Tome from backup"
+  message={pendingDelete
+    ? `This permanently removes "${pendingDelete.name}" from your backup (${formatBytes(pendingDelete.sizeBytes)}). Any device still syncing this Tome will re-upload it on the next sync — stop syncing locally first if you want it gone for good. Local .tome files on your disk are untouched.`
+    : ''}
+  confirmLabel="Delete from backup"
+  onConfirm={confirmDelete}
+  onCancel={() => { confirmDeleteOpen = false; pendingDelete = null }}
+/>
 
 <style>
   .tome-picker {
@@ -521,6 +569,28 @@
   }
 
   .restore-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .restore-delete {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    background: transparent;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    color: var(--color-fg-tertiary);
+    cursor: pointer;
+    margin-left: 6px;
+    min-width: 30px;
+  }
+  .restore-delete:hover {
+    color: var(--color-status-error, #d97474);
+    border-color: var(--color-status-error, #d97474);
+  }
+  .restore-delete:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }

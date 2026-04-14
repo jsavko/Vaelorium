@@ -126,3 +126,20 @@ export async function restoreTomeFromBackup(tomeUuid: string): Promise<RestoredT
   })
   return { path: raw.path, name: raw.name, tomeUuid: raw.tome_uuid }
 }
+
+export interface DeleteTomeResult {
+  deletedObjects: number
+  deletedBytes: number
+}
+
+interface RawDeleteTomeResult {
+  deleted_objects: number
+  deleted_bytes: number
+}
+
+export async function deleteTomeFromBackup(tomeUuid: string): Promise<DeleteTomeResult> {
+  const raw = await callCommand<RawDeleteTomeResult>('backup_delete_tome', {
+    input: { tome_uuid: tomeUuid },
+  })
+  return { deletedObjects: raw.deleted_objects, deletedBytes: raw.deleted_bytes }
+}

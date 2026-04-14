@@ -160,11 +160,16 @@
     }
   }
 
+  // Cloud reports quotas as SI decimal bytes (1 GB = 1,000,000,000)
+  // matching the "1 GB / 10 GB" marketing copy on plan cards.
+  // Binary/MiB division (1024³) would render 1 GB quota as "953.7 MB"
+  // which confused users; stick to /1000 for consistency with the
+  // numbers users see when picking a plan.
   function formatBytes(n: number): string {
-    if (n < 1024) return `${n} B`
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
-    return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
+    if (n < 1000) return `${n} B`
+    if (n < 1_000_000) return `${(n / 1000).toFixed(1)} KB`
+    if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)} MB`
+    return `${(n / 1_000_000_000).toFixed(2)} GB`
   }
 
   async function handleCloudSignoutOnly() {

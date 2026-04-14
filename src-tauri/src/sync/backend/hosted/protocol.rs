@@ -401,6 +401,45 @@ impl Client {
         Ok(body.and_then(|b| b.usage))
     }
 
+    /// DELETE /v1/tomes/<uuid> — wipe a whole Tome from cloud in one
+    /// call. Returns `(deleted_objects, deleted_bytes, usage)`. A 404
+    /// "tome not found" is treated as idempotent success: `(0, 0, None)`.
+    pub async fn delete_tome(
+        &self,
+        token: &str,
+        tome_uuid: &str,
+    ) -> Result<(u64, u64, Option<CloudUsage>), BackendError> {
+        let url = format!("{}/v1/tomes/{}", self.base_url, tome_uuid);
+        let resp = self
+            .http
+            .delete(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| BackendError::Other(format!("delete_tome: {e}")))?;
+        let status = resp.status();
+        if status == StatusCode::NOT_FOUND {
+            return Ok((0, 0, None));
+        }
+        if !status.is_success() {
+            return Err(map_storage_error(status, resp, tome_uuid).await);
+        }
+        #[derive(Deserialize)]
+        struct DeleteTomeBody {
+            #[serde(default)]
+            deleted_objects: u64,
+            #[serde(default)]
+            deleted_bytes: u64,
+            #[serde(default)]
+            usage: Option<CloudUsage>,
+        }
+        let body: DeleteTomeBody = resp
+            .json()
+            .await
+            .unwrap_or(DeleteTomeBody { deleted_objects: 0, deleted_bytes: 0, usage: None });
+        Ok((body.deleted_objects, body.deleted_bytes, body.usage))
+    }
+
     /// GET /api/account — authoritative state refresh when already
     /// signed in (read keychain/config device token, call this at app
     /// startup to pick up out-of-band changes like plan upgrades).
