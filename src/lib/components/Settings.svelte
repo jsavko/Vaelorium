@@ -814,6 +814,14 @@
               </p>
             {:else}
               <p class="data-desc">Not signed in to Vaelorium Cloud.</p>
+              {#if onOpenWizard}
+                <div class="sync-actions" style="margin-top: 8px">
+                  <button
+                    class="data-btn primary"
+                    onclick={() => { onClose(); onOpenWizard?.() }}
+                  >Sign in…</button>
+                </div>
+              {/if}
             {/if}
 
             <h3 class="settings-section-title" style="margin-top: 24px">About</h3>
