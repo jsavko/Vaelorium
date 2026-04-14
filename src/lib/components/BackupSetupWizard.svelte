@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import { isTauri } from '../api/bridge'
   import { configureBackup, probeBucketHasData } from '../api/backup'
   import { cloudSignin } from '../api/cloud'
@@ -58,8 +59,13 @@
   const DEVICE_NAME_LS_KEY = 'vaelorium-wizard-device-name'
 
   // Reset wizard each time it opens so a re-launch starts fresh.
+  // Wrap the body in `untrack` so writes to local $state fields
+  // (and the `deviceName` read for prefill) don't re-register those
+  // fields as effect dependencies — otherwise every keystroke on
+  // deviceName would re-fire this effect and reset step to 1.
   $effect(() => {
-    if (open) {
+    if (!open) return
+    untrack(() => {
       step = 1
       error = null
       cloudAccountInfo = null
@@ -74,7 +80,7 @@
           if (saved) deviceName = saved
         } catch { /* private-browsing, WSL edge cases — silent */ }
       }
-    }
+    })
   })
 
   async function openExternal(url: string) {
