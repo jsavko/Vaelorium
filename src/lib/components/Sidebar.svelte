@@ -178,11 +178,30 @@
     if (!deleteConfirm) return
     const node = deleteConfirm.node
     deleteConfirm = null
-    await deletePage(node.id)
-    if ($currentPageId === node.id) {
+    const deletingCurrent = $currentPageId === node.id
+    // Use the store helper when deleting the currently-viewed page —
+    // it clears currentPage/currentPageId and reloads the tree in one
+    // coherent step. Otherwise a plain API delete + tree reload. The
+    // earlier implementation called both unconditionally, which
+    // double-deleted: the second delete hit a now-missing row and
+    // (with sync enabled) threw before the tree reload could run,
+    // leaving the sidebar stale.
+    if (deletingCurrent) {
       await deleteCurrentPage()
+    } else {
+      await deletePage(node.id)
+      await loadPageTree()
     }
-    await loadPageTree()
+    // After deleting the current page, try to navigate to another
+    // entry so the main view isn't a blank "no page open" state.
+    // Prefer a sibling under the same parent, fall back to the first
+    // root-level page. No pages left → stay cleared.
+    if (deletingCurrent) {
+      const tree = get(pageTree)
+      const sibling = tree.find((n) => n.parent_id === node.parent_id && n.id !== node.id)
+      const fallback = sibling ?? get(nestedTree)[0]
+      if (fallback) await loadPage(fallback.id)
+    }
   }
 </script>
 
