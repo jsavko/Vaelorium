@@ -103,6 +103,10 @@
     const { nx, ny } = clientToNormalized(e.clientX, e.clientY)
     if (nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1) {
       pinForm = { x: nx, y: ny, label: '', pageId: '', color: '#C8A55C' }
+      // Reset the page-link search state so the previous pin's linked
+      // page doesn't appear pre-filled on a fresh pin.
+      searchQuery = ''
+      showSearchResults = false
       addingPin = false
     }
   }
@@ -111,10 +115,14 @@
     if (!pinForm || !$currentMap) return
     await addPin($currentMap.id, pinForm.x, pinForm.y, pinForm.pageId || null, pinForm.label || null, null, pinForm.color || null)
     pinForm = null
+    searchQuery = ''
+    showSearchResults = false
   }
 
   function cancelPinForm() {
     pinForm = null
+    searchQuery = ''
+    showSearchResults = false
   }
 
   function startEditPin(pin: any, e: MouseEvent) {

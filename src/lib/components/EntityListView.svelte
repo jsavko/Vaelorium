@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Shield, Compass, Scroll, Users, Gem, Bug, Sparkles, BookOpen, FileText } from 'lucide-svelte'
-  import { loadPage } from '../stores/pageStore'
+  import { loadPage, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
   import { listPagesByType } from '../api/pages'
   import { getPageFieldValues } from '../api/entityTypes'
@@ -40,8 +40,12 @@
       : pages,
   )
 
-  // Load pages and fields when type changes
+  // Load pages and fields when type changes, and refresh whenever the
+  // global page tree mutates (create / delete / rename). Touching
+  // $pageTree here makes it a reactive dependency — creating a page
+  // of this type now shows up on the list without navigating away.
   $effect(() => {
+    void $pageTree
     loadData(entityTypeId)
   })
 

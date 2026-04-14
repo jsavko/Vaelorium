@@ -1,6 +1,18 @@
 import { writable, get } from 'svelte/store'
 import type { RecentTome, TomeInfo, TomeMetadata } from '../api/tomes'
 import * as tomesApi from '../api/tomes'
+import { currentPageId, currentPage, pageTree, pages } from './pageStore'
+
+/** Wipe cross-tome state so opening a new Tome doesn't render the
+ *  previous Tome's last-open page. Previously `currentPageId` leaked
+ *  across openTome/closeTome calls → the new Tome's UI picked up a
+ *  stale id and tried to render content from the prior database. */
+function resetTomeScopedStores() {
+  currentPageId.set(null)
+  currentPage.set(null)
+  pageTree.set([])
+  pages.set([])
+}
 
 export const isTomeOpen = writable(false)
 export const currentTome = writable<TomeInfo | null>(null)
@@ -13,6 +25,7 @@ export async function loadRecentTomes() {
 }
 
 export async function createTome(path: string, name: string, description?: string | null) {
+  resetTomeScopedStores()
   const tome = await tomesApi.createTome(path, name, description)
   currentTome.set(tome)
   isTomeOpen.set(true)
@@ -23,6 +36,7 @@ export async function createTome(path: string, name: string, description?: strin
 }
 
 export async function openTome(path: string) {
+  resetTomeScopedStores()
   const tome = await tomesApi.openTome(path)
   currentTome.set(tome)
   isTomeOpen.set(true)
@@ -34,6 +48,7 @@ export async function openTome(path: string) {
 
 export async function closeTome() {
   await tomesApi.closeTome()
+  resetTomeScopedStores()
   currentTome.set(null)
   currentTomeMetadata.set(null)
   isTomeOpen.set(false)
