@@ -555,6 +555,49 @@ impl Client {
         Ok(out)
     }
 
+    /// HEAD the sync-meta endpoint to read the `X-Latest-Op-Ulid`
+    /// header + etag without downloading the body. Used by the engine
+    /// to short-circuit the journal LIST phase when no remote ops have
+    /// landed since `last_applied_op_id`. Returns `(etag, latest_op_ulid)`
+    /// as captured from response headers — either may be empty when
+    /// the cloud hasn't populated them (e.g. brand-new tome with no
+    /// journal yet).
+    pub async fn head_sync_meta(
+        &self,
+        token: &str,
+        tome_uuid: &str,
+    ) -> Result<(String, Option<String>), BackendError> {
+        let url = format!("{}/v1/tomes/{}/sync-meta", self.base_url, tome_uuid);
+        let resp = self
+            .http
+            .head(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| BackendError::Other(format!("head_sync_meta: {e}")))?;
+        let status = resp.status();
+        if !status.is_success() {
+            // 404 on a brand-new tome means no meta yet → nothing to
+            // short-circuit. Treat as "no latest op" rather than error.
+            if status == StatusCode::NOT_FOUND {
+                return Ok((String::new(), None));
+            }
+            return Err(map_storage_error(status, resp, "sync-meta").await);
+        }
+        let headers = resp.headers();
+        let etag = headers
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+        let latest = headers
+            .get("x-latest-op-ulid")
+            .and_then(|v| v.to_str().ok())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        Ok((etag, latest))
+    }
+
     /// CAS update of `sync-meta.json`. `expected_etag = None` sends
     /// `If-None-Match: *` (first-write gate); `Some(etag)` sends
     /// `If-Match: <etag>` including the HTTP-standard quotes verbatim.

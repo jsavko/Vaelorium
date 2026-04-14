@@ -85,6 +85,13 @@ impl SyncBackend for PrefixedBackend {
             .atomic_swap(&self.full(key), expected_etag, data)
             .await
     }
+
+    async fn latest_journal_op_id(&self) -> Result<Option<String>, BackendError> {
+        // Pass through — the optimization is a tome-global signal,
+        // not prefix-scoped, so the underlying HostedBackend already
+        // knows which tome to ask about.
+        self.inner.latest_journal_op_id().await
+    }
 }
 
 /// Build the canonical Tome prefix.

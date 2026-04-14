@@ -84,6 +84,28 @@ pub async fn sync_tome_once(
         outcome.ops_uploaded = uploaded_count;
     }
 
+    // 1b. Idle-poll short-circuit: if we just uploaded nothing AND the
+    //     backend exposes `latest_journal_op_id` (hosted cloud), compare
+    //     against what we've already applied. When the cloud's latest is
+    //     <= our applied pointer, skip the LIST + GET phases entirely.
+    //     For busy syncs (ops uploaded or backend doesn't support the
+    //     hint), this adds no extra call — we only ask when there's a
+    //     plausible win.
+    if uploaded_count == 0 {
+        if let Some(cloud_latest) = backend.latest_journal_op_id().await? {
+            let can_skip = match &state.last_applied_op_id {
+                Some(applied) => cloud_latest.as_str() <= applied.as_str(),
+                None => false,
+            };
+            if can_skip {
+                state.last_sync_at = Some(Utc::now());
+                state.last_error = None;
+                state.save(pool).await?;
+                return Ok(outcome);
+            }
+        }
+    }
+
     // 2. List remote journal newer than what we've applied. Download
     //    ciphertexts concurrently (same HTTP/2-multiplexing story as
     //    uploads); decrypt + validate happen after the batch resolves

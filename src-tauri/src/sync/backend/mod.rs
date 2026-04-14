@@ -95,4 +95,24 @@ pub trait SyncBackend: Send + Sync {
         expected_etag: Option<&str>,
         data: &[u8],
     ) -> Result<String, BackendError>;
+
+    /// Optional optimization: return the latest journal op ULID the
+    /// backend knows about, without listing the journal prefix. Used
+    /// by the engine to short-circuit idle polls — if this value is
+    /// `<= state.last_applied_op_id`, the list + download phases can
+    /// be skipped entirely.
+    ///
+    /// The hosted backend exposes this as an `X-Latest-Op-Ulid` header
+    /// on `GET /sync-meta`. Filesystem + S3 have no equivalent cheap
+    /// channel; they fall through to the existing full flow where the
+    /// list call is negligible anyway (no network round-trip /
+    /// paginated S3 scan).
+    ///
+    /// Return:
+    /// - `Some(ulid)` — latest op ULID as of this call.
+    /// - `None` — backend doesn't support this optimization OR the
+    ///   backend has no journal yet (caller should not short-circuit).
+    async fn latest_journal_op_id(&self) -> Result<Option<String>, BackendError> {
+        Ok(None)
+    }
 }

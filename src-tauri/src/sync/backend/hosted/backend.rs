@@ -109,5 +109,15 @@ impl SyncBackend for HostedBackend {
             .await?;
         Ok(meta.etag)
     }
+
+    async fn latest_journal_op_id(&self) -> Result<Option<String>, BackendError> {
+        // Cloud exposes the tome's latest journal ULID as
+        // `X-Latest-Op-Ulid` on HEAD /sync-meta. Cheap one-round-trip
+        // signal that lets the engine skip the LIST + GET phases on
+        // idle polls. Ignored etag here — engine-level short-circuit
+        // works on ULID comparison alone.
+        let (_etag, latest) = self.http.head_sync_meta(&self.token, &self.tome_uuid).await?;
+        Ok(latest)
+    }
 }
 
