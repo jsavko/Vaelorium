@@ -284,7 +284,7 @@
           </p>
           <ul class="bullets">
             <li><strong>Vaelorium Cloud</strong> — hosted, paid, zero-config. Sign in and sync across any number of devices.</li>
-            <li><strong>A folder</strong> on your disk or mounted NAS share — works with Syncthing / Dropbox / iCloud for cross-device sync.</li>
+            <li><strong>A folder on your disk</strong> — or a synced folder (Syncthing, Dropbox, iCloud) for cross-device sync.</li>
             <li><strong>S3-compatible bucket</strong> — AWS, Cloudflare R2, Backblaze B2, Minio…</li>
             <li>One backup destination is shared across every Tome you sync.</li>
           </ul>
@@ -303,11 +303,10 @@
           <label class="kind-card" class:selected={backendKind === 'filesystem'}>
             <input type="radio" name="kind" value="filesystem" checked={backendKind === 'filesystem'} onchange={() => backendKind = 'filesystem'} />
             <div class="kind-body">
-              <div class="kind-title">A folder (local, synced, or network share)</div>
+              <div class="kind-title">A folder on your disk</div>
               <p class="kind-desc">
-                Any path the OS can write — local disk, Syncthing/Dropbox/iCloud folder, or a mounted NAS share.
-                Windows UNC paths (<code>\\SERVER\share\…</code>), macOS <code>/Volumes/&lt;share&gt;</code>, and Linux <code>/mnt/…</code>
-                all work. Only encrypted ops/snapshots land here — your live Tome stays local.
+                Local disk or a synced folder (Syncthing, Dropbox, iCloud, OneDrive). Only encrypted
+                ops and snapshots land here — your live Tome stays local.
               </p>
             </div>
           </label>
@@ -362,9 +361,8 @@
           {:else if backendKind === 'filesystem'}
             <h3>Pick a folder</h3>
             <p class="sub">
-              Any local directory, a Syncthing/Dropbox folder, or a mounted network share (SMB/UNC, NFS, AFP)
-              works — the OS just needs to be able to write there. Your live <code>.tome</code> database stays local;
-              this folder only receives immutable op/snapshot files.
+              Local folder or a synced folder (Syncthing, Dropbox, iCloud, OneDrive). Your live
+              <code>.tome</code> stays local — only encrypted ops and snapshots land here.
             </p>
             <div class="row">
               <input class="text" type="text" placeholder="/path/to/backup/folder" bind:value={backendPath} />
