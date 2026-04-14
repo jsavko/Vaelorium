@@ -243,17 +243,19 @@
                 Use your Vaelorium account password. Need an account?
                 <button class="link" type="button" onclick={() => openExternal('https://cloud.vaelorium.com/signup')}>Create one →</button>
               </p>
-              <label>Email
-                <input class="text" type="email" autocomplete="username" bind:value={cloudEmail} />
-              </label>
-              <label>Password
-                <input class="text" type="password" autocomplete="current-password" bind:value={cloudPassword} />
-              </label>
-              <div class="row">
-                <button class="primary" type="button" onclick={handleCloudSignin} disabled={busy}>
-                  {busy ? 'Signing in…' : 'Sign in'}
-                </button>
-              </div>
+              <form onsubmit={(e) => { e.preventDefault(); handleCloudSignin() }}>
+                <label>Email
+                  <input class="text" type="email" autocomplete="username" autofocus bind:value={cloudEmail} />
+                </label>
+                <label>Password
+                  <input class="text" type="password" autocomplete="current-password" bind:value={cloudPassword} />
+                </label>
+                <div class="row">
+                  <button class="primary" type="submit" disabled={busy}>
+                    {busy ? 'Signing in…' : 'Sign in'}
+                  </button>
+                </div>
+              </form>
             {/if}
           {:else if backendKind === 'filesystem'}
             <h3>Pick a folder</h3>
