@@ -19,6 +19,8 @@ use super::SyncResult;
 pub enum BackendKind {
     Filesystem,
     S3,
+    /// Vaelorium Cloud — hosted paid tier at cloud.vaelorium.com.
+    Hosted,
 }
 
 impl BackendKind {
@@ -26,6 +28,7 @@ impl BackendKind {
         match self {
             BackendKind::Filesystem => "filesystem",
             BackendKind::S3 => "s3",
+            BackendKind::Hosted => "hosted",
         }
     }
 
@@ -33,6 +36,7 @@ impl BackendKind {
         match s {
             "filesystem" => Some(BackendKind::Filesystem),
             "s3" => Some(BackendKind::S3),
+            "hosted" => Some(BackendKind::Hosted),
             _ => None,
         }
     }
@@ -329,8 +333,10 @@ mod tests {
     fn backend_kind_roundtrip() {
         assert_eq!(BackendKind::from_str("filesystem"), Some(BackendKind::Filesystem));
         assert_eq!(BackendKind::from_str("s3"), Some(BackendKind::S3));
+        assert_eq!(BackendKind::from_str("hosted"), Some(BackendKind::Hosted));
         assert_eq!(BackendKind::from_str("nope"), None);
         assert_eq!(BackendKind::Filesystem.as_str(), "filesystem");
         assert_eq!(BackendKind::S3.as_str(), "s3");
+        assert_eq!(BackendKind::Hosted.as_str(), "hosted");
     }
 }

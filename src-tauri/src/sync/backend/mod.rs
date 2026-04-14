@@ -14,6 +14,7 @@
 //! standard ETag header.
 
 pub mod filesystem;
+pub mod hosted;
 pub mod prefixed;
 pub mod s3;
 
@@ -35,6 +36,21 @@ pub enum BackendError {
 
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Device token invalid or revoked. Hosted backend only. Not retried —
+    /// must route to a re-signin flow.
+    #[error("unauthorized: {0}")]
+    Unauthorized(String),
+
+    /// Subscription past_due / suspended. Hosted backend only. Not retried —
+    /// surfaces as a billing prompt.
+    #[error("payment required: {0}")]
+    PaymentRequired(String),
+
+    /// Over plan quota / tome limit. Hosted backend only. Not retried —
+    /// surfaces as a quota prompt, client upgrades plan or frees space.
+    #[error("quota exceeded: {0}")]
+    QuotaExceeded(String),
 
     #[error("backend internal error: {0}")]
     Other(String),

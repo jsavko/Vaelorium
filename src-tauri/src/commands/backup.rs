@@ -189,6 +189,23 @@ pub async fn backup_status(
                         .unwrap_or("AWS");
                     format!("{} on {}", bucket, endpoint)
                 }
+                BackendKind::Hosted => {
+                    let email = c
+                        .backend_config
+                        .get("email")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Vaelorium Cloud");
+                    let tier = c
+                        .backend_config
+                        .get("tier")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if tier.is_empty() {
+                        format!("Cloud — {email}")
+                    } else {
+                        format!("Cloud {tier} — {email}")
+                    }
+                }
             };
             (
                 Some(c.backend_kind.as_str().to_string()),
@@ -328,6 +345,15 @@ pub async fn build_raw_backend(
             Ok(Box::new(
                 S3Backend::new(s3_cfg).await.map_err(|e| e.to_string())?,
             ))
+        }
+        BackendKind::Hosted => {
+            // Hosted doesn't have a shared bucket root — each Tome is
+            // addressed per-URL (/v1/tomes/<uuid>/...) and auth is a
+            // bearer token held in the OS keychain, not a signing key.
+            // Raw (pre-prefix) operations aren't meaningful; engine code
+            // should use `sync::commands::build_tome_backend` which
+            // constructs a HostedBackend with the tome_uuid baked in.
+            Err("hosted backend requires a tome_uuid; use build_tome_backend".to_string())
         }
     }
 }

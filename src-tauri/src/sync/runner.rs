@@ -61,7 +61,13 @@ pub(crate) fn should_retry(err: &super::SyncError) -> bool {
             ];
             !auth_markers.iter().any(|m| lower.contains(m))
         }
-        BackendError::NotFound(_) | BackendError::EtagMismatch { .. } => false,
+        // Hard no-retry: these are client-state problems that won't resolve
+        // without a user action (re-signin, upgrade plan, free space).
+        BackendError::Unauthorized(_)
+        | BackendError::PaymentRequired(_)
+        | BackendError::QuotaExceeded(_)
+        | BackendError::NotFound(_)
+        | BackendError::EtagMismatch { .. } => false,
     }
 }
 
@@ -278,5 +284,16 @@ mod tests {
     fn no_retry_on_non_backend_errors() {
         let e = SyncError::Journal("malformed op".into());
         assert!(!should_retry(&e));
+    }
+
+    #[test]
+    fn no_retry_on_hosted_client_state_errors() {
+        for e in [
+            SyncError::Backend(BackendError::Unauthorized("token revoked".into())),
+            SyncError::Backend(BackendError::PaymentRequired("past_due".into())),
+            SyncError::Backend(BackendError::QuotaExceeded("over 1 GB".into())),
+        ] {
+            assert!(!should_retry(&e), "should not retry: {e}");
+        }
     }
 }
