@@ -39,6 +39,13 @@
   let passphrase = $state('')
   let passphraseConfirm = $state('')
   let deviceName = $state('')
+  // Second-device vs first-device intent on step 4. Default "new" for
+  // filesystem/S3 (probe will catch passphrase mismatch anyway) and for
+  // hosted when the user has no reason to think an existing account has
+  // data yet. The user flips this to "existing" when adding a device
+  // to an account already in use — switches the passphrase form from
+  // new+confirm to a single entry field (same value they used elsewhere).
+  let passphraseIntent = $state<'new' | 'existing'>('new')
 
   // Reset wizard each time it opens so a re-launch starts fresh.
   $effect(() => {
@@ -77,7 +84,9 @@
     }
     if (s === 4) {
       if (passphrase.length < 8) return 'Passphrase must be at least 8 characters'
-      if (passphrase !== passphraseConfirm) return 'Passphrases do not match'
+      if (passphraseIntent === 'new' && passphrase !== passphraseConfirm) {
+        return 'Passphrases do not match'
+      }
     }
     return null
   }
@@ -292,12 +301,38 @@
               data on-device before upload, so even Vaelorium Cloud can't read it.
             </p>
           {/if}
-          <div class="warning">
-            <strong>This passphrase encrypts everything</strong>. There is no recovery if you lose it.
-            Write it down somewhere safe before continuing.
+
+          <div class="intent-row">
+            <label class="intent-option" class:selected={passphraseIntent === 'new'}>
+              <input type="radio" name="passphrase-intent" value="new" checked={passphraseIntent === 'new'} onchange={() => passphraseIntent = 'new'} />
+              <div>
+                <div class="intent-title">First device — create a new passphrase</div>
+                <div class="intent-desc">Use this if you haven't set up backup + sync anywhere else yet.</div>
+              </div>
+            </label>
+            <label class="intent-option" class:selected={passphraseIntent === 'existing'}>
+              <input type="radio" name="passphrase-intent" value="existing" checked={passphraseIntent === 'existing'} onchange={() => passphraseIntent = 'existing'} />
+              <div>
+                <div class="intent-title">Adding this device to an existing setup</div>
+                <div class="intent-desc">Enter the same passphrase you used on your first device. There's no recovery; it has to match.</div>
+              </div>
+            </label>
           </div>
-          <label>New passphrase <input class="text" type="password" bind:value={passphrase} autocomplete="new-password" /></label>
-          <label>Confirm passphrase <input class="text" type="password" bind:value={passphraseConfirm} autocomplete="new-password" /></label>
+
+          {#if passphraseIntent === 'new'}
+            <div class="warning">
+              <strong>This passphrase encrypts everything</strong>. There is no recovery if you lose it.
+              Write it down somewhere safe before continuing.
+            </div>
+            <label>New passphrase <input class="text" type="password" bind:value={passphrase} autocomplete="new-password" /></label>
+            <label>Confirm passphrase <input class="text" type="password" bind:value={passphraseConfirm} autocomplete="new-password" /></label>
+          {:else}
+            <label>Existing passphrase <input class="text" type="password" bind:value={passphrase} autocomplete="current-password" /></label>
+            <p class="sub">
+              If this doesn't match what you used before, the first sync will fail with a decryption error
+              and you can come back and re-enter. Your data on the backend stays safe either way.
+            </p>
+          {/if}
         {:else if step === 5}
           <h3>Review and connect</h3>
           <label>Device name <span class="opt">how this machine will appear in conflict logs</span>
@@ -410,6 +445,27 @@
   .kind-body { flex: 1; }
   .kind-title { font-family: var(--font-heading); font-size: 14px; font-weight: 600; color: var(--color-fg-primary); }
   .kind-desc { font-size: 12px; color: var(--color-fg-tertiary); margin: 2px 0 0; }
+
+  .intent-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .intent-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-card);
+    cursor: pointer;
+  }
+  .intent-option.selected { border-color: var(--color-accent-gold); }
+  .intent-option input[type="radio"] { margin-top: 3px; accent-color: var(--color-accent-gold); }
+  .intent-title { font-family: var(--font-ui); font-size: 13px; font-weight: 600; color: var(--color-fg-primary); }
+  .intent-desc { font-family: var(--font-ui); font-size: 12px; color: var(--color-fg-tertiary); margin-top: 2px; }
 
   .warning {
     background: rgba(217, 116, 116, 0.1);
