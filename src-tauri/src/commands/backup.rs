@@ -13,6 +13,7 @@ use crate::sync::remote_meta::{self, RemoteMeta};
 use crate::sync::session::{SessionState, SyncSession};
 use crate::sync::state::BackendKind;
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use chrono::TimeZone;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
@@ -549,18 +550,10 @@ pub async fn backup_list_restorable_tomes(
         .await?
         .ok_or_else(|| "no backup destination configured".to_string())?;
 
-    // Hosted doesn't have a shared-root list endpoint yet — each Tome
-    // is URL-scoped and there's no equivalent of Filesystem/S3's
-    // `list_prefix("tomes")` to enumerate what's on the server. A
-    // `GET /v1/tomes` endpoint is requested in the cloud handoff;
-    // until it ships, show a clear message instead of the cryptic
-    // "hosted backend requires a tome_uuid" from build_raw_backend.
+    // Hosted uses the dedicated `GET /v1/tomes` endpoint instead of a
+    // raw bucket scan — each Tome is URL-scoped, no shared prefix.
     if matches!(cfg.backend_kind, BackendKind::Hosted) {
-        return Err(
-            "Listing Vaelorium Cloud Tomes isn't available yet — the cloud needs a tome-list \
-             endpoint. Tracking in ~/Projects/vaelorium-cloud/docs/m5-status.md."
-                .to_string(),
-        );
+        return list_hosted_restorable_tomes(&app, &active.key).await;
     }
 
     let raw = build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
@@ -634,21 +627,53 @@ pub async fn backup_restore_tome(
     let cfg = app_backend::load(&app_data_dir)
         .await?
         .ok_or_else(|| "no backup destination configured".to_string())?;
-    let raw = build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
-    let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
 
-    let summaries = crate::sync::snapshot::list_tome_snapshots(raw_arc.as_ref())
-        .await
-        .map_err(|e| e.to_string())?;
-    let summary = summaries
-        .into_iter()
-        .find(|s| s.tome_uuid == input.tome_uuid)
-        .ok_or_else(|| format!("no snapshots for tome_uuid {}", input.tome_uuid))?;
-
-    let key = format!(
-        "tomes/{}/snapshots/{}.snap.enc",
-        summary.tome_uuid, summary.snapshot_id
-    );
+    // Hosted vs raw-backend paths diverge: hosted uses the per-Tome
+    // HostedBackend + a snapshot key relative to that backend's root;
+    // Filesystem/S3 wrap a raw backend that sees absolute
+    // `tomes/<uuid>/...` keys.
+    let (backend_arc, snap_key) = if matches!(cfg.backend_kind, BackendKind::Hosted) {
+        let token = crate::commands::cloud::require_device_token_with_app(&app)?;
+        let http = crate::sync::backend::hosted::HostedClient::new().map_err(|e| e.to_string())?;
+        let hosted = crate::sync::backend::hosted::HostedBackend::new(
+            http,
+            input.tome_uuid.clone(),
+            token.clone(),
+        );
+        let b_arc: Arc<dyn SyncBackend + Send + Sync> = Arc::new(hosted);
+        // Cloud's GET /v1/tomes gives us latest_snapshot_id directly;
+        // call it rather than listing per-tome snapshots which is
+        // extra round-trips for hosted.
+        let client = crate::sync::backend::hosted::HostedClient::new().map_err(|e| e.to_string())?;
+        let summaries = client
+            .list_account_tomes(&token)
+            .await
+            .map_err(|e| e.to_string())?;
+        let summary = summaries
+            .into_iter()
+            .find(|s| s.tome_uuid == input.tome_uuid)
+            .ok_or_else(|| format!("no Tome with uuid {}", input.tome_uuid))?;
+        let snap_id = summary
+            .latest_snapshot_id
+            .ok_or_else(|| "this Tome has no snapshot yet — nothing to restore".to_string())?;
+        let key = format!("snapshots/{snap_id}.snap.enc");
+        (b_arc, key)
+    } else {
+        let raw = build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
+        let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
+        let summaries = crate::sync::snapshot::list_tome_snapshots(raw_arc.as_ref())
+            .await
+            .map_err(|e| e.to_string())?;
+        let summary = summaries
+            .into_iter()
+            .find(|s| s.tome_uuid == input.tome_uuid)
+            .ok_or_else(|| format!("no snapshots for tome_uuid {}", input.tome_uuid))?;
+        let key = format!(
+            "tomes/{}/snapshots/{}.snap.enc",
+            summary.tome_uuid, summary.snapshot_id
+        );
+        (raw_arc, key)
+    };
 
     // Stage to a temp file first so a partial download never lands in
     // the user-visible Tomes directory.
@@ -656,11 +681,11 @@ pub async fn backup_restore_tome(
     tokio::fs::create_dir_all(&stage_dir)
         .await
         .map_err(|e| format!("stage dir: {e}"))?;
-    let stage_path = stage_dir.join(format!("{}.tome", summary.tome_uuid));
+    let stage_path = stage_dir.join(format!("{}.tome", input.tome_uuid));
     crate::sync::snapshot::restore_snapshot_by_key(
-        &key,
+        &snap_key,
         &active.key,
-        raw_arc.as_ref(),
+        backend_arc.as_ref(),
         &stage_path,
     )
     .await
@@ -730,8 +755,109 @@ pub async fn backup_restore_tome(
     Ok(RestoredTome {
         path: path_str,
         name,
-        tome_uuid: summary.tome_uuid,
+        tome_uuid: input.tome_uuid,
     })
+}
+
+/// Hosted-specific restore listing. Hits `GET /v1/tomes` for the
+/// tome_uuid + snapshot metadata, then downloads each tome's latest
+/// snapshot through a per-tome `PrefixedBackend` wrapped around the
+/// raw hosted client so we can peek `tome_metadata.name`. Mirrors
+/// what Filesystem + S3 do via `snapshot::list_tome_snapshots` + peek.
+async fn list_hosted_restorable_tomes(
+    app: &AppHandle,
+    key: &crate::sync::crypto::KeyMaterial,
+) -> Result<Vec<RestorableTome>, String> {
+    use crate::sync::backend::hosted::protocol::AccountTomeSummary;
+    use std::sync::Arc as StdArc;
+
+    let token = crate::commands::cloud::require_device_token_with_app(app)?;
+    let client = crate::sync::backend::hosted::HostedClient::new().map_err(|e| e.to_string())?;
+    let summaries: Vec<AccountTomeSummary> = client
+        .list_account_tomes(&token)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut out = Vec::with_capacity(summaries.len());
+    for s in summaries {
+        // Journal-only Tomes (no snapshot) can't be peeked for a
+        // display name. Surface them with a fallback label so the user
+        // at least sees them and can Delete if desired.
+        let Some(snap_id) = s.latest_snapshot_id.clone() else {
+            out.push(RestorableTome {
+                tome_uuid: s.tome_uuid.clone(),
+                snapshot_id: String::new(),
+                name: format!("Tome {} (no snapshot yet)", &s.tome_uuid[..8]),
+                description: None,
+                size_bytes: s.size_bytes,
+                last_modified: chrono::Utc
+                    .timestamp_millis_opt(s.last_modified_ms)
+                    .single()
+                    .unwrap_or_else(chrono::Utc::now)
+                    .to_rfc3339(),
+            });
+            continue;
+        };
+
+        // Build a per-Tome HostedBackend so we can download the
+        // snapshot through the trait. Skip a `get_object` direct path
+        // to keep this uniform with the filesystem/S3 peek flow.
+        let http =
+            crate::sync::backend::hosted::HostedClient::new().map_err(|e| e.to_string())?;
+        let hosted = crate::sync::backend::hosted::HostedBackend::new(
+            http,
+            s.tome_uuid.clone(),
+            token.clone(),
+        );
+        let peek_dir = tempfile::tempdir().map_err(|e| format!("tempdir: {e}"))?;
+        let peek_path = peek_dir.path().join("peek.tome");
+        let snap_key = format!("snapshots/{snap_id}.snap.enc");
+        // Use the engine's restore path which decrypts + writes atomically.
+        let backend_dyn: StdArc<dyn crate::sync::backend::SyncBackend + Send + Sync> =
+            StdArc::new(hosted);
+        if let Err(e) = crate::sync::snapshot::restore_snapshot_by_key(
+            &snap_key,
+            key,
+            backend_dyn.as_ref(),
+            &peek_path,
+        )
+        .await
+        {
+            log::warn!("could not peek hosted snapshot {}: {}", s.tome_uuid, e);
+            out.push(RestorableTome {
+                tome_uuid: s.tome_uuid.clone(),
+                snapshot_id: snap_id,
+                name: format!("Tome {}", &s.tome_uuid[..8]),
+                description: None,
+                size_bytes: s.size_bytes,
+                last_modified: chrono::Utc
+                    .timestamp_millis_opt(s.last_modified_ms)
+                    .single()
+                    .unwrap_or_else(chrono::Utc::now)
+                    .to_rfc3339(),
+            });
+            continue;
+        }
+        let (name, description) = peek_tome_metadata(&peek_path)
+            .await
+            .unwrap_or_else(|e| {
+                log::warn!("could not read metadata from hosted {}: {}", s.tome_uuid, e);
+                (format!("Tome {}", &s.tome_uuid[..8]), None)
+            });
+        out.push(RestorableTome {
+            tome_uuid: s.tome_uuid,
+            snapshot_id: snap_id,
+            name,
+            description,
+            size_bytes: s.size_bytes,
+            last_modified: chrono::Utc
+                .timestamp_millis_opt(s.last_modified_ms)
+                .single()
+                .unwrap_or_else(chrono::Utc::now)
+                .to_rfc3339(),
+        });
+    }
+    Ok(out)
 }
 
 #[derive(Debug, Deserialize)]

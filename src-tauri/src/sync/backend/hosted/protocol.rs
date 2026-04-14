@@ -81,6 +81,20 @@ pub struct SigninResponse {
     pub bytes_used: Option<u64>,
 }
 
+/// Per-Tome summary returned by `GET /v1/tomes`. Cloud ships one of
+/// these per Tome the account owns, newest-first.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AccountTomeSummary {
+    pub tome_uuid: String,
+    pub snapshot_count: u32,
+    /// ULID stem of `snapshots/<ulid>.snap.enc`, or `None` on
+    /// journal-only Tomes (no snapshot taken yet).
+    #[serde(default)]
+    pub latest_snapshot_id: Option<String>,
+    pub size_bytes: u64,
+    pub last_modified_ms: i64,
+}
+
 /// `GET /api/account` response. Same shape as the signin response's
 /// usage fields plus account_id + email + tier. Used for startup
 /// refresh when signed in via stored device token.
@@ -399,6 +413,38 @@ impl Client {
         // or newer builds on unusual paths).
         let body: Option<DeleteResponse> = resp.json().await.ok();
         Ok(body.and_then(|b| b.usage))
+    }
+
+    /// GET /v1/tomes — enumerate every Tome under the signed-in
+    /// account. Ordered by `last_modified_ms` descending (newest
+    /// first). `latest_snapshot_id` is `None` for journal-only Tomes
+    /// (no snapshots taken yet).
+    pub async fn list_account_tomes(
+        &self,
+        token: &str,
+    ) -> Result<Vec<AccountTomeSummary>, BackendError> {
+        let url = format!("{}/v1/tomes", self.base_url);
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| BackendError::Other(format!("list_account_tomes: {e}")))?;
+        let status = resp.status();
+        if !status.is_success() {
+            map_auth_status(status)?;
+            return Err(BackendError::Other(format!("list_account_tomes HTTP {status}")));
+        }
+        #[derive(Deserialize)]
+        struct Body {
+            tomes: Vec<AccountTomeSummary>,
+        }
+        let body: Body = resp
+            .json()
+            .await
+            .map_err(|e| BackendError::Other(format!("list_account_tomes decode: {e}")))?;
+        Ok(body.tomes)
     }
 
     /// DELETE /v1/tomes/<uuid> — wipe a whole Tome from cloud in one
