@@ -9,7 +9,7 @@
   import { syncStatus, backupStatus, syncActivity, refreshSyncStatus, refreshBackupStatus, refreshActivity } from '../stores/syncStore'
   import { enableSync, disableSync, syncNow, takeSnapshot } from '../api/sync'
   import { configureBackup, disconnectBackup, unlockBackup } from '../api/backup'
-  import { cloudSignout, cloudStatus, type CloudAccountInfo } from '../api/cloud'
+  import { cloudSignout, cloudStatus, cloudAccountRefresh, type CloudAccountInfo } from '../api/cloud'
   import { currentTome } from '../stores/tomeStore'
 
   interface Props {
@@ -148,11 +148,23 @@
 
   async function refreshCloudAccount() {
     try {
-      cloudAccount = await cloudStatus()
+      // Prefer a live /api/account call when signed in — picks up
+      // out-of-band plan / usage changes without waiting for sync.
+      // Falls back to the cached cloud_status if the refresh errors
+      // (e.g. offline) so the UI shows stale-but-present data.
+      const fresh = await cloudAccountRefresh().catch(() => null)
+      cloudAccount = fresh ?? (await cloudStatus())
     } catch (e) {
       console.warn('[cloud] status failed:', e)
       cloudAccount = null
     }
+  }
+
+  function formatBytes(n: number): string {
+    if (n < 1024) return `${n} B`
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`
+    return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`
   }
 
   async function handleCloudSignoutOnly() {
@@ -622,13 +634,33 @@
                     {#if cloudAccount.tier}
                       <div class="sync-status-row">
                         <span class="sync-status-label">Plan</span>
-                        <span class="sync-status-value">{cloudAccount.tier}</span>
+                        <span class="sync-status-value">
+                          {cloudAccount.tier}
+                          {#if cloudAccount.usage?.subscriptionStatus && cloudAccount.usage.subscriptionStatus !== 'active'}
+                            <span class="sync-status-value warn">· {cloudAccount.usage.subscriptionStatus}</span>
+                          {/if}
+                        </span>
                       </div>
                     {/if}
-                    <div class="sync-status-row">
-                      <span class="sync-status-label">Usage</span>
-                      <span class="sync-status-value" style="opacity: 0.7">Not yet available</span>
-                    </div>
+                    {#if cloudAccount.usage}
+                      <div class="sync-status-row">
+                        <span class="sync-status-label">Storage</span>
+                        <span class="sync-status-value">
+                          {formatBytes(cloudAccount.usage.bytesUsed)} of {formatBytes(cloudAccount.usage.quotaBytes)}
+                        </span>
+                      </div>
+                      <div class="sync-status-row">
+                        <span class="sync-status-label">Tomes</span>
+                        <span class="sync-status-value">
+                          {cloudAccount.usage.tomeCount}{cloudAccount.usage.tomeLimit !== null ? ` of ${cloudAccount.usage.tomeLimit}` : ' (unlimited)'}
+                        </span>
+                      </div>
+                    {:else}
+                      <div class="sync-status-row">
+                        <span class="sync-status-label">Usage</span>
+                        <span class="sync-status-value" style="opacity: 0.7">Unavailable</span>
+                      </div>
+                    {/if}
                   </div>
                   <div class="sync-actions" style="margin-top: 8px">
                     <button class="data-btn" onclick={handleCloudSignoutOnly} disabled={cloudBusy}>

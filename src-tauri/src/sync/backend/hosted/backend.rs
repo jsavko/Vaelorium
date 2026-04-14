@@ -66,9 +66,15 @@ impl SyncBackend for HostedBackend {
     }
 
     async fn delete_object(&self, key: &str) -> Result<(), BackendError> {
-        self.http
+        // Cloud embeds a `usage` snapshot in the DELETE 200 body; we
+        // ignore it here since the trait returns `()`. Live usage
+        // updates from mutation responses are a future enhancement — a
+        // UsageSink channel could route the CloudUsage to the UI store.
+        let _usage = self
+            .http
             .delete_object(&self.token, &self.tome_uuid, key)
-            .await
+            .await?;
+        Ok(())
     }
 
     async fn head_object(&self, key: &str) -> Result<ObjectInfo, BackendError> {

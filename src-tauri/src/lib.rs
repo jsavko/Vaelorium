@@ -188,6 +188,7 @@ pub fn run() {
             commands::cloud::cloud_signin,
             commands::cloud::cloud_signout,
             commands::cloud::cloud_status,
+            commands::cloud::cloud_account_refresh,
             commands::sync::sync_resolve_conflict,
             // Boards
             commands::boards::create_board,

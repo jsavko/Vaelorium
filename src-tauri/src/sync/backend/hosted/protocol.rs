@@ -25,6 +25,26 @@ pub struct CloudAccountInfo {
     /// RFC3339 timestamp of the signin that produced the currently-held
     /// device token. `None` pre-signin.
     pub signed_in_at: Option<String>,
+    /// Account usage snapshot. Populated from the signin response and
+    /// updated on every mutation response (cloud embeds `usage` in PUT
+    /// and DELETE replies so the app never has to poll). `None` on
+    /// non-hosted backends or when the server omits usage fields.
+    #[serde(default)]
+    pub usage: Option<CloudUsage>,
+}
+
+/// Usage snapshot shape emitted by the cloud on signin + every mutation
+/// response. Contract frozen with cloud `efc9286` / `6b234f5` /
+/// `50bd459` (see `~/Projects/vaelorium-cloud/docs/m5-status.md`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudUsage {
+    pub bytes_used: u64,
+    pub tome_count: u32,
+    pub quota_bytes: u64,
+    /// `None` on Author tier (unlimited).
+    #[serde(default)]
+    pub tome_limit: Option<u32>,
+    pub subscription_status: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,6 +67,39 @@ pub struct SigninResponse {
     pub wrapped_by_password_b64: String,
     #[serde(default)]
     pub tier: Option<String>,
+    // Usage fields embedded in the signin 200 body (cloud `efc9286`).
+    // All optional for backward compat with pre-change cloud builds.
+    #[serde(default)]
+    pub subscription_status: Option<String>,
+    #[serde(default)]
+    pub tome_count: Option<u32>,
+    #[serde(default)]
+    pub tome_limit: Option<u32>,
+    #[serde(default)]
+    pub quota_bytes: Option<u64>,
+    #[serde(default)]
+    pub bytes_used: Option<u64>,
+}
+
+/// `GET /api/account` response. Same shape as the signin response's
+/// usage fields plus account_id + email + tier. Used for startup
+/// refresh when signed in via stored device token.
+#[derive(Debug, Deserialize)]
+pub struct AccountInfoResponse {
+    pub account_id: String,
+    pub email: String,
+    #[serde(default)]
+    pub tier: Option<String>,
+    #[serde(default)]
+    pub subscription_status: Option<String>,
+    #[serde(default)]
+    pub tome_count: Option<u32>,
+    #[serde(default)]
+    pub tome_limit: Option<u32>,
+    #[serde(default)]
+    pub quota_bytes: Option<u64>,
+    #[serde(default)]
+    pub bytes_used: Option<u64>,
 }
 
 /// Object metadata returned by PUT / HEAD / list.
@@ -57,6 +110,26 @@ pub struct ObjectMeta {
     pub last_modified: i64,
     #[serde(default)]
     pub key: Option<String>,
+    /// Cloud embeds `usage` in PUT / sync-meta / DELETE responses so
+    /// the app never has to poll account state. Parsed here so the
+    /// HostedBackend can surface it to the runner / UI. `None` on
+    /// HEAD / list (no mutation, usage unchanged).
+    #[serde(default)]
+    pub usage: Option<CloudUsage>,
+}
+
+/// Body shape of the DELETE 200 response (changed from 204 in cloud
+/// `50bd459`). Carries `ok` + optional `already_absent` + `usage`.
+#[derive(Debug, Deserialize)]
+struct DeleteResponse {
+    #[serde(default)]
+    #[allow(dead_code)]
+    ok: bool,
+    #[serde(default)]
+    #[allow(dead_code)]
+    already_absent: bool,
+    #[serde(default)]
+    usage: Option<CloudUsage>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -292,15 +365,20 @@ impl Client {
             etag,
             last_modified,
             key: Some(key.to_string()),
+            usage: None,
         })
     }
 
+    /// DELETE /v1/tomes/<uuid>/object/<key>. Returns the embedded
+    /// usage snapshot when the cloud ships it (cloud `50bd459` changed
+    /// the response from 204 to 200 with a body). 404 → still treated
+    /// as success (idempotent delete).
     pub async fn delete_object(
         &self,
         token: &str,
         tome_uuid: &str,
         key: &str,
-    ) -> Result<(), BackendError> {
+    ) -> Result<Option<CloudUsage>, BackendError> {
         let url = self.object_url(tome_uuid, key);
         let resp = self
             .http
@@ -310,10 +388,38 @@ impl Client {
             .await
             .map_err(|e| BackendError::Other(format!("delete_object: {e}")))?;
         let status = resp.status();
-        if status == StatusCode::NOT_FOUND || status.is_success() {
-            return Ok(());
+        if status == StatusCode::NOT_FOUND {
+            return Ok(None);
         }
-        Err(map_storage_error(status, resp, key).await)
+        if !status.is_success() {
+            return Err(map_storage_error(status, resp, key).await);
+        }
+        // 2xx success. Try to parse the body for `usage`; tolerate
+        // empty / missing body (older cloud builds that still send 204
+        // or newer builds on unusual paths).
+        let body: Option<DeleteResponse> = resp.json().await.ok();
+        Ok(body.and_then(|b| b.usage))
+    }
+
+    /// GET /api/account — authoritative state refresh when already
+    /// signed in (read keychain/config device token, call this at app
+    /// startup to pick up out-of-band changes like plan upgrades).
+    pub async fn get_account(
+        &self,
+        token: &str,
+    ) -> Result<AccountInfoResponse, BackendError> {
+        let url = format!("{}/api/account", self.base_url);
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| BackendError::Other(format!("account request: {e}")))?;
+        map_auth_status(resp.status())?;
+        resp.json::<AccountInfoResponse>()
+            .await
+            .map_err(|e| BackendError::Other(format!("account decode: {e}")))
     }
 
     /// List objects under a prefix. Handles pagination transparently by

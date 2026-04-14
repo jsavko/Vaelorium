@@ -24,12 +24,18 @@ pub const CLOUD_KEY_ACCOUNT_KEY: &str = "account-key";
 pub const CLOUD_KEY_KDF_SALT: &str = "kdf-salt";
 pub const CLOUD_KEY_EMAIL: &str = "email";
 pub const CLOUD_KEY_TIER: &str = "tier";
+/// JSON-encoded snapshot of the `UsagePayload` struct. Updated on
+/// signin + (optionally) on every mutation response. Read by
+/// `cloud_status` so the UI can display quota / tome count without
+/// re-hitting the server.
+pub const CLOUD_KEY_USAGE: &str = "usage";
 pub const CLOUD_KEYS: &[&str] = &[
     CLOUD_KEY_DEVICE_TOKEN,
     CLOUD_KEY_ACCOUNT_KEY,
     CLOUD_KEY_KDF_SALT,
     CLOUD_KEY_EMAIL,
     CLOUD_KEY_TIER,
+    CLOUD_KEY_USAGE,
 ];
 
 #[derive(Debug, thiserror::Error)]

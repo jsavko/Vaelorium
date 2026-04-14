@@ -27,6 +27,19 @@ pub struct CloudAccountInfo {
     pub account_id: String,
     pub tier: Option<String>,
     pub signed_in_at: Option<String>,
+    /// Usage snapshot from the last signin or /api/account call.
+    /// Cloud embeds usage in every mutation response too; wiring those
+    /// through to live-update this field is a future enhancement.
+    pub usage: Option<UsagePayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsagePayload {
+    pub bytes_used: u64,
+    pub tome_count: u32,
+    pub quota_bytes: u64,
+    pub tome_limit: Option<u32>,
+    pub subscription_status: String,
 }
 
 /// POST salt → Argon2id(auth + crypt) → POST signin → unwrap account_key
@@ -118,6 +131,16 @@ pub async fn cloud_signin(
     if let Some(ref tier) = resp.tier {
         let _ = keychain::store_cloud(keychain::CLOUD_KEY_TIER, tier);
     }
+    // Stash the full usage snapshot from the signin response (cloud
+    // `efc9286` embeds tier + usage in the 200 body). Kept as a
+    // JSON-encoded string so the shape can evolve without keychain
+    // schema churn.
+    let usage = build_usage_from_signin(&resp);
+    if let Some(ref u) = usage {
+        if let Ok(s) = serde_json::to_string(u) {
+            let _ = keychain::store_cloud(keychain::CLOUD_KEY_USAGE, &s);
+        }
+    }
 
     // Also persist the device token into sync-backend.json if the user
     // has configured hosted backup already. This gives us a second
@@ -136,6 +159,33 @@ pub async fn cloud_signin(
         account_id: resp.account_id,
         tier: resp.tier,
         signed_in_at: Some(chrono::Utc::now().to_rfc3339()),
+        usage,
+    })
+}
+
+fn build_usage_from_signin(
+    resp: &crate::sync::backend::hosted::protocol::SigninResponse,
+) -> Option<UsagePayload> {
+    let subscription_status = resp.subscription_status.clone()?;
+    Some(UsagePayload {
+        bytes_used: resp.bytes_used.unwrap_or(0),
+        tome_count: resp.tome_count.unwrap_or(0),
+        quota_bytes: resp.quota_bytes.unwrap_or(0),
+        tome_limit: resp.tome_limit,
+        subscription_status,
+    })
+}
+
+fn build_usage_from_account(
+    resp: &crate::sync::backend::hosted::protocol::AccountInfoResponse,
+) -> Option<UsagePayload> {
+    let subscription_status = resp.subscription_status.clone()?;
+    Some(UsagePayload {
+        bytes_used: resp.bytes_used.unwrap_or(0),
+        tome_count: resp.tome_count.unwrap_or(0),
+        quota_bytes: resp.quota_bytes.unwrap_or(0),
+        tome_limit: resp.tome_limit,
+        subscription_status,
     })
 }
 
@@ -192,11 +242,55 @@ pub async fn cloud_status(_app: AppHandle) -> Result<Option<CloudAccountInfo>, S
     let tier = keychain::retrieve_cloud(keychain::CLOUD_KEY_TIER)
         .ok()
         .flatten();
+    let usage = keychain::retrieve_cloud(keychain::CLOUD_KEY_USAGE)
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str::<UsagePayload>(&s).ok());
     Ok(Some(CloudAccountInfo {
         email,
         account_id: String::new(),
         tier,
         signed_in_at: None,
+        usage,
+    }))
+}
+
+/// Refresh account state from `/api/account`. Safe to call when
+/// already signed in (uses the keychain device token). Updates the
+/// keychain usage snapshot so subsequent `cloud_status` calls return
+/// the fresh data. Per cloud `efc9286` no polling is needed outside
+/// login / sync actions — this is the one-shot "something changed
+/// out of band" refresh (plan upgrade, another device's usage hits).
+#[tauri::command]
+pub async fn cloud_account_refresh(
+    _app: AppHandle,
+) -> Result<Option<CloudAccountInfo>, String> {
+    let token = match keychain::retrieve_cloud(keychain::CLOUD_KEY_DEVICE_TOKEN) {
+        Ok(Some(t)) if !t.is_empty() => t,
+        _ => return Ok(None),
+    };
+    let client = HostedClient::new().map_err(|e| e.to_string())?;
+    let resp = client
+        .get_account(&token)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Update cached tier + usage from the fresh server response.
+    if let Some(ref tier) = resp.tier {
+        let _ = keychain::store_cloud(keychain::CLOUD_KEY_TIER, tier);
+    }
+    let usage = build_usage_from_account(&resp);
+    if let Some(ref u) = usage {
+        if let Ok(s) = serde_json::to_string(u) {
+            let _ = keychain::store_cloud(keychain::CLOUD_KEY_USAGE, &s);
+        }
+    }
+    Ok(Some(CloudAccountInfo {
+        email: resp.email,
+        account_id: resp.account_id,
+        tier: resp.tier,
+        signed_in_at: None,
+        usage,
     }))
 }
 
