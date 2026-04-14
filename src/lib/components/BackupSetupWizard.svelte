@@ -245,6 +245,7 @@
               </p>
               <form onsubmit={(e) => { e.preventDefault(); handleCloudSignin() }}>
                 <label>Email
+                  <!-- svelte-ignore a11y_autofocus -->
                   <input class="text" type="email" autocomplete="username" autofocus bind:value={cloudEmail} />
                 </label>
                 <label>Password
