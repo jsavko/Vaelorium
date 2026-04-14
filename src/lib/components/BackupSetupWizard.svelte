@@ -88,8 +88,21 @@
         return 'Passphrases do not match'
       }
     }
+    if (s === 5) {
+      if (!deviceName.trim()) return 'Give this device a name — it shows up in conflict logs'
+    }
     return null
   }
+
+  // Connect button disabled when any prior step fails validation.
+  // Prevents "click past empty field, then connect" escape hatches.
+  let connectDisabled = $derived.by(() => {
+    if (busy) return true
+    for (const s of [1, 2, 3, 4, 5] as const) {
+      if (validateStep(s)) return true
+    }
+    return false
+  })
 
   async function next() {
     const v = validateStep(step)
@@ -377,7 +390,7 @@
         {#if step < 5}
           <button class="primary" onclick={next} disabled={busy}>Next</button>
         {:else}
-          <button class="primary" onclick={connect} disabled={busy}>{busy ? 'Connecting…' : 'Connect'}</button>
+          <button class="primary" onclick={connect} disabled={connectDisabled}>{busy ? 'Connecting…' : 'Connect'}</button>
         {/if}
       </footer>
     </div>

@@ -37,7 +37,6 @@
     { id: 'data', label: 'Data' },
     { id: 'backup', label: 'Backup' },
     { id: 'sync', label: 'Sync' },
-    { id: 'account', label: 'Account' },
     { id: 'about', label: 'About' },
   ]
 
@@ -171,11 +170,11 @@
     }
   }
 
-  // Refresh cloud account info when the modal opens on the Account tab
-  // (or if the user switches to it). Keeps the displayed state fresh
-  // without polling.
+  // Refresh cloud account info when the modal opens on the Backup tab.
+  // (Account was merged into Backup for hosted — keeps displayed state
+  // fresh without polling.)
   $effect(() => {
-    if (open && activeTab === 'account') {
+    if (open && activeTab === 'backup') {
       refreshCloudAccount()
     }
   })
@@ -611,7 +610,46 @@
                   <span class="sync-status-value">{$backupStatus.deviceName}</span>
                 </div>
               </div>
-              <div class="sync-actions">
+
+              {#if $backupStatus.backendKind === 'hosted'}
+                <h3 class="settings-section-title" style="margin-top: 20px">Vaelorium Cloud account</h3>
+                {#if cloudAccount}
+                  <div class="sync-status-card">
+                    <div class="sync-status-row">
+                      <span class="sync-status-label">Email</span>
+                      <span class="sync-status-value">{cloudAccount.email}</span>
+                    </div>
+                    {#if cloudAccount.tier}
+                      <div class="sync-status-row">
+                        <span class="sync-status-label">Plan</span>
+                        <span class="sync-status-value">{cloudAccount.tier}</span>
+                      </div>
+                    {/if}
+                    <div class="sync-status-row">
+                      <span class="sync-status-label">Usage</span>
+                      <span class="sync-status-value" style="opacity: 0.7">Not yet available</span>
+                    </div>
+                  </div>
+                  <div class="sync-actions" style="margin-top: 8px">
+                    <button class="data-btn" onclick={handleCloudSignoutOnly} disabled={cloudBusy}>
+                      {cloudBusy ? 'Signing out…' : 'Sign out'}
+                    </button>
+                  </div>
+                  <p class="data-desc" style="margin-top: 6px">
+                    Sign out clears your cloud auth only — your backup config + encryption passphrase are kept, so you can sign back in without re-running setup.
+                    Use <strong>Disconnect backup</strong> below to tear down the whole backup configuration.
+                  </p>
+                {:else}
+                  <p class="data-desc">Not signed in to Vaelorium Cloud.</p>
+                  {#if onOpenWizard}
+                    <div class="sync-actions" style="margin-top: 8px">
+                      <button class="data-btn primary" onclick={() => { onClose(); onOpenWizard?.() }}>Sign in…</button>
+                    </div>
+                  {/if}
+                {/if}
+              {/if}
+
+              <div class="sync-actions" style="margin-top: 20px">
                 <button class="data-btn danger" onclick={handleDisconnectBackup} disabled={syncBusy}>
                   Disconnect backup
                 </button>
@@ -786,43 +824,6 @@
                   {/if}
                 {/if}
               </div>
-            {/if}
-          </div>
-        {:else if activeTab === 'account'}
-          <div class="settings-section">
-            <h3 class="settings-section-title">Vaelorium Cloud</h3>
-            {#if cloudAccount}
-              <div class="account-row">
-                <span class="account-label">Email</span>
-                <span class="account-value">{cloudAccount.email}</span>
-              </div>
-              {#if cloudAccount.tier}
-                <div class="account-row">
-                  <span class="account-label">Plan</span>
-                  <span class="account-value">{cloudAccount.tier}</span>
-                </div>
-              {/if}
-              <div class="sync-actions" style="margin-top: 12px">
-                <button class="data-btn danger" onclick={handleCloudSignoutOnly} disabled={cloudBusy}>
-                  {cloudBusy ? 'Signing out…' : 'Sign out of Vaelorium Cloud'}
-                </button>
-              </div>
-              <p class="data-desc" style="margin-top: 8px">
-                Signing out clears your cloud auth token. Your local backup configuration + encryption
-                passphrase are kept, so you can sign back in from the Backup tab without re-setting
-                anything up. To remove the backup destination entirely, use <strong>Disconnect backup</strong>
-                in the Backup tab.
-              </p>
-            {:else}
-              <p class="data-desc">Not signed in to Vaelorium Cloud.</p>
-              {#if onOpenWizard}
-                <div class="sync-actions" style="margin-top: 8px">
-                  <button
-                    class="data-btn primary"
-                    onclick={() => { onClose(); onOpenWizard?.() }}
-                  >Sign in…</button>
-                </div>
-              {/if}
             {/if}
           </div>
         {:else if activeTab === 'about'}
