@@ -549,6 +549,20 @@ pub async fn backup_list_restorable_tomes(
         .await?
         .ok_or_else(|| "no backup destination configured".to_string())?;
 
+    // Hosted doesn't have a shared-root list endpoint yet — each Tome
+    // is URL-scoped and there's no equivalent of Filesystem/S3's
+    // `list_prefix("tomes")` to enumerate what's on the server. A
+    // `GET /v1/tomes` endpoint is requested in the cloud handoff;
+    // until it ships, show a clear message instead of the cryptic
+    // "hosted backend requires a tome_uuid" from build_raw_backend.
+    if matches!(cfg.backend_kind, BackendKind::Hosted) {
+        return Err(
+            "Listing Vaelorium Cloud Tomes isn't available yet — the cloud needs a tome-list \
+             endpoint. Tracking in ~/Projects/vaelorium-cloud/docs/m5-status.md."
+                .to_string(),
+        );
+    }
+
     let raw = build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
     let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
 
