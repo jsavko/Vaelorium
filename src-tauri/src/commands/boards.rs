@@ -43,7 +43,7 @@ pub struct BoardConnector {
 #[tauri::command]
 pub async fn create_board(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     name: String,
 ) -> Result<Board, String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -59,7 +59,6 @@ pub async fn create_board(
     emit_for_row(&mut *tx, &TABLES.boards, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(Board { id, name, sort_order: 0, created_at: now.clone(), updated_at: now })
 }
 
@@ -75,7 +74,7 @@ pub async fn list_boards(managed: State<'_, ManagedDb>) -> Result<Vec<Board>, St
 #[tauri::command]
 pub async fn delete_board(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -89,14 +88,13 @@ pub async fn delete_board(
     emit_for_row(&mut *tx, &TABLES.boards, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn create_card(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     board_id: String, x: f64, y: f64,
     content: Option<String>, page_id: Option<String>, color: Option<String>,
 ) -> Result<BoardCard, String> {
@@ -112,14 +110,13 @@ pub async fn create_card(
     emit_for_row(&mut *tx, &TABLES.board_cards, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(BoardCard { id, board_id, page_id, content, x, y, width: 200.0, height: 120.0, color, created_at: now })
 }
 
 #[tauri::command]
 pub async fn update_card(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
     x: Option<f64>, y: Option<f64>, content: Option<String>,
     page_id: Option<String>, color: Option<String>,
@@ -148,14 +145,13 @@ pub async fn update_card(
         "SELECT id, board_id, page_id, content, x, y, width, height, color, created_at FROM board_cards WHERE id = ?",
     ).bind(&id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(BoardCard { id: row.0, board_id: row.1, page_id: row.2, content: row.3, x: row.4, y: row.5, width: row.6, height: row.7, color: row.8, created_at: row.9 })
 }
 
 #[tauri::command]
 pub async fn delete_card(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -169,7 +165,6 @@ pub async fn delete_card(
     emit_for_row(&mut *tx, &TABLES.board_cards, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 
@@ -185,7 +180,7 @@ pub async fn get_board_cards(managed: State<'_, ManagedDb>, board_id: String) ->
 #[tauri::command]
 pub async fn create_connector(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     board_id: String,
     source_card_id: String, target_card_id: String,
     label: Option<String>, color: Option<String>,
@@ -202,14 +197,13 @@ pub async fn create_connector(
     emit_for_row(&mut *tx, &TABLES.board_connectors, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(BoardConnector { id, board_id, source_card_id, target_card_id, label, color, created_at: now })
 }
 
 #[tauri::command]
 pub async fn delete_connector(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -223,7 +217,6 @@ pub async fn delete_connector(
     emit_for_row(&mut *tx, &TABLES.board_connectors, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 

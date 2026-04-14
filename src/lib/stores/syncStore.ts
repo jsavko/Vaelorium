@@ -1,6 +1,6 @@
-import { writable, derived } from 'svelte/store'
+import { writable, derived, get } from 'svelte/store'
 import { getSyncStatus, listConflicts, listActivity, subscribeSyncStatus, type SyncStatus, type SyncConflict, type ActivityRow } from '../api/sync'
-import { getBackupStatus, tryAutoUnlockBackup, type BackupStatus } from '../api/backup'
+import { getBackupStatus, listRestorableTomes, tryAutoUnlockBackup, type BackupStatus, type RestorableTome } from '../api/backup'
 
 const initialSync: SyncStatus = {
   enabled: false,
@@ -29,6 +29,61 @@ export const backupStatus = writable<BackupStatus>(initialBackup)
 export const syncConflicts = writable<SyncConflict[]>([])
 export const syncActivity = writable<ActivityRow[]>([])
 export const syncRunning = writable(false)
+
+/** Runner poll interval in ms — mirrors `sync::runner::POLL_INTERVAL`
+ *  in the Rust side. Exposed here purely so the sidebar pill can
+ *  compute a "next sync in X" countdown. Not authoritative — the
+ *  runner fires on nudges too (tome open/close, sync_enable, manual
+ *  Sync now). */
+export const SYNC_POLL_INTERVAL_MS = 10 * 60 * 1000
+
+/** Cached list of Tomes the configured backend has. Loaded lazily on
+ *  the first configured+unlocked transition or after explicit events
+ *  that can change the list (sign-in, sign-out, sync enable/disable,
+ *  delete-from-backup, manual Sync now). Read by TomePicker's
+ *  "Restore from backup" panel + any Tome-card cloud-badge
+ *  correlation. Never auto-polled. */
+export const restorableTomes = writable<RestorableTome[]>([])
+export const restorableLoading = writable(false)
+export const restorableError = writable<string | null>(null)
+
+let lastRestorableFetchKey = ''
+let restorableInflight: Promise<void> | null = null
+
+export async function refreshRestorable(force: boolean = false) {
+  // Dedupe concurrent callers.
+  if (restorableInflight) return restorableInflight
+  const backup = get(backupStatus)
+  const status = get(syncStatus)
+  if (!backup.configured || backup.locked) {
+    restorableTomes.set([])
+    restorableError.set(null)
+    lastRestorableFetchKey = 'locked'
+    return
+  }
+  // Key-skip: re-fetching is wasteful if the relevant state
+  // hasn't changed. Keyed on backend + email + lastSyncAt so a new
+  // sync tick or account switch still invalidates the cache.
+  const key = `${backup.backendKind}|${backup.deviceName}|${status.lastSyncAt ?? ''}`
+  if (!force && key === lastRestorableFetchKey) return
+  lastRestorableFetchKey = key
+  restorableLoading.set(true)
+  restorableError.set(null)
+  const p = (async () => {
+    try {
+      const list = await listRestorableTomes()
+      restorableTomes.set(list)
+    } catch (e) {
+      restorableError.set(e instanceof Error ? e.message : String(e))
+      restorableTomes.set([])
+    } finally {
+      restorableLoading.set(false)
+    }
+  })()
+  restorableInflight = p
+  await p
+  restorableInflight = null
+}
 /** Hosted-cloud device token revoked / expired. Until the user
  *  re-signs in from Settings → Backup, the runner will keep failing. */
 export const syncUnauthorized = writable(false)
@@ -112,7 +167,17 @@ export async function initSyncStore() {
       }
       refreshSyncStatus()
       refreshActivity()
+      // A freshly-completed sync may have added or removed Tomes on
+      // the backend; refresh the restorable cache to keep TomePicker
+      // correct without adding its own poll loop.
+      if (e.state === 'idle') {
+        refreshRestorable()
+      }
     })
   }
   await refreshActivity()
+  // Initial fetch if already unlocked — lets TomePicker render the
+  // restore list on first app open without hitting the network again
+  // later.
+  await refreshRestorable()
 }

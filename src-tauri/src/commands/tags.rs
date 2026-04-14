@@ -17,7 +17,7 @@ pub struct Tag {
 #[tauri::command]
 pub async fn create_tag(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     name: String,
     color: Option<String>,
 ) -> Result<Tag, String> {
@@ -33,7 +33,6 @@ pub async fn create_tag(
     emit_for_row(&mut *tx, &TABLES.tags, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(Tag { id, name, color })
 }
@@ -61,7 +60,7 @@ pub async fn list_tags(managed: State<'_, ManagedDb>) -> Result<Vec<Tag>, String
 #[tauri::command]
 pub async fn add_tag_to_page(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     page_id: String,
     tag_id: String,
 ) -> Result<(), String> {
@@ -79,14 +78,13 @@ pub async fn add_tag_to_page(
         record_op(&mut *tx, &op, tome_id).await.map_err(|e| e.to_string())?;
     }
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn remove_tag_from_page(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     page_id: String,
     tag_id: String,
 ) -> Result<(), String> {
@@ -104,7 +102,6 @@ pub async fn remove_tag_from_page(
         record_op(&mut *tx, &op, tome_id).await.map_err(|e| e.to_string())?;
     }
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 

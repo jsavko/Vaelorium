@@ -18,8 +18,15 @@ use super::session::SessionState;
 use super::state::{SyncConfig, SyncRuntimeState};
 use crate::db::ManagedDb;
 
-const POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
-const NUDGE_DEBOUNCE: Duration = Duration::from_secs(10);
+/// How often the runner polls even if nothing nudges it. Set long so
+/// idle Tomes don't burn bandwidth or quota; user-initiated events
+/// (open / close / manual Sync now / sync_enable) nudge immediately.
+pub const POLL_INTERVAL: Duration = Duration::from_secs(10 * 60);
+/// Debounce between a nudge() and the actual sync run. Kept short —
+/// nudges now fire only on discrete events (open / close / enable),
+/// not on typing, so back-to-back nudges are rare and we want the
+/// sync to run quickly after them.
+const NUDGE_DEBOUNCE: Duration = Duration::from_secs(1);
 
 /// Retry schedule for transient-looking backend errors. 1s → 4s → 16s.
 /// Total worst-case wait before surfacing is 21s — above this we'd

@@ -80,7 +80,7 @@ pub async fn get_entity_type(
 #[tauri::command]
 pub async fn create_entity_type(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     name: String,
     icon: Option<String>,
     color: Option<String>,
@@ -112,7 +112,6 @@ pub async fn create_entity_type(
     emit_for_row(&mut *tx, &TABLES.entity_types, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(EntityType {
         id, name, icon, color,
@@ -124,7 +123,7 @@ pub async fn create_entity_type(
 #[tauri::command]
 pub async fn update_entity_type(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
     name: Option<String>,
     icon: Option<String>,
@@ -161,7 +160,6 @@ pub async fn update_entity_type(
     emit_for_row(&mut *tx, &TABLES.entity_types, &id, journal::OpKind::Update, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     get_entity_type_by_pool(&pool, &id).await
 }
@@ -169,7 +167,7 @@ pub async fn update_entity_type(
 #[tauri::command]
 pub async fn delete_entity_type(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -202,6 +200,5 @@ pub async fn delete_entity_type(
     emit_for_row(&mut *tx, &TABLES.entity_types, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }

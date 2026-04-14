@@ -64,7 +64,7 @@ pub async fn list_entity_type_fields(
 #[tauri::command]
 pub async fn create_entity_type_field(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     entity_type_id: String,
     name: String,
     field_type: String,
@@ -103,7 +103,6 @@ pub async fn create_entity_type_field(
     emit_for_row(&mut *tx, &TABLES.entity_type_fields, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(EntityTypeField {
         id,
@@ -122,7 +121,7 @@ pub async fn create_entity_type_field(
 #[tauri::command]
 pub async fn update_entity_type_field(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
     name: Option<String>,
     field_type: Option<String>,
@@ -195,7 +194,6 @@ pub async fn update_entity_type_field(
     .map_err(|e| e.to_string())?
     .ok_or_else(|| "Field not found".to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(EntityTypeField {
         id: row.0, entity_type_id: row.1, name: row.2, field_type: row.3,
@@ -207,7 +205,7 @@ pub async fn update_entity_type_field(
 #[tauri::command]
 pub async fn delete_entity_type_field(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -222,7 +220,6 @@ pub async fn delete_entity_type_field(
     emit_for_row(&mut *tx, &TABLES.entity_type_fields, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 

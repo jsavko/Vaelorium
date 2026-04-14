@@ -50,7 +50,7 @@ pub async fn get_page_field_values(
 #[tauri::command]
 pub async fn set_field_value(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     page_id: String,
     field_id: String,
     value: Option<String>,
@@ -86,7 +86,6 @@ pub async fn set_field_value(
     emit_for_row(&mut *tx, &TABLES.entity_field_values, &final_id, kind, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(FieldValue { id: final_id, page_id, field_id, value })
 }
@@ -94,7 +93,7 @@ pub async fn set_field_value(
 #[tauri::command]
 pub async fn delete_field_value(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     page_id: String,
     field_id: String,
 ) -> Result<(), String> {
@@ -127,7 +126,6 @@ pub async fn delete_field_value(
             .await.map_err(|e| e.to_string())?;
     }
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 

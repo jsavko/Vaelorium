@@ -5,12 +5,18 @@
   import { onMount } from 'svelte'
   import type { RecentTome } from '../api/tomes'
   import {
-    listRestorableTomes,
     restoreTomeFromBackup,
     deleteTomeFromBackup,
     type RestorableTome,
   } from '../api/backup'
-  import { backupStatus, refreshBackupStatus } from '../stores/syncStore'
+  import {
+    backupStatus,
+    refreshBackupStatus,
+    restorableTomes,
+    restorableLoading,
+    restorableError,
+    refreshRestorable,
+  } from '../stores/syncStore'
   import ConfirmDialog from './ConfirmDialog.svelte'
 
   interface Props {
@@ -28,17 +34,15 @@
   let backupConfigured = $derived($backupStatus.configured)
   let backupLocked = $derived($backupStatus.locked)
 
-  let restorable = $state<RestorableTome[]>([])
-  let restorableLoading = $state(false)
-  let restorableError = $state<string | null>(null)
+  // Shared store — TomePicker never fetches directly, so reopening
+  // the home screen doesn't re-hit /v1/tomes. refreshRestorable() is
+  // called from syncStore on sync-idle events + initSyncStore + here
+  // on explicit user actions (restore click + delete click refresh).
+  let restorable = $derived($restorableTomes)
   let restoringUuid = $state<string | null>(null)
   let deletingUuid = $state<string | null>(null)
   let confirmDeleteOpen = $state(false)
   let pendingDelete = $state<RestorableTome | null>(null)
-  // Guard against firing loadRestorable every time the store emits;
-  // only refetch when the configured+unlocked state transitions from
-  // false → true.
-  let lastListKey = $state('')
 
   // Set of tome_uuids that have a backup on the configured destination.
   // Derived from `restorable`; recomputed reactively so any refresh
@@ -62,31 +66,12 @@
 
   // React to unlock / sign-in / configure happening in Settings:
   // whenever backup becomes configured+unlocked, refresh the list.
+  // The store's own key-skip prevents unnecessary refetches.
   $effect(() => {
-    const key = backupConfigured && !backupLocked ? 'ready' : 'not-ready'
-    if (key !== lastListKey) {
-      lastListKey = key
-      if (key === 'ready') {
-        loadRestorable()
-      } else {
-        restorable = []
-        restorableError = null
-      }
+    if (backupConfigured && !backupLocked) {
+      refreshRestorable()
     }
   })
-
-  async function loadRestorable() {
-    restorableLoading = true
-    restorableError = null
-    try {
-      restorable = await listRestorableTomes()
-    } catch (e) {
-      restorableError = e instanceof Error ? e.message : String(e)
-      restorable = []
-    } finally {
-      restorableLoading = false
-    }
-  }
 
   async function handleRestore(t: RestorableTome) {
     restoringUuid = t.tomeUuid
@@ -94,7 +79,7 @@
       const restored = await restoreTomeFromBackup(t.tomeUuid)
       await openTome(restored.path)
     } catch (e) {
-      restorableError = e instanceof Error ? e.message : String(e)
+      restorableError.set(e instanceof Error ? e.message : String(e))
     } finally {
       restoringUuid = null
     }
@@ -112,10 +97,10 @@
     deletingUuid = t.tomeUuid
     try {
       await deleteTomeFromBackup(t.tomeUuid)
-      // Refresh the list so the deleted entry disappears.
-      await loadRestorable()
+      // Force-refresh the shared store so the deleted entry disappears.
+      await refreshRestorable(true)
     } catch (e) {
-      restorableError = e instanceof Error ? e.message : String(e)
+      restorableError.set(e instanceof Error ? e.message : String(e))
     } finally {
       deletingUuid = null
       pendingDelete = null
@@ -240,10 +225,10 @@
             <Lock size={16} />
             <span>Backup is locked — unlock it to see Tomes available on this backend</span>
           </button>
-        {:else if restorableLoading}
+        {:else if $restorableLoading}
           <p class="restore-status">Looking for Tomes on backup…</p>
-        {:else if restorableError}
-          <p class="restore-error">Could not list backup: {restorableError}</p>
+        {:else if $restorableError}
+          <p class="restore-error">Could not list backup: {$restorableError}</p>
         {:else if restorableFiltered.length === 0}
           <p class="restore-status">
             {#if restorable.length > 0}

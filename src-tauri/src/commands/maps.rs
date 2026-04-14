@@ -33,7 +33,7 @@ pub struct MapPin {
 #[tauri::command]
 pub async fn create_map(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     title: String,
     image_id: Option<String>,
 ) -> Result<MapInfo, String> {
@@ -50,7 +50,6 @@ pub async fn create_map(
     emit_for_row(&mut *tx, &TABLES.maps, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(MapInfo { id, title, image_id, parent_map_id: None, sort_order: 0, created_at: now.clone(), updated_at: now })
 }
@@ -83,7 +82,7 @@ pub async fn get_map(managed: State<'_, ManagedDb>, id: String) -> Result<MapInf
 #[tauri::command]
 pub async fn delete_map(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -97,14 +96,13 @@ pub async fn delete_map(
     emit_for_row(&mut *tx, &TABLES.maps, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn create_pin(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     map_id: String,
     x: f64,
     y: f64,
@@ -126,7 +124,6 @@ pub async fn create_pin(
     emit_for_row(&mut *tx, &TABLES.map_pins, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(MapPin { id, map_id, page_id, label, x, y, icon, color, created_at: now })
 }
@@ -134,7 +131,7 @@ pub async fn create_pin(
 #[tauri::command]
 pub async fn update_pin(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
     x: Option<f64>,
     y: Option<f64>,
@@ -163,7 +160,6 @@ pub async fn update_pin(
         "SELECT id, map_id, page_id, label, x, y, icon, color, created_at FROM map_pins WHERE id = ?",
     ).bind(&id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(MapPin { id: row.0, map_id: row.1, page_id: row.2, label: row.3, x: row.4, y: row.5, icon: row.6, color: row.7, created_at: row.8 })
 }
@@ -171,7 +167,7 @@ pub async fn update_pin(
 #[tauri::command]
 pub async fn delete_pin(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -185,7 +181,6 @@ pub async fn delete_pin(
     emit_for_row(&mut *tx, &TABLES.map_pins, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 

@@ -33,7 +33,7 @@ pub struct TimelineEvent {
 #[tauri::command]
 pub async fn create_timeline(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     name: String,
     description: Option<String>,
 ) -> Result<Timeline, String> {
@@ -50,7 +50,6 @@ pub async fn create_timeline(
     emit_for_row(&mut *tx, &TABLES.timelines, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(Timeline { id, name, description, sort_order: 0, created_at: now.clone(), updated_at: now })
 }
@@ -70,7 +69,7 @@ pub async fn list_timelines(managed: State<'_, ManagedDb>) -> Result<Vec<Timelin
 #[tauri::command]
 pub async fn delete_timeline(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -84,14 +83,13 @@ pub async fn delete_timeline(
     emit_for_row(&mut *tx, &TABLES.timelines, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn create_timeline_event(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     timeline_id: String,
     title: String,
     date: String,
@@ -113,7 +111,6 @@ pub async fn create_timeline_event(
     emit_for_row(&mut *tx, &TABLES.timeline_events, &id, journal::OpKind::Insert, Ulid::new(), None, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(TimelineEvent { id, timeline_id, title, description, date, end_date, page_id, color, sort_order: 0, created_at: now })
 }
@@ -121,7 +118,7 @@ pub async fn create_timeline_event(
 #[tauri::command]
 pub async fn update_timeline_event(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
     title: Option<String>,
     date: Option<String>,
@@ -152,7 +149,6 @@ pub async fn update_timeline_event(
         "SELECT id, timeline_id, title, description, date, end_date, page_id, color, sort_order, created_at FROM timeline_events WHERE id = ?",
     ).bind(&id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     Ok(TimelineEvent { id: row.0, timeline_id: row.1, title: row.2, description: row.3, date: row.4, end_date: row.5, page_id: row.6, color: row.7, sort_order: row.8, created_at: row.9 })
 }
@@ -160,7 +156,7 @@ pub async fn update_timeline_event(
 #[tauri::command]
 pub async fn delete_timeline_event(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -174,7 +170,6 @@ pub async fn delete_timeline_event(
     emit_for_row(&mut *tx, &TABLES.timeline_events, &id, journal::OpKind::Delete, Ulid::new(), before, session_ref)
         .await.map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 

@@ -84,6 +84,7 @@ pub async fn create_tome(
 pub async fn open_tome(
     app: AppHandle,
     managed: State<'_, ManagedDb>,
+    session: State<'_, crate::sync::session::SessionState>,
     path: String,
 ) -> Result<TomeInfo, String> {
     // Close existing pool if any
@@ -133,6 +134,11 @@ pub async fn open_tome(
     // Add to recent tomes
     app_state::add_recent_tome(&app, &path, &name, description.as_deref(), tome_uuid.as_deref());
 
+    // Nudge the sync runner to pull any remote changes for this Tome
+    // right away. Replaces the per-typing nudge model with discrete
+    // "sync on open" + "sync on close" triggers plus the slow poll.
+    session.nudge();
+
     Ok(TomeInfo {
         path,
         name,
@@ -141,7 +147,44 @@ pub async fn open_tome(
 }
 
 #[tauri::command]
-pub async fn close_tome(managed: State<'_, ManagedDb>) -> Result<(), String> {
+pub async fn close_tome(
+    app: AppHandle,
+    managed: State<'_, ManagedDb>,
+    session: State<'_, crate::sync::session::SessionState>,
+) -> Result<(), String> {
+    // Sync-on-close: run one sync cycle synchronously before clearing
+    // the managed pool so the user's latest edits are flushed to
+    // backend. Best-effort with a 30s timeout — we never want close
+    // to hang, but we always want a shot at flushing.
+    if let Some(pool) = managed.read().await.clone() {
+        if let Some(active) = session.current().await {
+            if let Ok(cfgs) = crate::sync::state::SyncConfig::list_all(&pool).await {
+                if let Some(cfg) = cfgs.into_iter().find(|c| c.enabled) {
+                    let app_clone = app.clone();
+                    let tome_id = cfg.tome_id.clone();
+                    let key = active.key.clone();
+                    let pool_clone = pool.clone();
+                    let fut = async move {
+                        if let Ok(backend) =
+                            crate::commands::sync::build_tome_backend(&app_clone, &pool_clone)
+                                .await
+                        {
+                            let _ = crate::sync::sync_tome_once(
+                                &pool_clone,
+                                &tome_id,
+                                &*key,
+                                backend.as_ref(),
+                            )
+                            .await;
+                        }
+                    };
+                    let _ =
+                        tokio::time::timeout(std::time::Duration::from_secs(30), fut).await;
+                }
+            }
+        }
+    }
+
     let mut guard = managed.write().await;
     *guard = None;
     log::info!("Tome closed");

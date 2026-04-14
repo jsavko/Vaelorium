@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import PageTreeItem from './PageTreeItem.svelte'
   import ContextMenu from './ContextMenu.svelte'
   import ConfirmDialog from './ConfirmDialog.svelte'
@@ -8,8 +8,31 @@
   import { currentTome } from '../stores/tomeStore'
   import type { PageTreeNode } from '../api/pages'
   import { deletePage } from '../api/pages'
-  import { syncIndicator, syncStatus, syncConflicts, refreshSyncStatus } from '../stores/syncStore'
+  import { syncIndicator, syncStatus, syncConflicts, refreshSyncStatus, SYNC_POLL_INTERVAL_MS } from '../stores/syncStore'
   import { get } from 'svelte/store'
+
+  // Ticker drives reactive countdown on the pill ('next sync in X min').
+  // 30-second tick matches the display granularity — no point burning
+  // a render every second for a minute-level countdown.
+  let tick = $state(0)
+  let tickTimer: ReturnType<typeof setInterval> | undefined
+  onMount(() => {
+    tickTimer = setInterval(() => { tick++ }, 30_000)
+  })
+  onDestroy(() => {
+    if (tickTimer) clearInterval(tickTimer)
+  })
+
+  function nextSyncLabel(lastSyncAt: string | null): string {
+    // Force recompute on every tick.
+    void tick
+    if (!lastSyncAt) return 'next sync any time'
+    const elapsedMs = Date.now() - new Date(lastSyncAt).getTime()
+    const remainMs = SYNC_POLL_INTERVAL_MS - elapsedMs
+    if (remainMs <= 0) return 'next sync due'
+    const remainMin = Math.max(1, Math.round(remainMs / 60_000))
+    return `next sync in ${remainMin} min`
+  }
 
   // syncStatus is read reactively in markup; silence unused-import warnings.
   void syncStatus
@@ -194,7 +217,7 @@
       class:sync-error={$syncIndicator === 'error' || $syncIndicator === 'unauthorized'}
       class:sync-locked={$syncIndicator === 'locked'}
       onclick={handlePillClick}
-      title={$syncIndicator === 'locked' ? 'Click to unlock' : $syncIndicator === 'conflicts' ? 'Resolve sync conflicts' : $syncIndicator === 'unauthorized' ? 'Sign in to Vaelorium Cloud again' : 'Open sync settings'}
+      title={$syncIndicator === 'locked' ? 'Click to unlock' : $syncIndicator === 'conflicts' ? 'Resolve sync conflicts' : $syncIndicator === 'unauthorized' ? 'Sign in to Vaelorium Cloud again' : $syncIndicator === 'idle' ? nextSyncLabel($syncStatus.lastSyncAt) : 'Open sync settings'}
       data-testid="sync-pill"
     >
       <span class="sync-dot"></span>
@@ -206,7 +229,7 @@
         {:else if $syncIndicator === 'backup-missing'}No backup
         {:else if $syncIndicator === 'offline'}Sync off
         {:else if $syncIndicator === 'locked'}Sync locked
-        {:else}Synced{/if}
+        {:else}Synced · {nextSyncLabel($syncStatus.lastSyncAt)}{/if}
       </span>
     </button>
 

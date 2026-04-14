@@ -66,7 +66,7 @@ pub struct ReorderMove {
 #[tauri::command]
 pub async fn create_page(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     input: CreatePageInput,
 ) -> Result<Page, String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -119,7 +119,6 @@ pub async fn create_page(
         .await.map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
 
     get_page_by_pool(&pool, &id).await
 }
@@ -159,7 +158,7 @@ pub async fn get_page(managed: State<'_, ManagedDb>, id: String) -> Result<Page,
 #[tauri::command]
 pub async fn update_page(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
     input: UpdatePageInput,
 ) -> Result<Page, String> {
@@ -209,14 +208,13 @@ pub async fn update_page(
         .await.map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     get_page_by_pool(&pool, &id).await
 }
 
 #[tauri::command]
 pub async fn delete_page(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     id: String,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -240,7 +238,6 @@ pub async fn delete_page(
         .await.map_err(|e| e.to_string())?;
 
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 
@@ -343,7 +340,7 @@ pub async fn get_page_tree(managed: State<'_, ManagedDb>) -> Result<Vec<PageTree
 #[tauri::command]
 pub async fn save_page_content(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     page_id: String,
     yjs_state: Vec<u8>,
 ) -> Result<(), String> {
@@ -395,7 +392,6 @@ pub async fn save_page_content(
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
 
@@ -419,7 +415,7 @@ pub async fn get_page_content(
 #[tauri::command]
 pub async fn reorder_pages(
     managed: State<'_, ManagedDb>,
-    session: State<'_, SessionState>,
+    _session: State<'_, SessionState>,
     moves: Vec<ReorderMove>,
 ) -> Result<(), String> {
     let pool = db::get_pool(managed.inner()).await?;
@@ -449,6 +445,5 @@ pub async fn reorder_pages(
     }
 
     tx.commit().await.map_err(|e| e.to_string())?;
-    session.nudge();
     Ok(())
 }
