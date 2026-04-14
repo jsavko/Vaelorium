@@ -50,6 +50,13 @@
   let inferredIntent = $state<'new' | 'existing' | null>(null)
   let showIntentOverride = $state(false)
 
+  // Key the wizard can recall a previously-used device name from.
+  // `app_backend.json` clears `device_name` on disconnect, but users
+  // setting up again almost always want the same label they used
+  // last time. localStorage is a good fit here — purely a UX hint,
+  // no correctness/security exposure.
+  const DEVICE_NAME_LS_KEY = 'vaelorium-wizard-device-name'
+
   // Reset wizard each time it opens so a re-launch starts fresh.
   $effect(() => {
     if (open) {
@@ -58,6 +65,15 @@
       cloudAccountInfo = null
       inferredIntent = null
       showIntentOverride = false
+      // Prefill device name from the last successful configure so a
+      // reconfigure doesn't force the user to retype the same value.
+      // The field stays editable; this is just a sane default.
+      if (!deviceName) {
+        try {
+          const saved = localStorage.getItem(DEVICE_NAME_LS_KEY)
+          if (saved) deviceName = saved
+        } catch { /* private-browsing, WSL edge cases — silent */ }
+      }
     }
   })
 
@@ -209,6 +225,11 @@
       await configureBackup({ backendKind, backendConfig, passphrase, deviceName: deviceName || undefined })
       await refreshBackupStatus()
       await refreshSyncStatus()
+      // Remember the device name so a future reconfigure defaults to
+      // the same label without forcing the user to retype.
+      if (deviceName.trim()) {
+        try { localStorage.setItem(DEVICE_NAME_LS_KEY, deviceName.trim()) } catch {}
+      }
       showToast('Backup connected', 'success')
       // Clear sensitive fields before closing.
       passphrase = ''
@@ -293,8 +314,8 @@
           {#if backendKind === 'hosted'}
             <h3>Sign in to Vaelorium Cloud</h3>
             {#if cloudAccountInfo}
-              <div class="review">
-                <dl>
+              <div class="signed-in-card">
+                <dl class="signed-in-dl">
                   <dt>Signed in as</dt>
                   <dd>{cloudAccountInfo.email}</dd>
                   {#if cloudAccountInfo.tier}
@@ -589,6 +610,26 @@
   }
   .review dt { color: var(--color-fg-tertiary); font-weight: 600; }
   .review dd { color: var(--color-fg-primary); margin: 0; word-break: break-all; }
+
+  /* Signed-in pane on step 3: the account dl + "Sign in as different" button
+     sit side-by-side, not in a two-column grid meant for flat label/value
+     pairs (`.review`). The old layout forced the whole dl into a 100px
+     column, wrapping every value awkwardly. */
+  .signed-in-card {
+    margin: 4px 0 0; padding: 12px 14px;
+    background: var(--color-surface-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui); font-size: 12px;
+    display: flex; flex-wrap: wrap; gap: 12px 24px;
+    align-items: center; justify-content: space-between;
+  }
+  .signed-in-dl {
+    display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+    margin: 0; flex: 1; min-width: 0;
+  }
+  .signed-in-dl dt { color: var(--color-fg-tertiary); font-weight: 600; }
+  .signed-in-dl dd { color: var(--color-fg-primary); margin: 0; word-break: break-all; }
 
   .err {
     color: var(--color-status-error, #d97474);
