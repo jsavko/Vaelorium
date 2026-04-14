@@ -219,6 +219,28 @@ async fn run_loop(app: AppHandle, managed: ManagedDb, session: SessionState) {
                         let _ = state.save(&pool).await;
                     }
                     if unauthorized {
+                        // Stale device_token will keep failing until the
+                        // user re-signs in. Clear it from both persistence
+                        // layers so the UI's "Sign in again" path starts
+                        // from a clean slate and subsequent ticks don't
+                        // burn the same 401 repeatedly. Keep the rest of
+                        // the backup config (salt, email, tier, passphrase
+                        // session) so the user re-auths without re-running
+                        // the full wizard.
+                        let _ = crate::sync::keychain::delete_cloud(
+                            crate::sync::keychain::CLOUD_KEY_DEVICE_TOKEN,
+                        );
+                        if let Ok(dir) = app.path().app_data_dir() {
+                            if let Ok(Some(mut ac)) =
+                                crate::sync::app_backend::load(&dir).await
+                            {
+                                if ac.device_token.is_some() {
+                                    ac.device_token = None;
+                                    let _ =
+                                        crate::sync::app_backend::save(&dir, &ac).await;
+                                }
+                            }
+                        }
                         let _ = app.emit(
                             "sync:status",
                             SyncStatusEvent {

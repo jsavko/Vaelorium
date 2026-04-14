@@ -1,9 +1,9 @@
 <script lang="ts">
   import { isTauri } from '../api/bridge'
   import { showToast } from '../stores/toastStore'
-  import { backupStatus, refreshBackupStatus, refreshSyncStatus } from '../stores/syncStore'
+  import { backupStatus, syncUnauthorized, refreshBackupStatus, refreshSyncStatus } from '../stores/syncStore'
   import { configureBackup, disconnectBackup, unlockBackup } from '../api/backup'
-  import { cloudSignout } from '../api/cloud'
+  import { cloudSignin, cloudSignout } from '../api/cloud'
   import { cloudAccount, refreshCloudAccount } from '../stores/cloudStore'
 
   interface Props {
@@ -130,6 +130,29 @@
     }
   }
 
+  // Re-signin path when this device's cloud token was revoked. Backup
+  // config (salt, passphrase, encryption) stays intact; only the cloud
+  // auth cycles. Prefilled from $cloudAccount since `cloud_status` may
+  // still return stale info until the runner clears the token (it now
+  // does — see src-tauri/src/sync/runner.rs unauthorized branch).
+  let reauthPassword = $state('')
+  async function handleReauth() {
+    const email = $cloudAccount?.email
+    if (!email || !reauthPassword) return
+    syncBusy = true
+    try {
+      await cloudSignin({ email, password: reauthPassword })
+      reauthPassword = ''
+      syncUnauthorized.set(false)
+      await refreshBackupStatus()
+      await refreshSyncStatus()
+      await refreshCloudAccount()
+      showToast('Signed back in to Vaelorium Cloud', 'success')
+    } catch (e: any) {
+      showToast(`Sign in failed: ${e.message || e}`, 'error')
+    } finally { syncBusy = false }
+  }
+
   async function handleUnlock() {
     if (!syncUnlockPassphrase) return
     syncBusy = true
@@ -153,6 +176,27 @@
   </p>
   {#if !isTauri}
     <p class="data-desc">Backup is only available in the desktop app.</p>
+  {:else if $backupStatus.configured && $backupStatus.backendKind === 'hosted' && $syncUnauthorized}
+    <div class="reauth-banner">
+      <strong>This device's Vaelorium Cloud access was revoked.</strong>
+      <span>Your local backup config + encryption passphrase are intact — just sign in again to resume syncing.</span>
+    </div>
+    <div class="sync-form">
+      <label class="sync-field">
+        <span class="sync-label">Email</span>
+        <input type="email" value={$cloudAccount?.email ?? ''} class="sync-input" readonly />
+      </label>
+      <label class="sync-field">
+        <span class="sync-label">Password</span>
+        <input type="password" bind:value={reauthPassword} class="sync-input" autocomplete="current-password"
+          onkeydown={(e) => { if (e.key === 'Enter') handleReauth() }} />
+      </label>
+      <div class="sync-actions">
+        <button class="data-btn primary" onclick={handleReauth} disabled={syncBusy || !reauthPassword}>
+          {syncBusy ? 'Signing in…' : 'Sign in again'}
+        </button>
+      </div>
+    </div>
   {:else if $backupStatus.configured && $backupStatus.locked}
     <p class="data-desc">Backup is locked. Enter your passphrase to unlock.</p>
     <div class="sync-form">
@@ -372,4 +416,15 @@
   .sync-status-value { color: var(--color-fg-primary); font-weight: 500; }
   .sync-status-value.warn { color: var(--color-status-warning); }
   .setup-actions { display: flex; gap: 8px; }
+
+  .reauth-banner {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 10px 12px; margin: 8px 0;
+    background: rgba(184, 92, 92, 0.12);
+    border: 1px solid var(--color-status-error);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui); font-size: 12px;
+    color: var(--color-fg-secondary);
+  }
+  .reauth-banner strong { color: var(--color-fg-primary); font-weight: 600; }
 </style>
