@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import { isTauri } from '../api/bridge'
   import { showToast } from '../stores/toastStore'
   import { backupStatus, syncUnauthorized, refreshBackupStatus, refreshSyncStatus } from '../stores/syncStore'
@@ -132,16 +133,28 @@
 
   // Re-signin path when this device's cloud token was revoked. Backup
   // config (salt, passphrase, encryption) stays intact; only the cloud
-  // auth cycles. Prefilled from $cloudAccount since `cloud_status` may
-  // still return stale info until the runner clears the token (it now
-  // does — see src-tauri/src/sync/runner.rs unauthorized branch).
+  // auth cycles. Email prefills from the last-known cloudAccount when
+  // available, but stays editable — after the Rust side clears the
+  // stale token, `cloud_status` returns null and the prefill is empty,
+  // so the user needs to be able to type it.
+  let reauthEmail = $state('')
   let reauthPassword = $state('')
+  // Prefill when the revoked state flips on. Read `reauthEmail` via
+  // untrack so user keystrokes don't re-fire this effect
+  // (`feedback_effect_untrack_local_reads`).
+  $effect(() => {
+    if (!$syncUnauthorized) return
+    const cachedEmail = $cloudAccount?.email
+    if (!cachedEmail) return
+    untrack(() => {
+      if (!reauthEmail) reauthEmail = cachedEmail
+    })
+  })
   async function handleReauth() {
-    const email = $cloudAccount?.email
-    if (!email || !reauthPassword) return
+    if (!reauthEmail.trim() || !reauthPassword) return
     syncBusy = true
     try {
-      await cloudSignin({ email, password: reauthPassword })
+      await cloudSignin({ email: reauthEmail.trim(), password: reauthPassword })
       reauthPassword = ''
       syncUnauthorized.set(false)
       await refreshBackupStatus()
@@ -184,7 +197,7 @@
     <div class="sync-form">
       <label class="sync-field">
         <span class="sync-label">Email</span>
-        <input type="email" value={$cloudAccount?.email ?? ''} class="sync-input" readonly />
+        <input type="email" bind:value={reauthEmail} class="sync-input" autocomplete="username" />
       </label>
       <label class="sync-field">
         <span class="sync-label">Password</span>
@@ -192,7 +205,7 @@
           onkeydown={(e) => { if (e.key === 'Enter') handleReauth() }} />
       </label>
       <div class="sync-actions">
-        <button class="data-btn primary" onclick={handleReauth} disabled={syncBusy || !reauthPassword}>
+        <button class="data-btn primary" onclick={handleReauth} disabled={syncBusy || !reauthEmail.trim() || !reauthPassword}>
           {syncBusy ? 'Signing in…' : 'Sign in again'}
         </button>
       </div>
