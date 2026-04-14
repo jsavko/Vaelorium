@@ -314,23 +314,31 @@ pub async fn backup_unlock(
         .map_err(|e| format!("corrupt salt in app config: {e}"))?;
     let key = KeyMaterial::derive(&passphrase, &salt).map_err(|e| e.to_string())?;
 
-    // Validate via probe-decrypt against any existing data.
-    let raw = build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
-    let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
-    let probes = raw_arc
-        .list_prefix("tomes")
-        .await
-        .map_err(|e| e.to_string())?;
-    if let Some(probe) = probes
-        .iter()
-        .find(|o| o.key.contains(".snap.enc") || o.key.contains(".op.enc"))
-    {
-        let (ciphertext, _etag) = raw_arc
-            .get_object(&probe.key)
+    // Filesystem + S3 have a shared bucket root with a sync-meta.json
+    // and cross-tome list that we can probe to validate the passphrase
+    // up-front. Hosted doesn't — each tome is URL-scoped and there's
+    // no `build_raw_backend` equivalent for hosted. Skip the probe;
+    // if the passphrase is wrong, the first real sync will surface a
+    // decrypt error.
+    if !matches!(cfg.backend_kind, BackendKind::Hosted) {
+        let raw = build_raw_backend(cfg.backend_kind, &cfg.backend_config).await?;
+        let raw_arc: Arc<dyn SyncBackend + Send + Sync> = raw.into();
+        let probes = raw_arc
+            .list_prefix("tomes")
             .await
             .map_err(|e| e.to_string())?;
-        crate::sync::crypto::decrypt(&key, &ciphertext)
-            .map_err(|_| "wrong passphrase — could not decrypt existing backup data".to_string())?;
+        if let Some(probe) = probes
+            .iter()
+            .find(|o| o.key.contains(".snap.enc") || o.key.contains(".op.enc"))
+        {
+            let (ciphertext, _etag) = raw_arc
+                .get_object(&probe.key)
+                .await
+                .map_err(|e| e.to_string())?;
+            crate::sync::crypto::decrypt(&key, &ciphertext).map_err(|_| {
+                "wrong passphrase — could not decrypt existing backup data".to_string()
+            })?;
+        }
     }
 
     session
