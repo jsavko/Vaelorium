@@ -61,6 +61,7 @@ export const MentionExtension = Extension.create({
               ],
               text: props.title,
             })
+            .unsetMark('link')
             .run()
         },
         items: ({ query }: { query: string }): MentionItem[] => {
