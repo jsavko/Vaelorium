@@ -6,6 +6,7 @@ export interface BoardConnector { id: string; board_id: string; source_card_id: 
 
 export async function createBoard(name: string): Promise<Board> { return callCommand('create_board', { name }) }
 export async function listBoards(): Promise<Board[]> { return callCommand('list_boards') }
+export async function updateBoard(id: string, name: string): Promise<Board> { return callCommand('update_board', { id, name }) }
 export async function deleteBoard(id: string): Promise<void> { return callCommand('delete_board', { id }) }
 export async function createCard(boardId: string, x: number, y: number, content?: string | null, pageId?: string | null, color?: string | null): Promise<BoardCard> { return callCommand('create_card', { boardId, x, y, content, pageId, color }) }
 export async function updateCard(id: string, updates: { x?: number; y?: number; content?: string; pageId?: string; color?: string; width?: number; height?: number }): Promise<BoardCard> { return callCommand('update_card', { id, ...updates }) }

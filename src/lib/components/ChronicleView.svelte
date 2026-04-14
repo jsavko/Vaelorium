@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { Clock, Plus, Calendar, Trash2 } from 'lucide-svelte'
+  import { Clock, Plus, Calendar, Trash2, MoreHorizontal } from 'lucide-svelte'
   import InputModal from './InputModal.svelte'
-  import { timelines, currentTimeline, currentEvents, loadTimelines, loadTimeline, createTimeline, addEvent, removeEvent } from '../stores/timelineStore'
+  import ConfirmDialog from './ConfirmDialog.svelte'
+  import ContextMenu from './ContextMenu.svelte'
+  import { timelines, currentTimeline, currentEvents, loadTimelines, loadTimeline, createTimeline, addEvent, removeEvent, renameTimeline, deleteTimeline } from '../stores/timelineStore'
   import { loadPage, pageTree } from '../stores/pageStore'
   import { entityTypeMap } from '../stores/entityTypeStore'
   import { onMount } from 'svelte'
@@ -14,6 +16,9 @@
 
   let addingEvent = $state(false)
   let timelineNameModalOpen = $state(false)
+  let renameTarget = $state<{ id: string; name: string } | null>(null)
+  let deleteTarget = $state<{ id: string; name: string } | null>(null)
+  let ctxMenu = $state<{ x: number; y: number } | null>(null)
   let newTitle = $state('')
   let newDate = $state('')
   let newDesc = $state('')
@@ -42,6 +47,28 @@
     newPageId = ''
     searchQuery = ''
     addingEvent = false
+  }
+
+  function openTimelineMenu(e: MouseEvent) {
+    e.stopPropagation()
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    ctxMenu = { x: rect.left, y: rect.bottom + 4 }
+  }
+
+  async function handleRenameTimeline(name: string) {
+    if (!renameTarget) return
+    const id = renameTarget.id
+    renameTarget = null
+    await renameTimeline(id, name)
+  }
+
+  async function handleDeleteTimeline() {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
+    deleteTarget = null
+    await deleteTimeline(id)
+    const next = $timelines[0]
+    if (next) await loadTimeline(next.id)
   }
 
   async function handleDeleteEvent(eventId: string) {
@@ -107,6 +134,11 @@
         </select>
       {:else if $currentTimeline}
         <span class="timeline-name">{$currentTimeline.name}</span>
+      {/if}
+      {#if $currentTimeline}
+        <button class="tl-menu-btn" onclick={openTimelineMenu} aria-label="Timeline actions">
+          <MoreHorizontal size={16} />
+        </button>
       {/if}
     </div>
     <div class="header-right">
@@ -200,6 +232,39 @@
   onCancel={() => timelineNameModalOpen = false}
 />
 
+<InputModal
+  open={renameTarget !== null}
+  title="Rename Timeline"
+  placeholder="Timeline name..."
+  confirmLabel="Save"
+  initialValue={renameTarget?.name ?? ''}
+  onConfirm={handleRenameTimeline}
+  onCancel={() => renameTarget = null}
+/>
+
+<ConfirmDialog
+  open={deleteTarget !== null}
+  title="Delete Timeline"
+  message={`Delete "${deleteTarget?.name ?? ''}" and all its events? This cannot be undone.`}
+  confirmLabel="Delete"
+  danger
+  onConfirm={handleDeleteTimeline}
+  onCancel={() => deleteTarget = null}
+/>
+
+{#if ctxMenu && $currentTimeline}
+  {@const tl = $currentTimeline}
+  <ContextMenu
+    x={ctxMenu.x}
+    y={ctxMenu.y}
+    items={[
+      { label: 'Rename…', action: () => { renameTarget = { id: tl.id, name: tl.name } } },
+      { label: 'Delete', danger: true, action: () => { deleteTarget = { id: tl.id, name: tl.name } } },
+    ]}
+    onClose={() => ctxMenu = null}
+  />
+{/if}
+
 <style>
   .chronicle-view { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
@@ -209,6 +274,8 @@
     border-bottom: 1px solid var(--color-border-subtle); flex-shrink: 0;
   }
   .header-left { display: flex; align-items: center; gap: 10px; color: var(--color-fg-tertiary); }
+  .tl-menu-btn { background: none; border: none; color: var(--color-fg-tertiary); cursor: pointer; padding: 4px; border-radius: var(--radius-sm); display: inline-flex; align-items: center; }
+  .tl-menu-btn:hover { background: var(--color-surface-tertiary); color: var(--color-fg-primary); }
   .header-right { display: flex; gap: 8px; }
   .back-btn { background: none; border: none; color: var(--color-fg-tertiary); cursor: pointer; padding: 4px; border-radius: var(--radius-sm); }
   .back-btn:hover { background: var(--color-surface-tertiary); color: var(--color-fg-primary); }

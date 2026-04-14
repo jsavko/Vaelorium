@@ -67,6 +67,33 @@ pub async fn list_timelines(managed: State<'_, ManagedDb>) -> Result<Vec<Timelin
 }
 
 #[tauri::command]
+pub async fn update_timeline(
+    managed: State<'_, ManagedDb>,
+    _session: State<'_, SessionState>,
+    id: String,
+    name: String,
+) -> Result<Timeline, String> {
+    let pool = db::get_pool(managed.inner()).await?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.timelines, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
+    sqlx::query("UPDATE timelines SET name = ?, updated_at = ? WHERE id = ?")
+        .bind(&name).bind(&now).bind(&id)
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.timelines, &id, journal::OpKind::Update, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    let row = sqlx::query_as::<_, (String, String, Option<String>, i64, String, String)>(
+        "SELECT id, name, description, sort_order, created_at, updated_at FROM timelines WHERE id = ?",
+    ).bind(&id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(Timeline { id: row.0, name: row.1, description: row.2, sort_order: row.3, created_at: row.4, updated_at: row.5 })
+}
+
+#[tauri::command]
 pub async fn delete_timeline(
     managed: State<'_, ManagedDb>,
     _session: State<'_, SessionState>,

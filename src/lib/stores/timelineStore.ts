@@ -37,6 +37,18 @@ export async function addEvent(
   return evt
 }
 
+export async function renameTimeline(id: string, name: string) {
+  const updated = await api.updateTimeline(id, name)
+  timelines.update((list) => list.map((t) => (t.id === id ? updated : t)))
+  currentTimeline.update((cur) => (cur && cur.id === id ? updated : cur))
+}
+
+export async function deleteTimeline(id: string) {
+  await api.deleteTimeline(id)
+  timelines.update((list) => list.filter((t) => t.id !== id))
+  currentTimeline.update((cur) => (cur && cur.id === id ? null : cur))
+}
+
 export async function removeEvent(id: string, timelineId: string) {
   await api.deleteTimelineEvent(id)
   currentEvents.update((events) => events.filter((e) => e.id !== id))

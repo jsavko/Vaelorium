@@ -31,6 +31,18 @@ export async function createBoard(name: string) {
   return board
 }
 
+export async function renameBoard(id: string, name: string) {
+  const updated = await api.updateBoard(id, name)
+  boards.update((list) => list.map((b) => (b.id === id ? updated : b)))
+  currentBoard.update((cur) => (cur && cur.id === id ? updated : cur))
+}
+
+export async function deleteBoard(id: string) {
+  await api.deleteBoard(id)
+  boards.update((list) => list.filter((b) => b.id !== id))
+  currentBoard.update((cur) => (cur && cur.id === id ? null : cur))
+}
+
 export async function addCard(boardId: string, x: number, y: number, content?: string | null, pageId?: string | null, color?: string | null) {
   const card = await api.createCard(boardId, x, y, content, pageId, color)
   currentCards.update((c) => [...c, card])

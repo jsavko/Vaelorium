@@ -195,6 +195,7 @@ pub fn run() {
             // Boards
             commands::boards::create_board,
             commands::boards::list_boards,
+            commands::boards::update_board,
             commands::boards::delete_board,
             commands::boards::create_card,
             commands::boards::update_card,
@@ -207,6 +208,7 @@ pub fn run() {
             commands::maps::create_map,
             commands::maps::list_maps,
             commands::maps::get_map,
+            commands::maps::update_map,
             commands::maps::delete_map,
             commands::maps::create_pin,
             commands::maps::update_pin,
@@ -215,6 +217,7 @@ pub fn run() {
             // Timelines
             commands::timelines::create_timeline,
             commands::timelines::list_timelines,
+            commands::timelines::update_timeline,
             commands::timelines::delete_timeline,
             commands::timelines::create_timeline_event,
             commands::timelines::update_timeline_event,

@@ -4,11 +4,12 @@
     title: string
     placeholder?: string
     confirmLabel?: string
+    initialValue?: string
     onConfirm: (value: string) => void
     onCancel: () => void
   }
 
-  let { open, title, placeholder = '', confirmLabel = 'OK', onConfirm, onCancel }: Props = $props()
+  let { open, title, placeholder = '', confirmLabel = 'OK', initialValue = '', onConfirm, onCancel }: Props = $props()
 
   let value = $state('')
   let inputEl = $state<HTMLInputElement | null>(null)
@@ -27,8 +28,8 @@
 
   $effect(() => {
     if (open) {
-      value = ''
-      setTimeout(() => inputEl?.focus(), 100)
+      value = initialValue
+      setTimeout(() => { inputEl?.focus(); inputEl?.select() }, 100)
     }
   })
 </script>

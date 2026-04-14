@@ -582,6 +582,7 @@ async function mockCommand(command: string, args?: any): Promise<any> {
 
     case 'create_board': { const id = uuid(); const b = { id, name: args.name, sort_order: 0, created_at: now(), updated_at: now() }; mockDb.boards.set(id, b); return b }
     case 'list_boards': { return Array.from(mockDb.boards.values()).sort((a: any, b: any) => a.name.localeCompare(b.name)) }
+    case 'update_board': { const b = mockDb.boards.get(args.id); if (!b) throw new Error('Board not found'); b.name = args.name; b.updated_at = now(); return b }
     case 'delete_board': { mockDb.boards.delete(args.id); for (const [k, c] of mockDb.boardCards) { if (c.board_id === args.id) mockDb.boardCards.delete(k) } for (const [k, c] of mockDb.boardConnectors) { if (c.board_id === args.id) mockDb.boardConnectors.delete(k) } return null }
     case 'create_card': { const id = uuid(); const c = { id, board_id: args.boardId, page_id: args.pageId || null, content: args.content || null, x: args.x, y: args.y, width: 200, height: 120, color: args.color || null, created_at: now() }; mockDb.boardCards.set(id, c); return c }
     case 'update_card': { const c = mockDb.boardCards.get(args.id); if (!c) throw new Error('Card not found'); if (args.x !== undefined) c.x = args.x; if (args.y !== undefined) c.y = args.y; if (args.content !== undefined) c.content = args.content; if (args.pageId !== undefined) c.page_id = args.pageId; if (args.color !== undefined) c.color = args.color; if (args.width !== undefined) c.width = args.width; if (args.height !== undefined) c.height = args.height; return c }
@@ -602,6 +603,14 @@ async function mockCommand(command: string, args?: any): Promise<any> {
 
     case 'list_timelines': {
       return Array.from(mockDb.timelines.values()).sort((a: any, b: any) => a.name.localeCompare(b.name))
+    }
+
+    case 'update_timeline': {
+      const tl = mockDb.timelines.get(args.id)
+      if (!tl) throw new Error('Timeline not found')
+      tl.name = args.name
+      tl.updated_at = now()
+      return tl
     }
 
     case 'delete_timeline': {
@@ -653,6 +662,14 @@ async function mockCommand(command: string, args?: any): Promise<any> {
 
     case 'list_maps': {
       return Array.from(mockDb.maps.values()).sort((a: any, b: any) => a.title.localeCompare(b.title))
+    }
+
+    case 'update_map': {
+      const m = mockDb.maps.get(args.id)
+      if (!m) throw new Error('Map not found')
+      m.title = args.title
+      m.updated_at = now()
+      return m
     }
 
     case 'get_map': {

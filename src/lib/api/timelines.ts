@@ -30,6 +30,10 @@ export async function listTimelines(): Promise<Timeline[]> {
   return callCommand('list_timelines')
 }
 
+export async function updateTimeline(id: string, name: string): Promise<Timeline> {
+  return callCommand('update_timeline', { id, name })
+}
+
 export async function deleteTimeline(id: string): Promise<void> {
   return callCommand('delete_timeline', { id })
 }

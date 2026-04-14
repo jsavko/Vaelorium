@@ -1,7 +1,9 @@
 <script lang="ts">
   import { Layout, Plus } from 'lucide-svelte'
   import InputModal from './InputModal.svelte'
-  import { boards, loadBoards, createBoard } from '../stores/boardStore'
+  import ConfirmDialog from './ConfirmDialog.svelte'
+  import ContextMenu from './ContextMenu.svelte'
+  import { boards, loadBoards, createBoard, renameBoard, deleteBoard } from '../stores/boardStore'
   import { onMount } from 'svelte'
 
   interface Props {
@@ -12,12 +14,35 @@
   let { onOpenBoard, onClose }: Props = $props()
   let nameModalOpen = $state(false)
 
+  let renameTarget = $state<{ id: string; name: string } | null>(null)
+  let deleteTarget = $state<{ id: string; name: string } | null>(null)
+  let ctxMenu = $state<{ x: number; y: number; id: string; name: string } | null>(null)
+
   onMount(() => loadBoards())
 
   async function handleCreate(name: string) {
     nameModalOpen = false
     const board = await createBoard(name)
     onOpenBoard(board.id)
+  }
+
+  function openContextMenu(e: MouseEvent, board: { id: string; name: string }) {
+    e.preventDefault()
+    ctxMenu = { x: e.clientX, y: e.clientY, id: board.id, name: board.name }
+  }
+
+  async function handleRename(name: string) {
+    if (!renameTarget) return
+    const id = renameTarget.id
+    renameTarget = null
+    await renameBoard(id, name)
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
+    deleteTarget = null
+    await deleteBoard(id)
   }
 </script>
 
@@ -43,7 +68,11 @@
   {:else}
     <div class="board-grid">
       {#each $boards as board (board.id)}
-        <button class="board-card" onclick={() => onOpenBoard(board.id)}>
+        <button
+          class="board-card"
+          onclick={() => onOpenBoard(board.id)}
+          oncontextmenu={(e) => openContextMenu(e, { id: board.id, name: board.name })}
+        >
           <div class="card-cover"><Layout size={28} /></div>
           <div class="card-body"><h3 class="card-title">{board.name}</h3></div>
         </button>
@@ -56,6 +85,38 @@
 </div>
 
 <InputModal open={nameModalOpen} title="New Board" placeholder="Board name..." confirmLabel="Create" onConfirm={handleCreate} onCancel={() => nameModalOpen = false} />
+
+<InputModal
+  open={renameTarget !== null}
+  title="Rename Board"
+  placeholder="Board name..."
+  confirmLabel="Save"
+  initialValue={renameTarget?.name ?? ''}
+  onConfirm={handleRename}
+  onCancel={() => renameTarget = null}
+/>
+
+<ConfirmDialog
+  open={deleteTarget !== null}
+  title="Delete Board"
+  message={`Delete "${deleteTarget?.name ?? ''}"? This cannot be undone.`}
+  confirmLabel="Delete"
+  danger
+  onConfirm={handleDelete}
+  onCancel={() => deleteTarget = null}
+/>
+
+{#if ctxMenu}
+  <ContextMenu
+    x={ctxMenu.x}
+    y={ctxMenu.y}
+    items={[
+      { label: 'Rename…', action: () => { renameTarget = { id: ctxMenu!.id, name: ctxMenu!.name } } },
+      { label: 'Delete', danger: true, action: () => { deleteTarget = { id: ctxMenu!.id, name: ctxMenu!.name } } },
+    ]}
+    onClose={() => ctxMenu = null}
+  />
+{/if}
 
 <style>
   .board-list-view { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }

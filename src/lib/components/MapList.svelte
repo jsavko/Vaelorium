@@ -1,7 +1,9 @@
 <script lang="ts">
   import { Map as MapIcon, Plus } from 'lucide-svelte'
   import InputModal from './InputModal.svelte'
-  import { maps, loadMaps, createMap } from '../stores/mapStore'
+  import ConfirmDialog from './ConfirmDialog.svelte'
+  import ContextMenu from './ContextMenu.svelte'
+  import { maps, loadMaps, createMap, renameMap, deleteMap } from '../stores/mapStore'
   import { pickAndUploadImage } from '../api/images'
   import { onMount } from 'svelte'
 
@@ -13,6 +15,10 @@
   let { onOpenMap, onClose }: Props = $props()
   let nameModalOpen = $state(false)
 
+  let renameTarget = $state<{ id: string; title: string } | null>(null)
+  let deleteTarget = $state<{ id: string; title: string } | null>(null)
+  let ctxMenu = $state<{ x: number; y: number; id: string; title: string } | null>(null)
+
   onMount(() => { loadMaps() })
 
   async function handleCreateMap(name: string) {
@@ -20,6 +26,25 @@
     const imageInfo = await pickAndUploadImage()
     const map = await createMap(name, imageInfo?.id)
     onOpenMap(map.id)
+  }
+
+  function openContextMenu(e: MouseEvent, map: { id: string; title: string }) {
+    e.preventDefault()
+    ctxMenu = { x: e.clientX, y: e.clientY, id: map.id, title: map.title }
+  }
+
+  async function handleRename(name: string) {
+    if (!renameTarget) return
+    const id = renameTarget.id
+    renameTarget = null
+    await renameMap(id, name)
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
+    deleteTarget = null
+    await deleteMap(id)
   }
 </script>
 
@@ -47,7 +72,11 @@
   {:else}
     <div class="map-grid">
       {#each $maps as map (map.id)}
-        <button class="map-card" onclick={() => onOpenMap(map.id)}>
+        <button
+          class="map-card"
+          onclick={() => onOpenMap(map.id)}
+          oncontextmenu={(e) => openContextMenu(e, { id: map.id, title: map.title })}
+        >
           <div class="card-cover">
             <MapIcon size={28} />
           </div>
@@ -75,6 +104,38 @@
   onConfirm={handleCreateMap}
   onCancel={() => nameModalOpen = false}
 />
+
+<InputModal
+  open={renameTarget !== null}
+  title="Rename Map"
+  placeholder="Map name..."
+  confirmLabel="Save"
+  initialValue={renameTarget?.title ?? ''}
+  onConfirm={handleRename}
+  onCancel={() => renameTarget = null}
+/>
+
+<ConfirmDialog
+  open={deleteTarget !== null}
+  title="Delete Map"
+  message={`Delete "${deleteTarget?.title ?? ''}"? This cannot be undone.`}
+  confirmLabel="Delete"
+  danger
+  onConfirm={handleDelete}
+  onCancel={() => deleteTarget = null}
+/>
+
+{#if ctxMenu}
+  <ContextMenu
+    x={ctxMenu.x}
+    y={ctxMenu.y}
+    items={[
+      { label: 'Rename…', action: () => { renameTarget = { id: ctxMenu!.id, title: ctxMenu!.title } } },
+      { label: 'Delete', danger: true, action: () => { deleteTarget = { id: ctxMenu!.id, title: ctxMenu!.title } } },
+    ]}
+    onClose={() => ctxMenu = null}
+  />
+{/if}
 
 <style>
   .map-list-view { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; }

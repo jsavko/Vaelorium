@@ -80,6 +80,33 @@ pub async fn get_map(managed: State<'_, ManagedDb>, id: String) -> Result<MapInf
 }
 
 #[tauri::command]
+pub async fn update_map(
+    managed: State<'_, ManagedDb>,
+    _session: State<'_, SessionState>,
+    id: String,
+    title: String,
+) -> Result<MapInfo, String> {
+    let pool = db::get_pool(managed.inner()).await?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let sync_session = active_sync_session(&pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    let before = if sync_session.is_some() {
+        Some(load_row_via_schema(&mut *tx, &TABLES.maps, &id).await.map_err(|e| e.to_string())?)
+    } else { None };
+    sqlx::query("UPDATE maps SET title = ?, updated_at = ? WHERE id = ?")
+        .bind(&title).bind(&now).bind(&id)
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    let session_ref = sync_session.as_ref().map(|(t, d)| (t.as_str(), *d));
+    emit_for_row(&mut *tx, &TABLES.maps, &id, journal::OpKind::Update, Ulid::new(), before, session_ref)
+        .await.map_err(|e| e.to_string())?;
+    let row = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, i64, String, String)>(
+        "SELECT id, title, image_id, parent_map_id, sort_order, created_at, updated_at FROM maps WHERE id = ?",
+    ).bind(&id).fetch_one(&mut *tx).await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(MapInfo { id: row.0, title: row.1, image_id: row.2, parent_map_id: row.3, sort_order: row.4, created_at: row.5, updated_at: row.6 })
+}
+
+#[tauri::command]
 pub async fn delete_map(
     managed: State<'_, ManagedDb>,
     _session: State<'_, SessionState>,

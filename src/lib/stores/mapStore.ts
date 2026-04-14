@@ -38,6 +38,18 @@ export async function addPin(
   return pin
 }
 
+export async function renameMap(id: string, title: string) {
+  const updated = await api.updateMap(id, title)
+  maps.update((list) => list.map((m) => (m.id === id ? updated : m)))
+  currentMap.update((cur) => (cur && cur.id === id ? updated : cur))
+}
+
+export async function deleteMap(id: string) {
+  await api.deleteMap(id)
+  maps.update((list) => list.filter((m) => m.id !== id))
+  currentMap.update((cur) => (cur && cur.id === id ? null : cur))
+}
+
 export async function removePin(id: string) {
   await api.deletePin(id)
   currentMapPins.update((pins) => pins.filter((p) => p.id !== id))

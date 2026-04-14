@@ -34,6 +34,10 @@ export async function getMap(id: string): Promise<MapInfo> {
   return callCommand('get_map', { id })
 }
 
+export async function updateMap(id: string, title: string): Promise<MapInfo> {
+  return callCommand('update_map', { id, title })
+}
+
 export async function deleteMap(id: string): Promise<void> {
   return callCommand('delete_map', { id })
 }
