@@ -154,7 +154,17 @@
     if (!reauthEmail.trim() || !reauthPassword) return
     syncBusy = true
     try {
-      await cloudSignin({ email: reauthEmail.trim(), password: reauthPassword })
+      // Send the already-stubbed local device name so the cloud keeps
+      // the same display name across re-signins. ensure_device_name_stub
+      // is idempotent (detects trailing `(xxxx)` hex) so re-passing a
+      // stubbed name doesn't double-stub. Without this the cloud would
+      // re-register with HOSTNAME / "Vaelorium Device" on every reauth.
+      const localName = $backupStatus.deviceName ?? undefined
+      await cloudSignin({
+        email: reauthEmail.trim(),
+        password: reauthPassword,
+        deviceName: localName,
+      })
       reauthPassword = ''
       syncUnauthorized.set(false)
       await refreshBackupStatus()
