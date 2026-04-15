@@ -170,7 +170,13 @@ pub async fn backup_restore_tome(
     .await
     .map_err(|e| {
         if e.to_string().contains("crypto") {
-            "wrong passphrase — could not decrypt snapshot".to_string()
+            // Genuine wrong passphrase, salt mismatch (`project_hosted_salt_canonical`),
+            // or tampered ciphertext all surface here. Don't claim
+            // "wrong passphrase" — it's misleading when the real cause
+            // is salt drift.
+            "could not decrypt snapshot — passphrase or backup salt does not match what this Tome was encrypted with. \
+             For Vaelorium Cloud: sign out + sign back in to refresh the salt, then re-unlock and retry."
+                .to_string()
         } else {
             e.to_string()
         }

@@ -22,9 +22,31 @@ pub async fn backup_unlock(
         .path()
         .app_data_dir()
         .map_err(|e| format!("app data dir: {e}"))?;
-    let cfg = app_backend::load(&app_data_dir)
+    let mut cfg = app_backend::load(&app_data_dir)
         .await?
         .ok_or_else(|| "no backup destination configured".to_string())?;
+
+    // For hosted, prefer the account-canonical salt cached by
+    // `cloud_signin` over whatever's persisted locally. This self-heals
+    // any installation whose `sync-backend.json` was written before the
+    // configure-time salt fix landed (see
+    // `project_hosted_salt_canonical`). Fall through to the local cache
+    // only if the keychain entry is missing (e.g. DBus down, fresh
+    // restore from a backup file).
+    if matches!(cfg.backend_kind, BackendKind::Hosted) {
+        if let Ok(Some(canonical_b64)) = keychain::retrieve_cloud(keychain::CLOUD_KEY_KDF_SALT) {
+            if canonical_b64 != cfg.salt_b64 {
+                log::warn!(
+                    "hosted backup salt drift: local cache differs from cloud-canonical salt — \
+                     replacing local cache and re-deriving key"
+                );
+                cfg.salt_b64 = canonical_b64;
+                if let Err(e) = app_backend::save(&app_data_dir, &cfg).await {
+                    log::warn!("could not persist refreshed hosted salt: {e}");
+                }
+            }
+        }
+    }
 
     let salt = B64
         .decode(&cfg.salt_b64)

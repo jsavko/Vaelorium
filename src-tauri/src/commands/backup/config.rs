@@ -32,18 +32,23 @@ pub async fn backup_configure(
     let (salt, key, remote_for_meta) = if matches!(backend_kind, BackendKind::Hosted) {
         // Require a signed-in cloud session.
         let _token = crate::commands::cloud::require_device_token()?;
-        let existing = app_backend::load(
-            &app.path().app_data_dir().map_err(|e| format!("app data dir: {e}"))?,
-        )
-        .await
-        .ok()
-        .flatten();
-        let salt: Vec<u8> = match existing.as_ref() {
-            Some(e) => B64
-                .decode(&e.salt_b64)
-                .map_err(|e| format!("existing salt decode: {e}"))?,
-            None => generate_salt().to_vec(),
-        };
+        // The Argon2id salt for hosted is account-canonical and lives
+        // server-side. `cloud_signin` fetched it via `GET
+        // /api/auth/salt?email=...` and stored it in the keychain
+        // under CLOUD_KEY_KDF_SALT. Reusing a local cached salt or
+        // generating a fresh one here would mean snapshots already
+        // uploaded under the account's true salt (from another device
+        // or a prior install) decrypt with the wrong key on this
+        // device and surface as "wrong passphrase" on first restore.
+        // See `project_hosted_salt_canonical`.
+        let salt_b64 = keychain::retrieve_cloud(keychain::CLOUD_KEY_KDF_SALT)
+            .map_err(|e| format!("keychain kdf-salt: {e}"))?
+            .ok_or_else(|| {
+                "no cloud KDF salt cached — sign out of Vaelorium Cloud and sign back in to refresh it".to_string()
+            })?;
+        let salt: Vec<u8> = B64
+            .decode(&salt_b64)
+            .map_err(|e| format!("kdf-salt decode: {e}"))?;
         let key = KeyMaterial::derive(&input.passphrase, &salt).map_err(|e| e.to_string())?;
         (salt, key, None)
     } else {
