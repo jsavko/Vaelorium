@@ -44,6 +44,13 @@
     e.dataTransfer!.effectAllowed = 'move'
   }
 
+  function handleDragEnter(e: DragEvent) {
+    // Required on Windows WebView2 to register this row as a valid
+    // drop target before `dragover` fires. No-op on macOS/Linux.
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  }
+
   function handleDragOver(e: DragEvent) {
     e.preventDefault()
     e.dataTransfer!.dropEffect = 'move'
@@ -153,6 +160,7 @@
     oncontextmenu={handleContextMenu}
     draggable="true"
     ondragstart={handleDragStart}
+    ondragenter={handleDragEnter}
     ondragover={handleDragOver}
     ondragleave={handleDragLeave}
     ondrop={handleDrop}
