@@ -9,6 +9,7 @@
     deleteTomeFromBackup,
     type RestorableTome,
   } from '../api/backup'
+  import { showToast } from '../stores/toastStore'
   import {
     backupStatus,
     refreshBackupStatus,
@@ -82,6 +83,9 @@
     restoringUuid = t.tomeUuid
     try {
       const restored = await restoreTomeFromBackup(t.tomeUuid)
+      if (restored.warning) {
+        showToast(restored.warning, 'info', { durationMs: 6000 })
+      }
       await openTome(restored.path)
     } catch (e) {
       restorableError.set(e instanceof Error ? e.message : String(e))
@@ -259,7 +263,7 @@
                   disabled={restoringUuid !== null || deletingUuid !== null}
                   type="button"
                 >
-                  {restoringUuid === t.tomeUuid ? 'Restoring…' : 'Restore'}
+                  {restoringUuid === t.tomeUuid ? 'Restoring & syncing…' : 'Restore'}
                 </button>
                 <button
                   class="restore-delete"

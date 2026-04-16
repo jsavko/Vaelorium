@@ -182,6 +182,68 @@ pub async fn backup_restore_tome(
         }
     })?;
 
+    // Replay journal tail: download and apply ops uploaded after the
+    // snapshot was taken. The snapshot carries a cursor (`last_applied_op_id`
+    // in `sync_state` with `tome_id = '__snapshot__'`); `sync_tome_once`
+    // uses it to skip ops already baked into the snapshot.
+    let replay_warning: Option<String> = {
+        use sqlx::sqlite::SqlitePoolOptions;
+        let replay_pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect(&format!("sqlite:{}", stage_path.display()))
+            .await
+            .map_err(|e| format!("opening staged tome for journal replay: {e}"))?;
+
+        // Rename the snapshot cursor row from '__snapshot__' to the real
+        // tome_id so `SyncRuntimeState::load` finds it.
+        let tome_id = &input.tome_uuid;
+        sqlx::query("UPDATE sync_state SET tome_id = ? WHERE tome_id = '__snapshot__'")
+            .bind(tome_id)
+            .execute(&replay_pool)
+            .await
+            .map_err(|e| format!("updating snapshot cursor tome_id: {e}"))?;
+
+        // Build a per-tome backend for the replay. Hosted backends are
+        // already tome-scoped; filesystem/S3 need a PrefixedBackend wrapper.
+        let replay_result = if matches!(cfg.backend_kind, BackendKind::Hosted) {
+            crate::sync::engine::sync_tome_once(
+                &replay_pool,
+                tome_id,
+                &active.key,
+                backend_arc.as_ref(),
+            )
+            .await
+        } else {
+            use crate::sync::backend::prefixed::{tome_prefix, PrefixedBackend};
+            let prefixed = PrefixedBackend::new(backend_arc.clone(), tome_prefix(tome_id));
+            crate::sync::engine::sync_tome_once(
+                &replay_pool,
+                tome_id,
+                &active.key,
+                &prefixed,
+            )
+            .await
+        };
+
+        let warning = match replay_result {
+            Ok(outcome) => {
+                log::info!(
+                    "restore journal replay: {} ops applied, {} conflicts",
+                    outcome.ops_applied,
+                    outcome.conflicts_created
+                );
+                None
+            }
+            Err(e) => {
+                log::warn!("restore journal replay failed (snapshot still usable): {e}");
+                Some("Tome restored, but some recent changes may still be pending. Open it and sync to finish.".to_string())
+            }
+        };
+
+        replay_pool.close().await;
+        warning
+    };
+
     let (name, description) = peek_tome_metadata(&stage_path)
         .await
         .map_err(|e| format!("reading restored tome metadata: {e}"))?;
@@ -241,6 +303,7 @@ pub async fn backup_restore_tome(
         path: path_str,
         name,
         tome_uuid: input.tome_uuid,
+        warning: replay_warning,
     })
 }
 

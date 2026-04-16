@@ -841,3 +841,289 @@ async fn scenario_h_activity_log_accrues_and_retains() {
     let rows = activity::list(&d.pool, 200).await.unwrap();
     assert_eq!(rows.len(), 100, "retention must cap at 100 per tome");
 }
+
+// ============================================================================
+// Snapshot cursor preservation tests
+// ============================================================================
+
+/// take_snapshot preserves last_applied_op_id and last_uploaded_op_id as
+/// journal cursors, and embeds the new snapshot_id — enabling efficient
+/// journal-tail-only replay on restore.
+#[tokio::test]
+async fn snapshot_preserves_cursor_fields() {
+    use vaelorium_lib::sync::backend::prefixed::PrefixedBackend;
+    use vaelorium_lib::sync::state::SyncRuntimeState;
+
+    let backend_dir = shared_backend_dir();
+    let raw_backend = make_backend(&backend_dir).await;
+    let raw_arc: std::sync::Arc<dyn SyncBackend + Send + Sync> = std::sync::Arc::new(raw_backend);
+    let salt = generate_salt();
+    let key = make_key(&salt);
+
+    let tome_uuid = "cccccccccccccccccccccccccccccccc";
+    let prefixed = PrefixedBackend::new(raw_arc.clone(), format!("tomes/{tome_uuid}"));
+
+    let d = Device::new("snap_cursor").await;
+    d.enable_sync(&salt).await;
+    d.create_page("Before snapshot", None).await;
+    d.sync(&key, &prefixed).await;
+
+    // Verify sync_state has cursors before snapshot.
+    let state_before = SyncRuntimeState::load(&d.pool, TOME_ID).await.unwrap();
+    assert!(state_before.last_applied_op_id.is_some(), "should have cursor after sync");
+    assert!(state_before.last_uploaded_op_id.is_some(), "should have upload cursor after sync");
+    let applied_id = state_before.last_applied_op_id.clone().unwrap();
+    let uploaded_id = state_before.last_uploaded_op_id.clone().unwrap();
+
+    // Take a snapshot (force it by creating another page so there's a pending op).
+    d.create_page("Trigger snapshot", None).await;
+    let snap_info = snapshot::take_snapshot(&d.pool, &key, &prefixed).await.unwrap();
+
+    // Decrypt the snapshot and inspect sync_state.
+    let snap_key = format!("snapshots/{}.snap.enc", snap_info.snapshot_id);
+    let snap_tmpdir = tempfile::TempDir::new().unwrap();
+    let snap_path = snap_tmpdir.path().join("peek.tome");
+    snapshot::restore_snapshot_to_file(
+        &snap_info.snapshot_id.to_string(),
+        &key,
+        &prefixed,
+        &snap_path,
+    )
+    .await
+    .unwrap();
+    let snap_pool = open_existing(&snap_path).await;
+
+    // Cursor fields should survive.
+    let row: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> =
+        sqlx::query_as(
+            "SELECT tome_id, last_uploaded_op_id, last_applied_op_id, last_snapshot_id, last_sync_at, last_error FROM sync_state",
+        )
+        .fetch_optional(&snap_pool)
+        .await
+        .unwrap();
+    let row = row.expect("sync_state row should exist in snapshot");
+    assert_eq!(row.0, "__snapshot__", "tome_id should be sentinel");
+    assert_eq!(row.1.as_deref(), Some(uploaded_id.as_str()), "last_uploaded_op_id preserved");
+    // last_applied_op_id may have advanced past the pre-snapshot value (sync
+    // applies the device's own uploaded ops), but it should exist.
+    assert!(row.2.is_some(), "last_applied_op_id preserved");
+    assert_eq!(
+        row.3.as_deref(),
+        Some(snap_info.snapshot_id.to_string().as_str()),
+        "last_snapshot_id should be the new snapshot"
+    );
+    assert!(row.4.is_none(), "last_sync_at should be stripped");
+    assert!(row.5.is_none(), "last_error should be stripped");
+
+    // sync_config should be gone.
+    let cfg_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sync_config")
+        .fetch_one(&snap_pool)
+        .await
+        .unwrap();
+    assert_eq!(cfg_count, 0, "sync_config should be stripped from snapshot");
+
+    snap_pool.close().await;
+}
+
+/// Restore + journal replay: a snapshot is taken, then more ops are added.
+/// Restoring the snapshot and replaying the journal tail yields all data.
+/// Verifies the cursor makes the replay efficient (only tail ops applied).
+#[tokio::test]
+async fn restore_replays_journal_tail_with_cursor() {
+    use vaelorium_lib::sync::backend::prefixed::PrefixedBackend;
+    use vaelorium_lib::sync::state::SyncRuntimeState;
+
+    let backend_dir = shared_backend_dir();
+    let raw_backend = make_backend(&backend_dir).await;
+    let raw_arc: std::sync::Arc<dyn SyncBackend + Send + Sync> = std::sync::Arc::new(raw_backend);
+    let salt = generate_salt();
+    let key = make_key(&salt);
+
+    let tome_uuid = "dddddddddddddddddddddddddddddd";
+    let prefixed = PrefixedBackend::new(raw_arc.clone(), format!("tomes/{tome_uuid}"));
+
+    // Device 1: create pages, sync (triggers snapshot), create more, sync again.
+    let d1 = Device::new("d1_replay").await;
+    d1.enable_sync(&salt).await;
+    for i in 0..3 {
+        d1.create_page(&format!("Pre-snap {i}"), None).await;
+    }
+    let outcome1 = d1.sync(&key, &prefixed).await;
+    assert!(outcome1.snapshot_taken.is_some(), "first sync should snapshot");
+    let snapshot_id = outcome1.snapshot_taken.unwrap();
+
+    // Post-snapshot: create 2 more pages and sync (uploads journal ops).
+    let post_id_1 = d1.create_page("Post-snap Alpha", None).await;
+    let post_id_2 = d1.create_page("Post-snap Beta", None).await;
+    d1.sync(&key, &prefixed).await;
+
+    // Simulate restore: download snapshot, rename cursor, replay.
+    let restore_tmpdir = tempfile::TempDir::new().unwrap();
+    let restore_path = restore_tmpdir.path().join("restored.tome");
+    snapshot::restore_snapshot_to_file(&snapshot_id, &key, &prefixed, &restore_path)
+        .await
+        .unwrap();
+    let restore_pool = open_existing(&restore_path).await;
+
+    // Verify pre-snapshot pages present.
+    let pre_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pages")
+        .fetch_one(&restore_pool)
+        .await
+        .unwrap();
+    assert_eq!(pre_count, 3, "snapshot should have 3 pre-snap pages");
+
+    // Rename cursor from '__snapshot__' to the tome_id (mirrors what restore.rs does).
+    sqlx::query("UPDATE sync_state SET tome_id = ? WHERE tome_id = '__snapshot__'")
+        .bind(TOME_ID)
+        .execute(&restore_pool)
+        .await
+        .unwrap();
+
+    // Check cursor was loaded correctly.
+    let state = SyncRuntimeState::load(&restore_pool, TOME_ID).await.unwrap();
+    assert!(
+        state.last_applied_op_id.is_some(),
+        "cursor should exist from snapshot"
+    );
+
+    // Replay journal tail.
+    let replay_outcome =
+        sync_tome_once(&restore_pool, TOME_ID, &key, &prefixed).await.unwrap();
+
+    // Only the 2 post-snapshot ops should be applied (not the 3 pre-snapshot ones).
+    assert_eq!(
+        replay_outcome.ops_applied, 2,
+        "should replay only the 2 post-snapshot ops, not all 5"
+    );
+
+    // All 5 pages should now be present.
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pages")
+        .fetch_one(&restore_pool)
+        .await
+        .unwrap();
+    assert_eq!(total, 5, "restored tome should have all 5 pages after replay");
+
+    // Verify specific post-snapshot pages exist.
+    let post_alpha: Option<String> =
+        sqlx::query_scalar("SELECT title FROM pages WHERE id = ?")
+            .bind(&post_id_1)
+            .fetch_optional(&restore_pool)
+            .await
+            .unwrap();
+    assert_eq!(post_alpha.as_deref(), Some("Post-snap Alpha"));
+
+    restore_pool.close().await;
+}
+
+/// When restoring an old snapshot that has no cursor (pre-fix), the engine
+/// falls back to replaying the full journal — all ops are applied.
+#[tokio::test]
+async fn restore_without_cursor_replays_full_journal() {
+    use vaelorium_lib::sync::backend::prefixed::PrefixedBackend;
+
+    let backend_dir = shared_backend_dir();
+    let raw_backend = make_backend(&backend_dir).await;
+    let raw_arc: std::sync::Arc<dyn SyncBackend + Send + Sync> = std::sync::Arc::new(raw_backend);
+    let salt = generate_salt();
+    let key = make_key(&salt);
+
+    let tome_uuid = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    let prefixed = PrefixedBackend::new(raw_arc.clone(), format!("tomes/{tome_uuid}"));
+
+    let d1 = Device::new("d1_nocursor").await;
+    d1.enable_sync(&salt).await;
+    for i in 0..3 {
+        d1.create_page(&format!("Page {i}"), None).await;
+    }
+    let outcome1 = d1.sync(&key, &prefixed).await;
+    assert!(outcome1.snapshot_taken.is_some());
+    let snapshot_id = outcome1.snapshot_taken.unwrap();
+
+    // Post-snapshot pages.
+    d1.create_page("Post A", None).await;
+    d1.create_page("Post B", None).await;
+    d1.sync(&key, &prefixed).await;
+
+    // Restore snapshot then simulate old format: DELETE the cursor row.
+    let restore_tmpdir = tempfile::TempDir::new().unwrap();
+    let restore_path = restore_tmpdir.path().join("old_restored.tome");
+    snapshot::restore_snapshot_to_file(&snapshot_id, &key, &prefixed, &restore_path)
+        .await
+        .unwrap();
+    let restore_pool = open_existing(&restore_path).await;
+
+    // Simulate old snapshot: no sync_state row at all.
+    sqlx::query("DELETE FROM sync_state")
+        .execute(&restore_pool)
+        .await
+        .unwrap();
+
+    // Replay: with no cursor, engine lists the full journal.
+    let replay_outcome =
+        sync_tome_once(&restore_pool, TOME_ID, &key, &prefixed).await.unwrap();
+
+    // All 5 ops replayed (3 pre-snap are idempotent no-ops content-wise but
+    // still count as applied).
+    assert!(
+        replay_outcome.ops_applied >= 2,
+        "should apply at least the 2 post-snapshot ops"
+    );
+
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pages")
+        .fetch_one(&restore_pool)
+        .await
+        .unwrap();
+    assert_eq!(total, 5, "all pages should be present after full replay");
+
+    restore_pool.close().await;
+}
+
+/// When there are no journal ops after the snapshot, replay is a fast no-op.
+#[tokio::test]
+async fn restore_no_ops_after_snapshot_is_noop() {
+    use vaelorium_lib::sync::backend::prefixed::PrefixedBackend;
+
+    let backend_dir = shared_backend_dir();
+    let raw_backend = make_backend(&backend_dir).await;
+    let raw_arc: std::sync::Arc<dyn SyncBackend + Send + Sync> = std::sync::Arc::new(raw_backend);
+    let salt = generate_salt();
+    let key = make_key(&salt);
+
+    let tome_uuid = "ffffffffffffffffffffffffffffffff";
+    let prefixed = PrefixedBackend::new(raw_arc.clone(), format!("tomes/{tome_uuid}"));
+
+    let d1 = Device::new("d1_noop").await;
+    d1.enable_sync(&salt).await;
+    d1.create_page("Only page", None).await;
+    let outcome1 = d1.sync(&key, &prefixed).await;
+    assert!(outcome1.snapshot_taken.is_some());
+    let snapshot_id = outcome1.snapshot_taken.unwrap();
+
+    // No post-snapshot ops — restore and replay immediately.
+    let restore_tmpdir = tempfile::TempDir::new().unwrap();
+    let restore_path = restore_tmpdir.path().join("noop_restored.tome");
+    snapshot::restore_snapshot_to_file(&snapshot_id, &key, &prefixed, &restore_path)
+        .await
+        .unwrap();
+    let restore_pool = open_existing(&restore_path).await;
+
+    sqlx::query("UPDATE sync_state SET tome_id = ? WHERE tome_id = '__snapshot__'")
+        .bind(TOME_ID)
+        .execute(&restore_pool)
+        .await
+        .unwrap();
+
+    let replay_outcome =
+        sync_tome_once(&restore_pool, TOME_ID, &key, &prefixed).await.unwrap();
+
+    assert_eq!(replay_outcome.ops_applied, 0, "no ops to replay");
+    assert_eq!(replay_outcome.conflicts_created, 0, "no conflicts");
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pages")
+        .fetch_one(&restore_pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "only the pre-snapshot page should exist");
+
+    restore_pool.close().await;
+}

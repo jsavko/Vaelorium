@@ -127,19 +127,21 @@ export interface RestoredTome {
   path: string
   name: string
   tomeUuid: string
+  warning?: string
 }
 
 interface RawRestoredTome {
   path: string
   name: string
   tome_uuid: string
+  warning?: string
 }
 
 export async function restoreTomeFromBackup(tomeUuid: string): Promise<RestoredTome> {
   const raw = await callCommand<RawRestoredTome>('backup_restore_tome', {
     input: { tome_uuid: tomeUuid },
   })
-  return { path: raw.path, name: raw.name, tomeUuid: raw.tome_uuid }
+  return { path: raw.path, name: raw.name, tomeUuid: raw.tome_uuid, warning: raw.warning }
 }
 
 export interface DeleteTomeResult {

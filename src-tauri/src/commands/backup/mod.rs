@@ -66,6 +66,9 @@ pub struct RestoredTome {
     pub path: String,
     pub name: String,
     pub tome_uuid: String,
+    /// Non-fatal warning from restore (e.g. journal replay failed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

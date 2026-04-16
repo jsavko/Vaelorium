@@ -245,6 +245,8 @@ pub async fn sync_tome_once(
     .await?;
 
     if should_snapshot(&state, pending_bytes as u64, pending_count as usize) {
+        // Flush cursors to DB before VACUUM so the snapshot captures them.
+        state.save(pool).await?;
         match snapshot::take_snapshot(pool, key, backend).await {
             Ok(SnapshotInfo { snapshot_id, .. }) => {
                 state.last_snapshot_id = Some(snapshot_id.to_string());

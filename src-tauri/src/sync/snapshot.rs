@@ -78,14 +78,36 @@ pub async fn take_snapshot(
         .execute(pool)
         .await?;
 
-    // Open the snapshot file briefly to clear sync_* tables, then close.
+    // Open the snapshot file briefly to clear device-local sync tables while
+    // preserving the journal cursors so a restoring device can replay only the
+    // tail instead of the full journal.
     {
         let snapshot_pool = sqlx::sqlite::SqlitePoolOptions::new()
             .max_connections(1)
             .connect(&format!("sqlite:{}", tmp_db.display()))
             .await?;
         sqlx::query("DELETE FROM sync_journal_local").execute(&snapshot_pool).await?;
+        // Preserve last_applied_op_id and last_uploaded_op_id as journal
+        // cursors for restore-time replay. Replace the row with a minimal
+        // one carrying only the cursor fields + this snapshot's ID (so the
+        // restoring device doesn't immediately re-snapshot).
+        let cursor_row: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT last_uploaded_op_id, last_applied_op_id FROM sync_state LIMIT 1",
+        )
+        .fetch_optional(&snapshot_pool)
+        .await?;
         sqlx::query("DELETE FROM sync_state").execute(&snapshot_pool).await?;
+        if let Some((last_uploaded, last_applied)) = cursor_row {
+            sqlx::query(
+                "INSERT INTO sync_state (tome_id, last_uploaded_op_id, last_applied_op_id, last_snapshot_id, last_sync_at, last_error)
+                 VALUES ('__snapshot__', ?, ?, ?, NULL, NULL)",
+            )
+            .bind(last_uploaded)
+            .bind(last_applied)
+            .bind(snapshot_id.to_string())
+            .execute(&snapshot_pool)
+            .await?;
+        }
         sqlx::query("DELETE FROM sync_config").execute(&snapshot_pool).await?;
         sqlx::query("DELETE FROM sync_conflicts").execute(&snapshot_pool).await?;
         // sync_activity is a per-device log; fresh-restored DBs shouldn't
