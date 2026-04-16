@@ -45,8 +45,11 @@ fn gzip_decompress(data: &[u8]) -> std::io::Result<Vec<u8>> {
 
 /// Trigger thresholds (kept in code rather than config for now; revisit if
 /// users start asking to tune them).
-pub const SNAPSHOT_BYTES_THRESHOLD: u64 = 5 * 1024 * 1024; // 5 MB of pending journal
+pub const SNAPSHOT_BYTES_THRESHOLD: u64 = 1024 * 1024; // 1 MB of pending journal
 pub const SNAPSHOT_OPS_THRESHOLD: usize = 5_000;
+/// Maximum age of the last snapshot before a new one is forced, regardless
+/// of journal size/count. Keeps the journal tail short for faster restores.
+pub const SNAPSHOT_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600); // 1 week
 
 #[derive(Debug, Clone)]
 pub struct SnapshotInfo {
@@ -243,15 +246,36 @@ pub async fn list_snapshots(backend: &dyn SyncBackend) -> SyncResult<Vec<String>
         .collect())
 }
 
-/// Should we take a new snapshot now? Phase 2 evaluates the size + ops
-/// thresholds; weekly and on-close paths are added when the runner calls
-/// this from those code paths.
+/// Should we take a new snapshot now? Triggers on:
+/// 1. First-ever snapshot (no `last_snapshot_id`).
+/// 2. Pending journal exceeds size threshold (1 MB).
+/// 3. Pending journal exceeds op-count threshold (5,000).
+/// 4. Last snapshot is older than `SNAPSHOT_MAX_AGE` (1 week) — keeps the
+///    journal tail short for faster restores on low-activity Tomes.
 pub fn should_snapshot(state: &SyncRuntimeState, journal_bytes: u64, journal_count: usize) -> bool {
     // First-ever snapshot: always.
     if state.last_snapshot_id.is_none() {
         return true;
     }
-    journal_bytes >= SNAPSHOT_BYTES_THRESHOLD || journal_count >= SNAPSHOT_OPS_THRESHOLD
+    if journal_bytes >= SNAPSHOT_BYTES_THRESHOLD || journal_count >= SNAPSHOT_OPS_THRESHOLD {
+        return true;
+    }
+    // Weekly trigger: ULID embeds a millisecond timestamp in its first 48
+    // bits. If the last snapshot is older than SNAPSHOT_MAX_AGE, force a
+    // new one even if the journal is tiny.
+    if let Some(ref snap_id) = state.last_snapshot_id {
+        if let Ok(ulid) = Ulid::from_string(snap_id) {
+            let snap_ms = ulid.timestamp_ms();
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            if now_ms.saturating_sub(snap_ms) >= SNAPSHOT_MAX_AGE.as_millis() as u64 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -283,6 +307,29 @@ mod tests {
         let mut state = SyncRuntimeState::default();
         state.last_snapshot_id = Some(Ulid::new().to_string());
         assert!(should_snapshot(&state, 0, SNAPSHOT_OPS_THRESHOLD));
+    }
+
+    #[test]
+    fn should_snapshot_weekly_trigger_fires_for_old_snapshot() {
+        let mut state = SyncRuntimeState::default();
+        // Create a ULID from 8 days ago.
+        let eight_days_ago_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            - 8 * 24 * 3600 * 1000;
+        let old_ulid = Ulid::from_parts(eight_days_ago_ms, 0);
+        state.last_snapshot_id = Some(old_ulid.to_string());
+        // Below both size and count thresholds, but old enough to trigger.
+        assert!(should_snapshot(&state, 100, 1));
+    }
+
+    #[test]
+    fn should_snapshot_weekly_trigger_does_not_fire_for_recent() {
+        let mut state = SyncRuntimeState::default();
+        // Fresh ULID = just now.
+        state.last_snapshot_id = Some(Ulid::new().to_string());
+        assert!(!should_snapshot(&state, 100, 1));
     }
 
     #[tokio::test]
